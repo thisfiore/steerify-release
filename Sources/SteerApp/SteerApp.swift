@@ -159,6 +159,11 @@ struct SteerApp: App {
             }
         }
         if let i = a.firstIndex(of: "--palette"), i + 1 < a.count { m.paletteSeed = a[i + 1]; m.paletteOpen = true }
+        // Test hook: `--toast "<text>"` shows that toast 2 s in (with Open + Undo), to check where it sits.
+        if let i = a.firstIndex(of: "--toast"), i + 1 < a.count {
+            let text = a[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { m.showToast(text, projectId: m.project?.id, ref: "road:x", undo: {}) }
+        }
         // Test hook: `--request "<text>"` opens the New request sheet with that text typed in.
         if let i = a.firstIndex(of: "--request"), i + 1 < a.count { m.requestSeed = a[i + 1]; m.requestOpen = true }
         // `--request-pick` opens it as ⌃⌥N does (project pills); `--request-for <id>` picks another project 1.5 s in.

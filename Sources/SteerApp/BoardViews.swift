@@ -233,9 +233,15 @@ struct TabBar: View {
                 }.buttonStyle(SteerButton())
                 .help("\(t.title.capitalized) (⌘\(i + 1)) · ⌘[ ⌘] previous / next tab")
             }
-            Spacer()
+            Spacer(minLength: 12)
+            // Toasts live here, top right above the sessions: never over the terminal you type in.
+            if let t = model.toast {
+                ToastView(toast: t, compact: true).frame(maxWidth: S(520), alignment: .trailing).layoutPriority(-1)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .padding(.horizontal, 8)
+        .animation(.easeOut(duration: 0.2), value: model.toast)
         .overlay(alignment: .bottom) { Rectangle().fill(Brand.line).frame(height: 1) }
     }
     /// What needs you: refine/broken + untested on To test, open choices, unreviewed requirements.

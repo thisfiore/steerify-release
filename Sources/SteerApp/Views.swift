@@ -40,8 +40,6 @@ struct ContentView: View {
                     }
                 }
                 .overlay { if let b = since.brief, b.projectId == p.id { SinceYouLeftSheet(brief: b, project: p).id(b.id) } }
-                .overlay(alignment: .bottom) { if let t = model.toast { ToastView(toast: t).padding(.bottom, 18).transition(.move(edge: .bottom).combined(with: .opacity)) } }
-                .animation(.easeOut(duration: 0.2), value: model.toast)
             } else {
                 NoProjectsView()
             }
@@ -537,10 +535,13 @@ struct TerminalHost: NSViewRepresentable {
 struct ToastView: View {
     @EnvironmentObject var model: AppModel
     let toast: AppModel.Toast
+    /// Compact: one line, sized to sit in the tab bar (top right, above the sessions) instead of over the terminal.
+    var compact = false
     var body: some View {
         HStack(spacing: 10) {
             ClaudeSpark(size: S(13))
-            Text(toast.message).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(Brand.ink).lineLimit(2)
+            Text(toast.message).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(Brand.ink)
+                .lineLimit(compact ? 1 : 2).truncationMode(.tail).help(toast.message)
             if let undo = toast.undo {
                 Button("Undo") { undo(); model.toast = nil }
                     .buttonStyle(SteerButton()).font(.system(size: S(12), weight: .semibold)).foregroundStyle(Brand.amber)
@@ -552,10 +553,10 @@ struct ToastView: View {
             Button { model.toast = nil } label: { Image(systemName: "xmark").font(.system(size: S(9), weight: .bold)) }
                 .buttonStyle(SteerButton()).foregroundStyle(Brand.mute)
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
+        .padding(.horizontal, compact ? 12 : 14).padding(.vertical, compact ? 5 : 10)
         .background(Capsule().fill(Color(hex: 0x1b1e25)))
         .overlay(Capsule().stroke(Brand.claude.opacity(0.5)))
-        .shadow(color: .black.opacity(0.5), radius: 16, y: 6)
+        .shadow(color: .black.opacity(compact ? 0.25 : 0.5), radius: compact ? 6 : 16, y: compact ? 2 : 6)
     }
 }
 
