@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Steerify · You decide. Claude builds. A Mac app for steering Claude Code</title>
+<meta name="description" content="Steerify is a native Mac app for steering Claude Code across your projects: choices with mockups, visual review of finished work and a roadmap, next to the sessions doing the work. Ship more, read less.">
+<link rel="canonical" href="https://steerify.dev/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0d0f12">
+<meta name="author" content="Frenk">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<link rel="alternate" type="text/plain" title="LLM summary" href="/llms.txt">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Steerify">
+<meta property="og:url" content="https://steerify.dev/">
+<meta property="og:title" content="Steerify · You decide. Claude builds. A Mac app for steering Claude Code">
+<meta property="og:description" content="Steerify is a native Mac app for steering Claude Code across your projects: choices with mockups, visual review of finished work and a roadmap, next to the sessions doing the work. Ship more, read less.">
+<meta property="og:image" content="https://steerify.dev/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Steerify: You decide. Claude builds. A Mac app for steering Claude Code.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Steerify · You decide. Claude builds. A Mac app for steering Claude Code">
+<meta name="twitter:description" content="Steerify is a native Mac app for steering Claude Code across your projects: choices with mockups, visual review of finished work and a roadmap, next to the sessions doing the work. Ship more, read less.">
+<meta name="twitter:image" content="https://steerify.dev/assets/og.jpg">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://steerify.dev/#site","name":"Steerify","url":"https://steerify.dev/","inLanguage":"en","publisher":{"@type":"Person","name":"Frenk"}},{"@type":"SoftwareApplication","@id":"https://steerify.dev/#app","name":"Steerify","url":"https://steerify.dev/","applicationCategory":"DeveloperApplication","applicationSubCategory":"AI coding tool","operatingSystem":"macOS 15 or later","softwareVersion":"0.4","releaseNotes":"https://steerify.dev/releases.html","image":"https://steerify.dev/assets/og.jpg","screenshot":"https://steerify.dev/assets/shots/hero-now.jpg","description":"Steerify is a native Mac app for steering Claude Code across projects. It keeps a steering board (choices with mockups, visual review of finished work, requirements and a roadmap) next to the Claude Code terminal sessions doing the work. Claude asks, builds and delivers on the board; you choose, look and approve, and approved work ships in one click.","featureList":["Every roadmap item starts its own briefed Claude Code session in the right repo","Choices with a mockup per option, answered with one click","Visual review: finished work arrives as pictures, with notes pinned on the picture","Session status from Claude Code hooks: working, waiting on you, idle","Release tab: approved work is committed, pushed and deployed by the session that built it","Steerify MCP server so Claude updates the board directly","Multi-project: every project's board lives in its own git repo"],"offers":{"@type":"Offer","price":"0","priceCurrency":"EUR","availability":"https://schema.org/PreOrder","description":"Free during the private beta"},"creator":{"@type":"Person","name":"Frenk"}},{"@type":"FAQPage","@id":"https://steerify.dev/#faq","mainEntity":[{"@type":"Question","name":"Is Steerify an AI?","acceptedAnswer":{"@type":"Answer","text":"No. Claude Code does the building, with your own login. Steerify is where you steer it. For small jobs like session summaries and sorting requests, it also uses Apple Intelligence on your Mac, when that is turned on."}},{"@type":"Question","name":"Do I need Claude Code?","acceptedAnswer":{"@type":"Answer","text":"Yes. Sessions run in a real terminal on your Mac. Steerify never sees your keys."}},{"@type":"Question","name":"Where does my board live?","acceptedAnswer":{"@type":"Answer","text":"In a folder of plain files in your own repo. Delete Steerify and it's all still yours."}},{"@type":"Question","name":"What does it cost?","acceptedAnswer":{"@type":"Answer","text":"Nothing during the private beta. Not made by Anthropic; Claude is their trademark."}}]}]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/site.css?v=8">
+<link rel="stylesheet" href="assets/story.css?v=4">
+<script src="assets/brand.js?v=9" defer></script>
+<script src="assets/infographics.js?v=8" defer></script>
+<script src="assets/story.js?v=6" defer></script>
+<script src="assets/beta.js?v=9" defer></script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><span data-wheel="tile"></span><b>STEERIFY</b></a>
+    <nav>
+      <a href="#decide">Deciding</a>
+      <a href="#how">How it works</a>
+      <a href="releases.html">What's new</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a class="btn sm amber" href="#beta">Get the beta</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero2">
+    <div class="wrap">
+      <p class="kicker"><span data-wheel="tile"></span>STEERIFY · A MAC APP FOR CLAUDE CODE</p>
+      <h1>You decide.<br><em>Claude builds.</em><span class="sr"> Steerify, a Mac app for steering Claude Code.</span></h1>
+      <p class="lead"><b class="hl">Ship more. Read less.</b> Steerify puts your roadmap next to the Claude Code sessions doing the work. Claude asks with pictures. You pick, look, and say ship.</p>
+      <p class="aside">Someone has to hold the wheel. Congratulations, it's you.</p>
+      <div class="ctas">
+        <a class="px" href="#beta">▶ GET THE BETA<small>free while it's private</small></a>
+        <button class="btn" type="button" data-teaser><span data-icon="play"></span>Watch 30 seconds</button>
+      </div>
+      <p class="meta"><span class="maconly" data-pix="laptop"></span>Mac only · macOS 15+ · your own Claude Code login</p>
+    </div>
+    <div class="wrap">
+      <div class="st-hero" data-scene="hero" aria-label="The loop in five steps: you say, you pick, Claude builds, you look, shipped"></div>
+    </div>
+  </section>
+
+  <section class="problem">
+    <div class="wrap">
+      <p class="big">9 SESSIONS OPEN.<br><em>3 ARE WAITING ON YOU.</em><br>GUESS WHICH.</p>
+      <p class="aside">Steerify knows. It's the amber one.</p>
+    </div>
+  </section>
+
+  <section id="decide">
+    <div class="wrap">
+      <span class="eyebrow">The core</span>
+      <h2 style="margin-top:14px">Deciding is the whole job.</h2>
+      <p class="lead" style="margin-top:14px">Claude never builds on a guess. It asks on the board first, one picture per option. You answer in seconds.</p>
+      <div class="mv" style="margin-top:44px">
+        <div>
+          <ul class="tech" style="margin-top:0">
+            <li><b>Pick one.</b> One click on the option you meant. Claude marks the one it would suggest.</li>
+            <li><b>Blend two.</b> "B, with the colours of A." Take something from another option and say what in a note.</li>
+            <li><b>Write your own.</b> None of them fit? Answer in your own words.</li>
+            <li><b>Park it.</b> Not now. It waits, and nothing gets built on it.</li>
+          </ul>
+          <p style="margin-top:14px">Then your answers start the build: several answers, one briefed session.</p>
+          <p class="aside">Opinions are cheaper than rewrites.</p>
+        </div>
+        <div data-scene="decide"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <span class="eyebrow">How it works</span>
+      <h2 style="margin-top:14px">From one sentence to shipped.</h2>
+      <p class="lead" style="margin-top:14px">Nine ideas, no manual. Scroll, watch, done.</p>
+      <div class="moves">
+        <div class="mv">
+          <div><span class="num">01</span><h3>Say what you want.</h3><p>Write it in plain words. Steerify turns it into requirements, docs and a roadmap.</p><p class="aside">No template to fill in.</p></div>
+          <div data-scene="0"></div>
+        </div>
+        <div class="mv flip">
+          <div><span class="num">02</span><h3>Confirm it with pictures.</h3><p>Before anything is built, Claude shows the options as mockups. You pick the one you meant.</p><p class="aside">Look first. Build second.</p></div>
+          <div data-scene="1"></div>
+        </div>
+        <div class="mv">
+          <div><span class="num">03</span><h3>Build the right thing.</h3><p>Each answer starts a Claude session, already briefed, in the right repo.</p><p class="aside">Every terminal has a reason to exist.</p></div>
+          <div data-scene="2"></div>
+        </div>
+        <div class="mv flip">
+          <div><span class="num">04</span><h3>Always in sync.</h3><p>Every session sits on its roadmap item. The status moves on its own.</p><p class="aside">A status meeting, minus the meeting.</p></div>
+          <div data-scene="3"></div>
+        </div>
+        <div class="mv">
+          <div><span class="num">05</span><h3>Only what needs you.</h3><p>Nine sessions running, three waiting on you. You see those three.</p><p class="aside">The other six don't need a babysitter.</p></div>
+          <div data-scene="4"></div>
+        </div>
+        <div class="mv flip">
+          <div><span class="num">06</span><h3>One standard.</h3><p>Every delivery is checked against the same design and the same tests. Pin a note where it's wrong; it goes back to the session that built it.</p><p class="aside">Your eyes are faster than your scroll wheel.</p></div>
+          <div data-scene="5"></div>
+        </div>
+        <div class="mv">
+          <div><span class="num">07</span><h3>Skills, not repeats.</h3><p>What works becomes a skill. Every session reuses it, so everything stays aligned.</p><p class="aside">Solve it once. Stop explaining it.</p></div>
+          <div data-scene="6"></div>
+        </div>
+        <div class="mv flip" id="lost">
+          <div><span class="num">08</span><h3>Never lost.</h3><p>Close the laptop and come back: Steerify remembers the chapter you were on, what happened last and what comes next. The menu bar tells you whose turn it is.</p><p class="aside">Close the laptop. Nothing forgets.</p></div>
+          <div class="info" data-info="leftoff" role="img" aria-label="A chapter card with progress, last and next steps and a Resume button, next to the menu bar panel saying your turn"></div>
+        </div>
+        <div class="mv" id="mac">
+          <div><span class="num">09</span><h3>The small jobs stay on your Mac.</h3><p>Session summaries, sorting a new request, roadmap ideas from your commits, a first check of each screenshot: Apple Intelligence does them on your Mac's own chip. Free, private, and optional. Claude still does the building.</p><p class="aside">Not everything needs the cloud.</p></div>
+          <div data-scene="mac"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="beta" style="padding-top:0">
+    <div class="wrap">
+      <div class="st-fin" data-scene="7" data-h="124" data-strip="0" aria-label="You decide. Claude builds. A boat sails in and five items ship."></div>
+      <div class="beta">
+        <div>
+          <span data-wheel="tile"></span>
+          <h2>Take the wheel.</h2>
+          <p class="lead">Private beta, friends first. Leave your email and you're next in line.</p>
+          <p class="aside">We'll write once. We're busy steering.</p>
+        </div>
+        <div>
+          <form id="beta-form" data-formspree="mrpqlrrj" novalidate>
+            <label class="sr" for="beta-email">Your email</label>
+            <input id="beta-email" type="email" name="email" placeholder="you@work.com" autocomplete="email" required>
+            <span class="hp" aria-hidden="true"><input type="text" name="_gotcha" tabindex="-1" autocomplete="off"></span>
+            <button class="px" type="submit">ASK FOR THE BUILD</button>
+            <p class="msg" role="status" aria-live="polite"></p>
+          </form>
+          <p class="fine">Only to send you the build. No newsletter, no sharing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="itself" class="itself" style="padding-top:0">
+    <div class="wrap">
+      <span class="eyebrow">Built in itself</span>
+      <h2 style="margin-top:14px">Steerify was steered in Steerify.</h2>
+      <p class="lead" style="margin-top:14px">Every feature on this page was a choice, a build and a look on its own board. Numbers from that board:</p>
+      <div class="stats" id="stats"><!-- stats:start -->
+<div class="stat"><b>25</b><span>choices answered</span></div>
+<div class="stat"><b>51</b><span>deliveries looked at</span></div>
+<div class="stat"><b>32</b><span>marked OK</span></div>
+<div class="stat"><b>0</b><span>status meetings</span></div>
+<div class="stat"><b>2</b><span>days from the first idea to this page</span></div>
+<!-- stats:end --></div>
+    </div>
+  </section>
+
+  <section id="tech" style="padding-top:0">
+    <div class="wrap">
+      <span class="eyebrow">Under the hood</span>
+      <h2 style="margin-top:14px">For the people who ask how.</h2>
+      <div class="moves">
+        <div class="mv">
+          <div><h3>How you start</h3>
+            <ul class="tech">
+              <li><b>Add a project.</b> Pick any folder. Steerify creates a <code>.steerify/</code> board inside it: plain JSON files that travel with your repo.</li>
+              <li><b>The skill installs itself.</b> <code>~/.claude/skills/steerify</code> teaches every Claude Code session the same loop.</li>
+              <li><b>Start an item.</b> It opens <code>claude '/steerify build &lt;item&gt;'</code> in the right repo, in a real terminal.</li>
+            </ul>
+            <p class="aside">Three steps. One of them is clicking a folder.</p></div>
+          <div data-scene="start"></div>
+        </div>
+        <div class="mv flip">
+          <div><h3>How it releases</h3>
+            <p>Set up once per project and saved in <code>steerify.json</code>. You choose how sessions use git:</p>
+            <ul class="tech">
+              <li><b>On main.</b> Every session in the repo's own folder. For simple projects.</li>
+              <li><b>Worktree per feature.</b> Each feature gets its own folder and <code>steer/&lt;feature&gt;</code> branch, merged after your OK.</li>
+              <li><b>Branch + pull request.</b> Each feature is pushed and opened as a pull request. Your OK merges it.</li>
+            </ul>
+            <p style="margin-top:12px">Per repo you set the release branch, a deploy command (run in a visible terminal tab, with your own keys) and an optional live-check URL, so approved items mark themselves live.</p></div>
+          <div data-scene="flows"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" style="padding-top:0">
+    <div class="wrap">
+      <span class="eyebrow">FAQ</span>
+      <div class="faq">
+        <div><h3>Is Steerify an AI?</h3><p>No. Claude Code does the building, with your own login. Steerify is where you steer it. For small jobs like session summaries and sorting requests, it also uses Apple Intelligence on your Mac, when that is turned on.</p></div>
+        <div><h3>Do I need Claude Code?</h3><p>Yes. Sessions run in a real terminal on your Mac. Steerify never sees your keys.</p></div>
+        <div><h3>Where does my board live?</h3><p>In a folder of plain files in your own repo. Delete Steerify and it's all still yours.</p></div>
+        <div><h3>What does it cost?</h3><p>Nothing during the private beta. Not made by Anthropic; Claude is their trademark.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog class="teaser" id="teaser" aria-label="Steerify in 30 seconds">
+  <video src="teaser/teaser.mp4" poster="teaser/poster.jpg" controls playsinline preload="none"></video>
+  <button type="button" data-close>CLOSE</button>
+</dialog>
+
+<footer>
+  <div class="wrap">
+    <div class="credits">
+      <p><span class="slot"><span class="pixi" data-pix="dragon" style="--w:18;--h:12"></span></span><span>Made by a human, <b>Frenk</b>.</span></p>
+      <p><span class="slot"><span class="pixi" data-pix="phoenix" style="--w:16;--h:13"></span></span><span>With <b>1 phoenix</b>, a wonderful woman.</span></p>
+      <p><span class="slot"><span class="pixi" data-pix="cat" style="--w:10;--h:10"></span><span class="pixi" data-pix="cat" data-pal="orange" style="--w:10;--h:10"></span><span class="pixi" data-pix="cat" data-pal="black" style="--w:10;--h:10"></span></span><span>And <b>3 cats</b>, on the keyboard.</span></p>
+      <p class="aside"><span class="slot"></span><span>Typed mostly by Claude.</span></p>
+    </div>
+    <div class="foot-meta">
+      <span><span data-wheel></span> <b class="pix" style="color:var(--cream)">STEERIFY</b></span>
+      <span>Independent project · not affiliated with Anthropic or Apple · Claude and Apple Intelligence are their trademarks</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

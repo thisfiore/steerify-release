@@ -1,0 +1,21 @@
+# Steerify
+
+> Steerify is a native Mac app (macOS 15+, Swift) for steering Claude Code across your projects. It keeps a steering board (choices with mockups, visual review of finished work, requirements, roadmap) next to the Claude Code terminal sessions doing the work. Claude asks, builds and delivers on the board; you choose, look and approve; approved work ships in one click. Tagline: "You decide. Claude builds."
+
+Key facts:
+- Who it is for: developers and founders who run several Claude Code sessions at once and want to decide and review instead of reading chat scrollback.
+- It is not an AI model. Claude Code does the building, with the user's own login; Steerify never sees the user's API keys.
+- Independent project, not made by or affiliated with Anthropic. Claude is a trademark of Anthropic.
+- Status: private beta, free during the beta. Current version 0.4 (November 2026).
+- The board lives in each project's git repo as plain JSON (steerify.json, board.json, decisions.json, delivered.json), so it travels with the code.
+- Ships a Claude Code skill (`/steerify`) and an MCP server, so Claude can deliver work, ask choices and update the roadmap directly.
+
+## Pages
+
+- [Home](https://steerify.dev/): what Steerify is, the four moves (choose, build, look, ship) with real screenshots, never lost (where you left off, menu bar), beta sign-up, FAQ
+- [Tutorial](https://steerify.dev/tutorial.html): seven narrated chapters (about a minute) and a 30-second teaser video
+- [What's new](https://steerify.dev/releases.html): release notes v0.1 to v0.5
+
+## Optional
+
+- [Full text for LLMs](https://steerify.dev/llms-full.txt): the whole site as plain Markdown

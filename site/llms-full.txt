@@ -1,0 +1,75 @@
+# Steerify: full site text
+
+Source: https://steerify.dev · Updated 2026-11-19
+
+## What Steerify is
+
+Steerify is a native Mac app for steering Claude Code across your projects. Claude asks, builds and delivers on a board next to its sessions. You choose, look, and say ship. Headline: "You decide. Claude builds." Subline: "Ship more. Read less." Requirements: macOS 15 or later, Claude Code installed. Native Swift app (SwiftTerm terminals, no Electron); about 77 MB of memory with six terminals open.
+
+Someone has to hold the wheel. Congratulations, it's you.
+
+## How it works: four moves
+
+1. **Choose**: Claude asks before it builds: two or three options, each one a picture. Pick one, blend two, or write your own answer. Opinions are cheaper than rewrites.
+2. **Build**: Your answers start one Claude session per topic, already briefed, in the right repo. Its status (working, waiting on you, idle) sits on the roadmap item.
+3. **Look**: Finished work arrives on the To test tab as pictures, one check per test. Pin a note on the picture where it's wrong; it goes back to the session that built it.
+4. **Ship**: OK means commit, push, deploy, done by the session that built it. The roadmap marks itself.
+
+## Never lost
+
+Close the laptop, come back, know. Steerify remembers the chapter you were on, what happened last and what comes next ("Where you left off", with a Resume chapter button). The menu bar shows who's rowing and what waits on you, across projects.
+
+## Tutorial (seven chapters)
+
+1. **Hold the wheel**: Steerify keeps your Claude Code sessions next to a board: what to decide, what to look at, what to ship. Claude builds. You steer. Someone has to.
+2. **Sessions in sync with the roadmap**: Every roadmap item has a Start button. The session opens in the right repo, already briefed, and the item shows its status as the work moves. No orphan terminals.
+3. **Choices, with pictures**: When Claude needs a decision, it asks on the board, with a mockup for every option and one marked as suggested. Pick one, or write a note. That's the meeting.
+4. **Visual review**: Finished work lands in To test as pictures. Press ⌘ and click to pin a note exactly where it's wrong. Refine goes back to the session that built it.
+5. **Organised progress**: Every item moves from choose, to build, to test, to shipped. The progress bar fills itself. Nobody updates it by hand, least of all you.
+6. **Say OK. It ships.**: What you approved waits in Release. One click, and the session commits its own changes, deploys, and marks it live.
+7. **Never get lost**: Lost? Press ⌘J. Steerify shows the one thing waiting on you, in any project. Read less. Ship more.
+
+## FAQ
+
+- **Is Steerify an AI?** No. Claude Code does the building, with your own login. Steerify is where you steer it.
+- **Do I need Claude Code?** Yes. Sessions run in a real terminal on your Mac. Steerify never sees your keys.
+- **Is it made by Anthropic?** No. Independent project. Claude is a trademark of Anthropic.
+- **What does it cost?** Nothing during the private beta.
+- **Where does my board live?** In a folder of plain files in your own repo. Delete Steerify and it's all still yours.
+- **How do I get it?** Private beta, friends first: leave your email on steerify.dev ("Ask for the build") and you're next in line.
+
+## Release notes
+
+### v0.5 (19 Nov): Ask from anywhere.
+- **New request (⌘N)**: A fix, a tweak, a feature or a question, with screenshots. Steerify shows where it goes, then starts a briefed Claude session.
+- **From any app (⌃⌥N)**: The menu bar opens a request anywhere and asks which project. A compact panel, by priority.
+- **Ready to build**: One request, one row, one session. One line per topic.
+- **Since you left**: What moved while you were away, and local AI helpers for session summaries and request triage.
+- **Guided choices**: Choices as a guided decision; ⌘K finds them by their content.
+
+### v0.4 (18 Nov · evening): It knows who is working.
+- **Release tab**: Everything you approved, per repo, with its git state and a Deploy button. Set up once in steerify.json.
+- **Sessions know their state**: From Claude Code hooks: working, waiting on you, idle. Your answers move them forward on their own.
+- **Menu bar**: A pixel wheel with a count when it's your turn: who's rowing, what waits on you.
+- **Steerify MCP**: Claude updates the board and your window directly: deliver, ask a choice, set roadmap status.
+- **Consolidate chapters**: The roadmap catches up with what is really done, with evidence, one click to apply.
+
+### v0.3 (18 Nov · afternoon): Visual first.
+- **Tests as visual chapters**: One picture, a short title, Test it, Looks right. Progress and a suggested verdict.
+- **Pictures first**: Big hero picture and filmstrip on every item; choice mockups shown as pictures.
+- **Drop screenshots into the terminal**: Files and images go straight to Claude; ⌘V pastes images too.
+- **Next for you (⌘J)**: The one thing that waits on you, from any tab. Resume a whole chapter with one button.
+- **Restart to update**: New builds install themselves; your sessions come back.
+
+### v0.2 (18 Nov · midday): Native, and wired.
+- **The board, in Swift**: To test, Choices, Requirements, Roadmap: native, wired to the terminals.
+- **Notes pinned on pictures**: ⌘-click a picture to pin a note exactly where it's wrong.
+- **⌘K**: Search sessions and items; open an item together with its session.
+
+### v0.1 (18 Nov · morning): One window.
+- **Board + terminals + projects**: Every project's board next to the Claude Code sessions doing the work.
+- **Start from an item**: Every board item starts or resumes its own Claude session, already briefed.
+- **The steerify skill**: Every session follows the same loop: read, ask, deliver, ship.
+## Credits
+
+Made by a human, Frenk. Typed mostly by Claude. Steerify was steered in Steerify: the app, this site and its tutorial were planned, reviewed and released on Steerify's own board.

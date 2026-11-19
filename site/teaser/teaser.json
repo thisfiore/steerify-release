@@ -1,0 +1,77 @@
+{
+ "title": "Steerify teaser",
+ "voice": {
+  "provider": "elevenlabs",
+  "model": "eleven_multilingual_v2",
+  "voiceId": "EXAVITQu4vr4xnSDxMaL",
+  "settings": {
+   "stability": 0.45,
+   "similarity_boost": 0.75,
+   "style": 0.3,
+   "use_speaker_boost": true
+  },
+  "source": "ElevenLabs, voice Sarah"
+ },
+ "slides": [
+  {
+   "id": "l1",
+   "text": "You have nine Claude sessions open. Three of them are waiting on you. Guess which.",
+   "audio": {
+    "src": "voice/l1.mp3",
+    "hash": "602625c27225e701",
+    "provider": "elevenlabs",
+    "durationMs": 4624
+   }
+  },
+  {
+   "id": "l2",
+   "text": "So you scroll. And read. And scroll. The question was forty minutes ago.",
+   "audio": {
+    "src": "voice/l2.mp3",
+    "hash": "c0bb7b0096f23aab",
+    "provider": "elevenlabs",
+    "durationMs": 5747
+   }
+  },
+  {
+   "id": "l3",
+   "text": "Steerify puts every session on its roadmap item. The one waiting on you glows amber. Subtle.",
+   "audio": {
+    "src": "voice/l3.mp3",
+    "hash": "d650d5423b5c262d",
+    "provider": "elevenlabs",
+    "durationMs": 6296
+   }
+  },
+  {
+   "id": "l4",
+   "text": "Claude shows you pictures, not paragraphs. Pin a note where it's wrong. Or just say OK.",
+   "audio": {
+    "src": "voice/l4.mp3",
+    "hash": "6383cd91adeba56b",
+    "provider": "elevenlabs",
+    "durationMs": 5851
+   }
+  },
+  {
+   "id": "l5",
+   "text": "And then it ships. Read less. Ship more.",
+   "audio": {
+    "src": "voice/l5.mp3",
+    "hash": "8dccb90ee12521ff",
+    "provider": "elevenlabs",
+    "durationMs": 2952
+   }
+  },
+  {
+   "id": "l6",
+   "text": "Steerify. Someone has to hold the wheel.",
+   "audio": {
+    "src": "voice/l6.mp3",
+    "hash": "1174a0c349cbeda2",
+    "provider": "elevenlabs",
+    "durationMs": 2534
+   }
+  }
+ ]
+}

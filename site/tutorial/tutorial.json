@@ -1,0 +1,101 @@
+{
+ "title": "Steerify in seven chapters",
+ "voice": {
+  "provider": "elevenlabs",
+  "model": "eleven_multilingual_v2",
+  "voiceId": "EXAVITQu4vr4xnSDxMaL",
+  "settings": {
+   "stability": 0.5,
+   "similarity_boost": 0.75,
+   "style": 0.15,
+   "use_speaker_boost": true
+  },
+  "source": "ElevenLabs, voice Sarah"
+ },
+ "slides": [
+  {
+   "id": "wheel",
+   "title": "Hold the wheel",
+   "img": "../assets/shots/hero.jpg",
+   "text": "Steerify keeps your Claude Code sessions next to a board: what to decide, what to look at, what to ship. Claude builds. You steer. Someone has to.",
+   "audio": {
+    "src": "voice/wheel.mp3",
+    "hash": "e841be1fcce6100d",
+    "provider": "elevenlabs",
+    "durationMs": 10214
+   }
+  },
+  {
+   "id": "sync",
+   "title": "Sessions in sync with the roadmap",
+   "info": "sync",
+   "text": "Every roadmap item has a Start button. The session opens in the right repo, already briefed, and the item shows its status as the work moves. No orphan terminals.",
+   "audio": {
+    "src": "voice/sync.mp3",
+    "hash": "06ab712b7d3923a9",
+    "provider": "elevenlabs",
+    "durationMs": 10867
+   }
+  },
+  {
+   "id": "choose",
+   "title": "Choices, with pictures",
+   "img": "../assets/shots/step-choose.jpg",
+   "text": "When Claude needs a decision, it asks on the board, with a mockup for every option and one marked as suggested. Pick one, or write a note. That's the meeting.",
+   "audio": {
+    "src": "voice/choose.mp3",
+    "hash": "c26ba0914566771b",
+    "provider": "elevenlabs",
+    "durationMs": 10031
+   }
+  },
+  {
+   "id": "look",
+   "title": "Visual review",
+   "img": "../assets/shots/step-test.jpg",
+   "text": "Finished work lands in To test as pictures. Press [⌘] and click to pin a note exactly where it's wrong. Refine goes back to the session that built it.",
+   "audio": {
+    "src": "voice/look.mp3",
+    "hash": "91f6b24a6e555596",
+    "provider": "elevenlabs",
+    "durationMs": 9273
+   }
+  },
+  {
+   "id": "progress",
+   "title": "Organised progress",
+   "info": "progress",
+   "text": "Every item moves from choose, to build, to test, to shipped. The progress bar fills itself. Nobody updates it by hand, least of all you.",
+   "audio": {
+    "src": "voice/progress.mp3",
+    "hash": "d1f52e1b873a3578",
+    "provider": "elevenlabs",
+    "durationMs": 8542
+   }
+  },
+  {
+   "id": "ship",
+   "title": "Say OK. It ships.",
+   "img": "../assets/shots/step-release.jpg",
+   "text": "What you approved waits in Release. One click, and the session commits its own changes, deploys, and marks it live.",
+   "audio": {
+    "src": "voice/ship.mp3",
+    "hash": "6141caafbc8ce07c",
+    "provider": "elevenlabs",
+    "durationMs": 7131
+   }
+  },
+  {
+   "id": "next",
+   "title": "Never get lost",
+   "info": "review",
+   "text": "Lost? Press [⌘J]. Steerify shows the one thing waiting on you, in any project. Read less. Ship more.",
+   "audio": {
+    "src": "voice/next.mp3",
+    "hash": "b71086df73f93ea6",
+    "provider": "elevenlabs",
+    "durationMs": 7523
+   }
+  }
+ ]
+}

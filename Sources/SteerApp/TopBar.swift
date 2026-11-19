@@ -1,0 +1,183 @@
+import SwiftUI
+
+/// The pixel ship wheel (same raster as the app icon), drawn natively.
+struct PixelWheel: View {
+    var size: CGFloat = 18
+    private static let cells: [(Int, Int, Color)] = {
+        var out: [(Int, Int, Color)] = []
+        let c = 8.0
+        for y in 0..<17 { for x in 0..<17 {
+            let dx = Double(x) - c, dy = Double(y) - c, r = hypot(dx, dy), a = atan2(dy, dx)
+            let k = (a / (.pi / 4)).rounded(), da = abs(a - k * .pi / 4) * r
+            var col: Color? = nil
+            if r <= 2.2 { col = Brand.amber }
+            else if (r >= 4.6 && r <= 5.9) || (da < 0.55 && r <= 7.4) || (r > 7.4 && r <= 8.3 && da < 0.9) { col = Brand.cream }
+            if let col { out.append((x, y, col)) }
+        } }
+        for (x, y) in [(7, 7), (8, 8), (7, 9)] { if let i = out.firstIndex(where: { $0.0 == x && $0.1 == y }) { out[i].2 = Color(hex: 0x1b1305) } }
+        return out
+    }()
+    var body: some View {
+        Canvas { ctx, sz in
+            let cell = sz.width / 17
+            for (x, y, col) in Self.cells {
+                ctx.fill(Path(CGRect(x: CGFloat(x) * cell, y: CGFloat(y) * cell, width: cell * 0.92, height: cell * 0.92)), with: .color(col))
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// One thing worth your attention now, with why.
+struct NextStep: Identifiable {
+    var id: String { ref + "|" + reason }
+    let ref: String
+    let title: String
+    let reason: String        // short pill text: "needs your answer", "new to test", "start its session"…
+    let score: Int            // higher = sooner
+    var urgent: Bool { score >= 50 }
+}
+
+extension AppModel {
+    /// Smart order: live sessions that need you, your answers without a session, fresh things to test,
+    /// stuck refines, recent choices, active chapters. Old things sink (and do not count as "now").
+    func nextSteps(_ p: Project) -> [NextStep] {
+        let b = board(for: p)
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let day = DateFormatter(); day.dateFormat = "yyyy-MM-dd"
+        func age(_ s: String?) -> Double {               // days since
+            guard let s else { return 99 }
+            let d = iso.date(from: s) ?? ISO8601DateFormatter().date(from: s) ?? day.date(from: String(s.prefix(10)))
+            return d.map { -$0.timeIntervalSinceNow / 86400 } ?? 99
+        }
+        func fresh(_ base: Int, _ days: Double) -> Int { days < 1 ? base + 10 : days < 3 ? base + 5 : days > 14 ? 15 : base }
+        var out: [NextStep] = []
+        var seen = Set<String>()
+        func add(_ n: NextStep) { if seen.insert(n.ref).inserted { out.append(n) } }
+
+        for s in sessions(of: p.id) where s.running && s.status == .waiting {
+            add(NextStep(ref: s.item?.ref ?? "session:\(s.id)", title: s.title, reason: "session needs your answer", score: 100))
+        }
+        for n in nudges where n.projectId == p.id {
+            if case .noSession = n.kind { add(NextStep(ref: n.ref, title: n.title, reason: "\(n.reason.lowercased()) · start its session", score: 90)) }
+        }
+        for s in b.ships {
+            switch b.shipState(s) {
+            case .toTest: add(NextStep(ref: "test:" + s.id, title: s.title, reason: "new to test", score: fresh(80, age(s.updated))))
+            case .retest: add(NextStep(ref: "test:" + s.id, title: s.title, reason: "re-test v\(s.version)", score: fresh(78, age(s.updated))))
+            case .waiting where liveSession(for: "test:" + s.id, in: p) == nil:
+                add(NextStep(ref: "test:" + s.id, title: s.title, reason: "\(b.effectivePick(s) ?? "refine") · no session on it", score: fresh(70, age(b.verdict("ship:" + s.id).at))))
+            default: break
+            }
+        }
+        for c in b.chapters where c.draft {
+            add(NextStep(ref: "track:" + BoardFiles.slug(c.name), title: "Draft chapter: " + c.name, reason: "chapter draft to approve", score: 65))
+        }
+        for d in b.decisions where !b.isDecided(d) && !b.isParked(d) {
+            add(NextStep(ref: "choice:" + d.id, title: d.title, reason: "choice to make", score: fresh(60, age(d.revisedAt ?? d.added))))
+        }
+        // Roadmap items waiting on you count only when their area is moving now (a delivery in the last 3 days)
+        // and they don't talk about a day that is already past ("arrives Mon 17 Nov"): those are stale.
+        let movingAreas = Set(b.ships.filter { age($0.updated) < 3 }.map(\.area))
+        for r in b.roadmap where r.status == "you" {
+            let stale = Self.mentionsPastDay(r.text)
+            let moving = movingAreas.contains(r.area) && !stale
+            add(NextStep(ref: "road:" + r.id, title: r.text,
+                         reason: stale ? "roadmap · probably outdated" : moving ? "roadmap · waiting on you" : "roadmap · quiet chapter",
+                         score: moving ? 50 : stale ? 5 : 20))
+        }
+        for r in b.requirements where r.status == "question" && b.verdict("req:" + r.id).pickString == nil {
+            add(NextStep(ref: "req:" + r.id, title: r.text, reason: "question for you", score: 30))
+        }
+        return out.sorted { $0.score > $1.score }
+    }
+
+    /// "Mon 17 Nov", "17 Nov", "Nov 17" earlier than today → the item is about something already past.
+    static func mentionsPastDay(_ text: String) -> Bool {
+        let months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+        let words = text.lowercased().replacingOccurrences(of: ",", with: " ").split(whereSeparator: { $0 == " " || $0 == "(" || $0 == ")" }).map(String.init)
+        let cal = Calendar.current, now = Date()
+        let year = cal.component(.year, from: now)
+        for (i, w) in words.enumerated() {
+            guard let m = months.firstIndex(where: { w.hasPrefix($0) }), w.count <= 9 else { continue }
+            let day = [i > 0 ? words[i - 1] : "", i + 1 < words.count ? words[i + 1] : ""].compactMap { Int($0) }.first { (1...31).contains($0) }
+            if let d = day, let date = cal.date(from: DateComponents(year: year, month: m + 1, day: d)),
+               date < cal.startOfDay(for: now), now.timeIntervalSince(date) < 200 * 86400 { return true }
+        }
+        return false
+    }
+
+    /// Kept for the palette and older callers: the urgent next steps as (ref, title).
+    func actionables(_ p: Project) -> [(ref: String, title: String)] {
+        nextSteps(p).filter(\.urgent).map { (ref: $0.ref, title: $0.title) }
+    }
+}
+
+/// Top bar, right: "Next for you", compact like a session name (⌘J walks the list; the full title is in the tooltip).
+struct NextUp: View {
+    @EnvironmentObject var model: AppModel
+    /// "new to test" → "TEST", "session needs your answer" → "ANSWER"…: one short word for the pill.
+    static func tag(_ reason: String) -> String {
+        let r = reason.lowercased()
+        if r.contains("answer") { return "ANSWER" }
+        if r.contains("re-test") { return "RE-TEST" }
+        if r.contains("to test") { return "TEST" }
+        if r.contains("no session") || r.contains("start its session") { return "START" }
+        if r.contains("draft") { return "DRAFT" }
+        if r.contains("choice") { return "CHOICE" }
+        if r.contains("question") { return "QUESTION" }
+        if r.contains("roadmap") { return "ROADMAP" }
+        return String(reason.uppercased().prefix(8))
+    }
+    var body: some View {
+        if let p = model.project {
+            let list = model.nextSteps(p).filter(\.urgent)
+            let n = list.isEmpty ? nil : list[model.nextIndex % list.count]
+            Button { model.jumpNext() } label: {
+                HStack(spacing: 6) {
+                    PixelIcon(name: "play", size: 8).foregroundStyle(n == nil ? Brand.mute : Brand.amber)
+                    if let n {
+                        Text(Self.tag(n.reason)).font(Brand.label(8.5)).tracking(0.5).foregroundStyle(Brand.amber).lineLimit(1)
+                        Text(SessionName.short(n.title.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "“", with: "").replacingOccurrences(of: "”", with: ""), intent: nil)).lineLimit(1).truncationMode(.tail)
+                            .foregroundStyle(Brand.ink).frame(maxWidth: S(150), alignment: .leading)
+                        if list.count > 1 {
+                            Text("\(list.count)").font(.system(size: S(9.5), weight: .bold)).foregroundStyle(Color(hex: 0x1a1200))
+                                .padding(.horizontal, 4).background(Capsule().fill(Brand.amber))
+                        }
+                    } else {
+                        Text("All quiet").foregroundStyle(Brand.mute)
+                    }
+                    Text("⌘J").font(.system(size: S(9.5), design: .monospaced)).foregroundStyle(Brand.mute)
+                }
+                .font(.system(size: S(11.5)))
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(Color.white.opacity(0.05)))
+                .overlay(Capsule().stroke(Brand.line2))
+                .fixedSize()
+            }
+            .buttonStyle(SteerButton())
+            .disabled(n == nil)
+            .help(n.map { "\($0.reason.capitalized): \($0.title)\n\(list.count) waiting on you · ⌘J walks the list" } ?? "Nothing waits on you")
+        }
+    }
+}
+
+/// Top bar, center: our mark, "Steerify", and a small "beta v0.x".
+struct Wordmark: View {
+    static let version: String = {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1"
+        let parts = v.split(separator: ".")
+        return parts.count > 2 && parts[2] == "0" ? parts.prefix(2).joined(separator: ".") : v
+    }()
+    var body: some View {
+        HStack(spacing: 7) {
+            PixelWheel(size: 16)
+            Text("Steerify").font(.system(size: S(13), weight: .semibold)).foregroundStyle(Brand.cream)
+            Text("beta v\(Self.version)").font(.system(size: S(9.5), design: .monospaced)).foregroundStyle(Brand.mute)
+                .padding(.horizontal, 5).padding(.vertical, 1)
+                .overlay(Capsule().stroke(Brand.line2))
+        }
+        .fixedSize()
+        .help("Steerify beta v\(Self.version)")
+    }
+}
