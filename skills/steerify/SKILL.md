@@ -108,12 +108,16 @@ Release tab; projects that don't say use the Settings default (`main`).
 4. **Deliver** with `deliver.mjs`: honest `tested[]`, one direct link per test, screenshots taken after testing,
    known `issues[]`. Same id = new version of the same item. **Every picture full size** (≥1400 px wide, shots and
    per-test `img` alike, never pre-shrunk thumbnails): Steerify shows them big and makes its own thumbnails.
-   **Focused on the feature:** each test picture shows the thing under test, not the whole window. Crop it, or add
-   `"focus": [x, y, w, h]` (0–1 from the top-left) on the test or shot: the list shows that part big, the preview the
-   whole picture.
+   **Focused on the feature:** each test picture shows the thing under test, never the whole window: crop it to the
+   feature at 2× (a Retina capture of that region), or add `"focus": [x, y, w, h]` (0–1 from the top-left) on the test
+   or shot. The card shows one row per test (picture 65% wide, fixed height), so a whole window is unreadable there.
+   **`what` is 2–4 bullets, ≤ 6 words each**, one per line (`"- Export button on Orders\n- Uses your filters"`):
+   what changed for the user, not how; no prose, nothing the user has to study. Details go in `tested[]`.
    **Link it to the roadmap:** set `road` to the exact text of the roadmap item(s) this delivery completes, so
    Steerify can mark them done when the user says OK (no consolidation needed later). Built a choice? Set
    `choices: ["<decision id>"]` too, so the choice shows "Built" instead of "Build my pick".
+   Meets requirements? Set `reqs: ["<requirement id>", …]`: the user's OK marks them built (with the delivery as
+   evidence). Requirements of an approved chapter are already agreed; never ask the user to confirm them again.
    **Tests are visual and schematic:** every test has a picture of exactly what to look at; `label` ≤ 6 words
    (what to do), `check` ≤ 12 words (what you should see), no explanations; details go in `tested[]`.
 5. **Mark** the roadmap item (`wip` → `review` → `done` after the user's ok).

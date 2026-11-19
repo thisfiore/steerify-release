@@ -32,7 +32,9 @@ struct PreviewOverlay: View {
     @State private var openPin: Pin?
     @FocusState private var focused: Bool
     @FocusState private var draftFocused: Bool
-    @AppStorage("previewPanel") private var showPanel = true
+    // Not remembered: a hidden panel used to stick across every preview (one stray "I" and the test, its ✓ and
+    // the verdict were gone for good). Each preview opens with it; I / the sidebar button hide it for this one only.
+    @State private var showPanel = true
 
     private var img: String { state.images[state.index] }
     private var pins: [Pin] { board.pins(state.ref).filter { $0.img == img } }
@@ -59,6 +61,8 @@ struct PreviewOverlay: View {
         .onKeyPress(.rightArrow) { step(1); return .handled }
         .onKeyPress(.escape) { if draft != nil { draft = nil } else { close() }; return .handled }
         .onKeyPress(characters: CharacterSet(charactersIn: "+=-0ni")) { k in
+            // Typing in a note box (the test note, a pinned note) must never zoom or hide the panel.
+            if NSApp.keyWindow?.firstResponder is NSText { return .ignored }
             switch k.characters {
             case "+", "=": setZoom(zoom * 1.25)
             case "-": setZoom(zoom / 1.25)
@@ -83,7 +87,10 @@ struct PreviewOverlay: View {
             Button { setZoom(zoom * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }.help("Zoom in (+)")
             Button("Fit") { resetView() }.help("Fit (0)")
             Divider().frame(height: 16)
-            Button { withAnimation(.easeOut(duration: 0.15)) { showPanel.toggle() } } label: { Image(systemName: "sidebar.right") }
+            Button { withAnimation(.easeOut(duration: 0.15)) { showPanel.toggle() } } label: {
+                if showPanel { Image(systemName: "sidebar.right") }
+                else { Label("Test & notes", systemImage: "sidebar.right").font(.system(size: S(11.5), weight: .semibold)) }
+            }
                 .foregroundStyle(showPanel ? Brand.amber : Brand.cream)
                 .help(showPanel ? "Hide notes and actions (I)" : "Show notes and actions (I)")
             Button { close() } label: { Image(systemName: "xmark") }.help("Close (Esc)")

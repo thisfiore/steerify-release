@@ -43,13 +43,7 @@ struct ContentView: View {
                 .overlay(alignment: .bottom) { if let t = model.toast { ToastView(toast: t).padding(.bottom, 18).transition(.move(edge: .bottom).combined(with: .opacity)) } }
                 .animation(.easeOut(duration: 0.2), value: model.toast)
             } else {
-                VStack(spacing: 12) {
-                    Text("No projects yet").font(.system(size: S(16), weight: .semibold)).foregroundStyle(Brand.ink)
-                    Text("Pick your project's folder, or start an empty one. Steerify creates its board.")
-                        .font(.system(size: S(12.5))).foregroundStyle(Brand.mute)
-                    Button("Add project…") { model.addWorkspace() }.buttonStyle(.borderedProminent).tint(Brand.amber)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                NoProjectsView()
             }
         }
         // "Since you left": on open, when you come back to the app, and when you switch to a project you left a while ago.
@@ -98,7 +92,7 @@ struct Sidebar: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let p = model.project { ProjectCard(project: p).padding(.bottom, 4) }
                 header("PROJECTS")
-                ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, p in
+                ForEach(Array(model.switcherProjects.enumerated()), id: \.element.id) { i, p in
                     row(selected: model.selectedProjectId == p.id, action: { model.selectedProjectId = p.id }) {
                         Text(p.name)
                         Spacer()
@@ -594,7 +588,7 @@ struct ProjectSwitcher: View {
                     VStack(alignment: .leading, spacing: 10) {
                         ProjectCard(project: p)
                         Text("PROJECTS").font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.mute)
-                        ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, q in
+                        ForEach(Array(model.switcherProjects.enumerated()), id: \.element.id) { i, q in
                             let n = model.nextSteps(q).filter(\.urgent).count
                             Button { model.selectedProjectId = q.id; open = false } label: {
                                 HStack(spacing: 8) {
@@ -610,7 +604,11 @@ struct ProjectSwitcher: View {
                             }.buttonStyle(SteerButton())
                         }
                         Divider().overlay(Brand.line)
-                        Button("Add project…") { open = false; model.addWorkspace() }.buttonStyle(SteerButton()).font(.system(size: S(12))).foregroundStyle(Brand.mute)
+                        HStack {
+                            Button("Add project…") { open = false; model.addWorkspace() }
+                            Spacer()
+                            Button("Manage projects…") { open = false; model.openProjectsWindow() }
+                        }.buttonStyle(SteerButton()).font(.system(size: S(12))).foregroundStyle(Brand.mute)
                     }
                     .padding(14).frame(width: S(300))
                     .background(Brand.bg)

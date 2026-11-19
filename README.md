@@ -19,3 +19,8 @@ open build/Steerify.app
 macOS 15+. The landing page design is in `site/` (not deployed yet; domain: steerify.dev).
 
 Independent project, not affiliated with Anthropic. Claude is a trademark of Anthropic.
+
+## License and name
+
+Code is [MIT](LICENSE). The Steerify name and logo are not covered by that license — see
+[TRADEMARK.md](TRADEMARK.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md).

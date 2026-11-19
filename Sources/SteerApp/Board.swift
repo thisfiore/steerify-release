@@ -27,11 +27,11 @@ struct BoardDecision: Identifiable, Hashable {
     let options: [BoardOption]
     /// When Claude marked the choice built (board.json `built`, ISO date).
     var built: String? = nil
-    /// Hash of the item's whole JSON: any edit (title, text, options…) makes the card redraw.
-    var stamp: Int = 0
     /// Where the choice came from ("request:<id>", "road:<slug>", …): board.json `from` (stamped by ask_choice),
     /// else a request id named in its why ("From request r261119-095609"). Choices of one origin are one piece of work.
     var origin: String? = nil
+    /// Hash of the item's whole JSON: any edit (title, text, options…) makes the card redraw.
+    var stamp: Int = 0
     static func == (a: Self, b: Self) -> Bool { a.id == b.id && a.stamp == b.stamp }
     func hash(into h: inout Hasher) { h.combine(id); h.combine(stamp) }
 }
@@ -47,10 +47,13 @@ extension BoardDecision {
 }
 
 extension BoardStore {
-    /// The origin an item is grouped by: a choice's origin, or a request itself.
+    /// The origin an item is grouped by: a choice's origin, a request itself, a delivery's built choice's origin.
     func originKey(of ref: String) -> String? {
         if ref.hasPrefix("request:") { return ref }
         if ref.hasPrefix("choice:") { return decisions.first { "choice:" + $0.id == ref }?.origin }
+        if ref.hasPrefix("test:"), let s = ships.first(where: { "test:" + $0.id == ref }) {
+            return s.choices.lazy.compactMap { c in self.decisions.first { $0.id == c }?.origin }.first
+        }
         return nil
     }
 }
@@ -73,6 +76,8 @@ struct ShipItem: Identifiable, Hashable {
     var roads: [String] = []
     /// Choices this delivery built (ids, from the item's "choices" field).
     var choices: [String] = []
+    /// Requirements this delivery meets (ids, from the item's "reqs" field): your OK marks them built.
+    var reqs: [String] = []
     /// Feature crops: image path → the part of the picture to show in the list (0–1 rect, from `focus` on a test or shot).
     var focus: [String: CGRect] = [:]
     let version: Int
@@ -82,7 +87,27 @@ struct ShipItem: Identifiable, Hashable {
     func hash(into h: inout Hasher) { h.combine(id); h.combine(version); h.combine(stamp) }
 }
 
-struct Requirement: Identifiable, Hashable { let id: String; let text: String; let status: String; let src: String?; let area: String; let group: String }
+extension ShipItem {
+    /// The card header: 2–4 short bullets. `what` as lines ("- a\n- b") or a list; older prose → its sentences (max 3).
+    var bullets: [String] {
+        let plain = BoardText.plain(what)
+        let lines = plain.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces).drop { "-•*·–".contains($0) }.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        if lines.count > 1 { return Array(lines.prefix(5)) }
+        var out: [String] = []
+        plain.enumerateSubstrings(in: plain.startIndex..., options: .bySentences) { s, _, _, _ in
+            if let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { out.append(s) }
+        }
+        return Array((out.isEmpty ? [plain] : out).prefix(3))
+    }
+}
+
+struct Requirement: Identifiable, Hashable {
+    let id: String; let text: String; let status: String; let src: String?; let area: String; let group: String
+    /// Why it is settled (board.json `evidence`): "OK on To test · …", "chapter approved …", a file or commit.
+    var evidence: String? = nil
+}
 struct RoadItem: Identifiable, Hashable {
     var id: String { BoardFiles.slug(text) }; let text: String; let status: String; let track: String; let area: String
     /// Optional third element of a track item: {req, for, at, doneAt, area} (requests filed by Steerify).
@@ -182,7 +207,7 @@ final class BoardStore: ObservableObject {
         let items = (del as? [String: Any])?["items"] as? [[String: Any]] ?? (del as? [[String: Any]] ?? [])
         ships = items.map { it in
             var si = ShipItem(id: str(it["id"]), title: str(it["title"]), area: str(it["area"]), status: str(it["status"]),
-                     what: str(it["what"]), tested: it["tested"] as? [String] ?? [], howTo: it["howTo"] as? [String] ?? [],
+                     what: (it["what"] as? [String])?.map { "- " + $0 }.joined(separator: "\n") ?? str(it["what"]), tested: it["tested"] as? [String] ?? [], howTo: it["howTo"] as? [String] ?? [],
                      tests: (it["tests"] as? [[String: Any]] ?? []).map {
                          ShipTest(label: str($0["label"]), url: $0["url"] as? String, check: $0["check"] as? String, img: $0["img"] as? String) },
                      issues: it["issues"] as? [String] ?? [],
@@ -191,6 +216,7 @@ final class BoardStore: ObservableObject {
             si.stamp = stamp(it)
             si.repos = it["repos"] as? [String] ?? []
             si.choices = (it["choices"] as? [String] ?? []).map { $0.hasPrefix("choice:") ? String($0.dropFirst(7)) : $0 }
+            si.reqs = (it["reqs"] as? [String] ?? []).map { $0.hasPrefix("req:") ? String($0.dropFirst(4)) : $0 }
             si.roads = (it["road"] as? [String]) ?? ((it["road"] as? String).map { [$0] } ?? [])
             for x in (it["shots"] as? [[String: Any]] ?? []) + (it["tests"] as? [[String: Any]] ?? []) {
                 if let img = x["img"] as? String, let r = BoardFiles.focusRect(x["focus"]) { si.focus[img] = r }
@@ -201,7 +227,7 @@ final class BoardStore: ObservableObject {
         requirements = (board["requirements"] as? [[String: Any]] ?? []).flatMap { g in
             (g["items"] as? [[String: Any]] ?? []).map {
                 Requirement(id: str($0["id"]), text: str($0["text"]), status: str($0["status"]), src: $0["src"] as? String,
-                            area: str(g["area"]), group: str(g["h"]))
+                            area: str(g["area"]), group: str(g["h"]), evidence: $0["evidence"] as? String)
             }
         }
 
@@ -353,6 +379,18 @@ final class BoardStore: ObservableObject {
             if (c["v"] as? Int) != s.version { c["pick"] = nil; c["tests"] = nil; c["v"] = s.version }
             if let pick { c["pick"] = pick }
             if let note { c["note"] = note }
+        }
+        if pick == "ok" { markBuilt(by: s) }
+    }
+
+    /// Your OK on a delivery marks the requirements it names (`reqs`) built, with the delivery as evidence.
+    func markBuilt(by s: ShipItem) {
+        let ids = s.reqs.filter { id in requirements.contains { $0.id == id && $0.status != "built" } }
+        guard !ids.isEmpty else { return }
+        let dir = project.boardDir, ev = "OK on To test · “\(s.title)” v\(s.version)"
+        DispatchQueue.global(qos: .userInitiated).async {
+            for id in ids { _ = SteerifyMCP.call("set_requirement_status", ["id": id, "status": "built", "evidence": ev], board: dir) }
+            DispatchQueue.main.async { self.reload() }
         }
     }
 

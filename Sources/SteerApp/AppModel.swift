@@ -196,7 +196,7 @@ final class AppModel: ObservableObject {
     enum BoardState { case starting, ready, missing }
 
     private var webViews: [String: WKWebView] = [:]
-    private var boards: [String: BoardStore] = [:]
+    var boards: [String: BoardStore] = [:]
 
     /// The native board of a project (read from its workspace files, kept live).
     func board(for p: Project) -> BoardStore {
@@ -242,8 +242,9 @@ final class AppModel: ObservableObject {
     }
 
     func select(index: Int) {
-        guard projects.indices.contains(index) else { return }
-        selectedProjectId = projects[index].id
+        let list = switcherProjects
+        guard list.indices.contains(index) else { return }
+        selectedProjectId = list[index].id
     }
 
     // MARK: Board

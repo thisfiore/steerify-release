@@ -255,7 +255,7 @@ enum BoardTemplate {
     //   node .steerify/deliver.mjs '<json>'      (or a path to a .json file)
     //
     // json: { "title", "area": "<a key of board.json areas>", "status": "local|needs-deploy|live",
-    //         "what": "one or two sentences, what changed for the user",
+    //         "what": "- 2–4 bullets\n- ≤ 6 words each" (one per line, what changed for the user, no prose),
     //         "tested": ["what Claude tested + result"], "howTo": ["step"], "links": [{ "label", "url" }],
     //         "issues": ["known limits"], "repos": ["repo"], "id"?: "update-this-id", "road"?: "<roadmap item text>",
     //         "tests": [{ "label", "url", "check", "img": "img/ship/<id>-t<n>.png" }],

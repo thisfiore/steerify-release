@@ -15,12 +15,12 @@
  "slides": [
   {
    "id": "l1",
-   "text": "You have nine Claude sessions open. Three of them are waiting on you. Guess which.",
+   "text": "You have nine Claude sessions open. Fine, nineteen. Okay. Ninety-nine. Three of them are waiting on you. Guess which.",
    "audio": {
     "src": "voice/l1.mp3",
-    "hash": "602625c27225e701",
+    "hash": "d803111923ae2bb9",
     "provider": "elevenlabs",
-    "durationMs": 4624
+    "durationMs": 6583
    }
   },
   {

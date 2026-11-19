@@ -18,12 +18,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .preferredColorScheme(.dark)
             .tint(Brand.amber)
         let panelOnly = a0.contains("--menubar")
+        let manager = a0.contains("--projects")     // the Projects window (⇧⌘P) alone
         let host = panelOnly
             ? NSHostingController(rootView: AnyView(MenuBarPanel().environmentObject(m)))
+            : manager ? NSHostingController(rootView: AnyView(ProjectManagerView().environmentObject(m).preferredColorScheme(.dark).tint(Brand.amber)))
             : NSHostingController(rootView: AnyView(root))
         host.sceneBridgingOptions = [.toolbars, .title]
         host.sizingOptions = []                       // keep our size, not the content's ideal size
-        let size = panelOnly ? NSSize(width: 320, height: 760) : NSSize(width: 1500, height: 940)
+        let size = panelOnly ? NSSize(width: 320, height: 760) : manager ? NSSize(width: 960, height: 620) : NSSize(width: 1500, height: 940)
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 40, y: 40), size: size),
                          styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.contentViewController = host
@@ -49,6 +51,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
                 }
                 NSApp.terminate(nil)
+            }
+        }
+        // Test hook: `--type-note "<placeholder>" "<text>" [wait|leave]` focuses the first note box with that
+        // placeholder 3 s in and types the text through its field editor (as a person would). `wait` does nothing else;
+        // `leave` switches to the Roadmap tab 0.1 s later (the box goes away before any debounce).
+        if let i = a.firstIndex(of: "--type-note"), i + 2 < a.count {
+            let ph = a[i + 1], text = a[i + 2], then = i + 3 < a.count ? a[i + 3] : "wait"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                func find(_ v: NSView) -> NSView? {
+                    if let f = v as? NSTextField, f.isEditable, (f.placeholderString ?? "").hasPrefix(ph) { return f }
+                    for s in v.subviews { if let hit = find(s) { return hit } }
+                    return nil
+                }
+                guard let root = w.contentView, let field = find(root) else { NSLog("type-note: no field '\(ph)'"); return }
+                w.makeFirstResponder(field)
+                (w.firstResponder as? NSTextView)?.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+                NSLog("type-note: typed into '\(ph)'")
+                if then == "leave" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Prefs.store.set(BoardTab.road.rawValue, forKey: Prefs.boardTab) } }
             }
         }
         SteerApp.applyTestArgs(m)
@@ -120,6 +140,24 @@ struct SteerApp: App {
         if let i = a.firstIndex(of: "--project"), i + 1 < a.count, m.projects.contains(where: { $0.id == a[i + 1] }) { m.selectedProjectId = a[i + 1] }
         // Test hook: `--add-folder <path>` adds any folder as a project, as Add project… does after the panel.
         if let i = a.firstIndex(of: "--add-folder"), i + 1 < a.count { m.addWorkspace(folder: a[i + 1]) }
+        // Test hook: `--projects-do "move:3:0,rename:<id>:<name>,hide:<id>,show:<id>,remove:<id>"` runs those Projects
+        // window actions 1 s in, in order (same functions as the window's buttons and drag).
+        if let i = a.firstIndex(of: "--projects-do"), i + 1 < a.count {
+            let steps = a[i + 1].split(separator: ",").map { $0.split(separator: ":", maxSplits: 2).map(String.init) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                for s in steps {
+                    let p = s.count > 1 ? m.projects.first { $0.id == s[1] } : nil
+                    switch s[0] {
+                    case "move": if s.count == 3, let f = Int(s[1]), let t = Int(s[2]) { m.moveProjects(from: [f], to: t) }
+                    case "rename": if let p, s.count == 3 { m.renameProject(p, to: s[2]) }
+                    case "hide": if let p { m.setHidden(p, true) }
+                    case "show": if let p { m.setHidden(p, false) }
+                    case "remove": if let p { m.removeProject(p) }
+                    default: NSLog("projects-do: unknown step \(s)")
+                    }
+                }
+            }
+        }
         if let i = a.firstIndex(of: "--palette"), i + 1 < a.count { m.paletteSeed = a[i + 1]; m.paletteOpen = true }
         // Test hook: `--request "<text>"` opens the New request sheet with that text typed in.
         if let i = a.firstIndex(of: "--request"), i + 1 < a.count { m.requestSeed = a[i + 1]; m.requestOpen = true }
@@ -195,11 +233,13 @@ struct SteerApp: App {
         .commands {
             CommandMenu("Projects") {
                 ForEach(0..<9, id: \.self) { i in
-                    Button(i < model.projects.count ? model.projects[i].name : "Project \(i + 1)") { model.select(index: i) }
+                    let list = model.switcherProjects
+                    Button(i < list.count ? list[i].name : "Project \(i + 1)") { model.select(index: i) }
                         .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: [.command, .option])
-                        .disabled(i >= model.projects.count)
+                        .disabled(i >= list.count)
                 }
                 Divider()
+                ManageProjectsButton()
                 Button("Reload board") { model.reloadBoard() }.keyboardShortcut("r", modifiers: .command)
                 Button("Restart to Update") { model.restartForUpdate() }.keyboardShortcut("r", modifiers: [.command, .option])
                 Button("Add project…") { model.addWorkspace() }.keyboardShortcut("o", modifiers: [.command, .shift])
@@ -243,6 +283,12 @@ struct SteerApp: App {
                 Button("Close Window") { NSApp.keyWindow?.performClose(nil) }.keyboardShortcut("w", modifiers: [.command, .shift])
             }
         }
+        // ⇧⌘P: Projects window (order, hide, remove, rename, folders).
+        Window("Projects", id: "projects") {
+            ProjectManagerView().environmentObject(model).preferredColorScheme(.dark).tint(Brand.amber).id(preset)
+        }
+        .defaultSize(width: 900, height: 600)
+        .windowResizability(.contentMinSize)
         // Menu bar: status + what waits on you. Never for test copies (no second icon on the user's bar).
         MenuBarExtra(isInserted: Binding(get: { menuBarShown && !CommandLine.arguments.contains("--background") },
                                          set: { menuBarShown = $0 })) {

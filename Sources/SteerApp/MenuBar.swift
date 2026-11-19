@@ -64,7 +64,10 @@ struct MenuBarLabel: View {
             default: EmptyView()
             }
         }
-        .onAppear { AppModel.reopenWindow = { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) } }
+        .onAppear {
+            AppModel.reopenWindow = { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+            AppModel.openProjects = { openWindow(id: "projects"); NSApp.activate(ignoringOtherApps: true) }
+        }
     }
 }
 
@@ -198,7 +201,7 @@ struct MenuBarPanel: View {
     private var projectsList: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("PROJECTS").font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.mute)
-            ForEach(model.projects) { p in
+            ForEach(model.switcherProjects) { p in
                 let n = model.nextSteps(p).filter(\.urgent).count
                 Button { go { model.selectedProjectId = p.id } } label: {
                     HStack {

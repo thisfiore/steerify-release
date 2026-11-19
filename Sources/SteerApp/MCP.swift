@@ -56,7 +56,7 @@ enum SteerifyMCP {
          "description": "One board item with the user's verdict, notes, per-test notes and notes pinned on pictures. ref = test:<id> | choice:<id> | req:<id> | track:<slug> (roadmap chapter + items) | reqs:<slug> (requirements chapter).",
          "inputSchema": schema(["ref": str], ["ref"])],
         ["name": "deliver",
-         "description": "Put finished, tested work on the To test tab (same fields as deliver.mjs: id, title, area, status, what, tested[], howTo[], tests[{label,url,check,img,focus?}], shots[{img,caption,focus?}], issues[], repos[], road: <exact roadmap item text> or a list, choices: [ids of the choices this builds]). Always set road so Steerify can mark the roadmap when the user approves, and choices when you built a choice (it then stops offering Build my pick). Same id = new version. Pictures full size and on the feature (crop, or focus: [x,y,w,h] 0–1 = the part the list shows big); tests short and visual.",
+         "description": "Put finished, tested work on the To test tab (same fields as deliver.mjs: id, title, area, status, what, tested[], howTo[], tests[{label,url,check,img,focus?}], shots[{img,caption,focus?}], issues[], repos[], road: <exact roadmap item text> or a list, choices: [ids of the choices this builds], reqs: [ids of the requirements this delivery meets]). Always set road so Steerify can mark the roadmap when the user approves, choices when you built a choice (it then stops offering Build my pick), and reqs so the user's OK marks those requirements built. Same id = new version. what = 2–4 bullet lines (\"- Export button on Orders\\n- Uses your filters\"), each ≤ 6 words, no prose. Pictures full size and on the feature: crop each test picture to the feature at 2× (Retina), or give focus: [x,y,w,h] 0–1; never a whole window. Tests short and visual.",
          "inputSchema": schema(["item": ["type": "object"]], ["item"])],
         ["name": "ask_choice",
          "description": "Add a choice for the user to board.json decisions: {id, areas[], tags[], title, why, options:[{id,label,rec,points[],mock|shot|proto}]} with 2–4 options and exactly one rec:true. For UI choices use proto: a live prototype built with the project kit, \"protos/<choice id>.html?v=<A|B|C>\" (see kit/README.md in the board). Keep building what does not depend on it.",
@@ -100,7 +100,9 @@ enum SteerifyMCP {
             // Picture check (local, no tokens): tell Claude now, not the user after a wasted test.
             let tests = (item["tests"] as? [[String: Any]] ?? []).map { (label: $0["label"] as? String ?? "", img: $0["img"] as? String) }
             let shots = (item["shots"] as? [[String: Any]] ?? []).compactMap { $0["img"] as? String }
-            let issues = ShotCheck.basic(dir: board, shots: shots, tests: tests)
+            let focused = Set(((item["tests"] as? [[String: Any]] ?? []) + (item["shots"] as? [[String: Any]] ?? []))
+                .filter { $0["focus"] != nil }.compactMap { $0["img"] as? String })
+            let issues = ShotCheck.basic(dir: board, shots: shots, tests: tests, focused: focused)
             guard !r.1, !issues.isEmpty else { return r }
             return (r.0 + "\n\nPicture check found \(issues.count) problem(s), fix them and deliver again with the same id:\n"
                     + issues.map { "- " + ($0.test.map { "test \($0 + 1)" } ?? "screenshot") + ($0.img.map { " (\($0))" } ?? "") + ": " + $0.problem }.joined(separator: "\n"), false)
@@ -198,7 +200,14 @@ enum SteerifyMCP {
             return editBoard(board, """
                 const name = \(jsonString(chName)), approve = \(approve ? "true" : "false");
                 const t = (b.tracks || []).find(x => x.name === name); if (!t) throw new Error('No chapter ' + name);
-                if (approve) { delete t.draft; for (const g of b.requirements || []) if (g.h === name) delete g.draft }
+                if (approve) {
+                  delete t.draft;
+                  // Approving a chapter agrees its requirements: nothing is left to confirm one by one.
+                  for (const g of b.requirements || []) if (g.h === name) {
+                    delete g.draft;
+                    for (const r of g.items || []) if (!r.status || r.status === 'proposed') { r.status = 'agreed'; r.evidence = 'chapter approved ' + new Date().toISOString().slice(0, 10) }
+                  }
+                }
                 else { b.tracks = b.tracks.filter(x => x !== t); b.requirements = (b.requirements || []).filter(g => !(g.h === name && g.draft)) }
                 out = (approve ? 'approved ' : 'discarded ') + name;
                 """)

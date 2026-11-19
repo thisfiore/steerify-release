@@ -62,6 +62,7 @@ struct BoardScreen: View {
         let a = CommandLine.arguments
         return a.firstIndex(of: "--show").flatMap { $0 + 1 < a.count ? a[$0 + 1] : nil } ?? "open"
     }()
+    @AppStorage(Prefs.testLayout, store: Prefs.store) private var testLayout = "list"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,6 +81,7 @@ struct BoardScreen: View {
                 }
                 .onChange(of: model.focus) { _, f in
                     guard let f, f.projectId == board.project.id else { return }
+                    if f.ref.hasPrefix("test:") { testLayout = "list" }   // a jump to a card opens it in full
                     let kind = String(f.ref.split(separator: ":").first ?? "")
                     if let t = BoardTab(rawValue: kind == "track" ? "road" : kind == "reqs" ? "req" : kind) { tab = t }
                     // After the tab switch (which resets the filter): show everything so the item is in the list.
@@ -96,7 +98,13 @@ struct BoardScreen: View {
     @ViewBuilder private var list: some View {
         switch tab {
         case .test:
-            ForEach(ships) { ShipCard(board: board, item: $0).id("test:" + $0.id).flash("test:" + $0.id) }
+            if testLayout == "grid" {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: S(290)), spacing: 10, alignment: .top)], spacing: 10) {
+                    ForEach(ships) { ShipTile(board: board, item: $0).id("test:" + $0.id).flash("test:" + $0.id) }
+                }
+            } else {
+                ForEach(ships) { ShipCard(board: board, item: $0).id("test:" + $0.id).flash("test:" + $0.id) }
+            }
             if ships.isEmpty { EmptyBoard(projectId: board.project.id, title: state == "open" ? "NOTHING TO TEST" : "NOTHING HERE", line: "Claude is either working or sleeping.") }
         case .choice:
             ForEach(choices) { DecisionCard(board: board, d: $0).id("choice:" + $0.id).flash("choice:" + $0.id) }
@@ -217,7 +225,6 @@ struct TabBar: View {
                             HStack(spacing: 2) { Image(systemName: "terminal").font(.system(size: S(9))); Text("\(k)").font(.system(size: S(10.5)).monospacedDigit()) }
                                 .foregroundStyle(Brand.mute).help("\(k) session\(k == 1 ? "" : "s") on this tab")
                         }
-                        Text("⌘\(BoardTab.allCases.firstIndex(of: t)! + 1)").font(.system(size: S(10), design: .monospaced)).foregroundStyle(Brand.mute.opacity(0.6))
                     }
                     .foregroundStyle(tab == t ? Brand.cream : Brand.mute)
                     .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 10)
@@ -262,51 +269,68 @@ struct FilterBar: View {
     }
     private var states: [(String, String)] { Self.states(tab) }
 
+    /// One quiet line (choice board-nav-filters, A): state segments, then the area menu. No box, no labels.
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                Text("AREA").font(Brand.label(9)).foregroundStyle(Brand.mute).frame(width: 44, alignment: .leading)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 5) {
-                        chip("All", on: area == nil) { area = nil }
-                        ForEach(board.areas, id: \.key) { a in chip(a.name, on: area == a.key) { area = a.key } }
-                    }
+        HStack(spacing: 10) {
+            HStack(spacing: 2) {
+                ForEach(states, id: \.0) { s in
+                    let on = state == s.0, n = counts[s.0] ?? 0
+                    Button { state = s.0 } label: {
+                        HStack(spacing: 5) {
+                            Text(s.1)
+                            if n > 0 || on { Text("\(n)").monospacedDigit().foregroundStyle(on ? Color(hex: 0xffd27a).opacity(0.7) : Brand.mute) }
+                        }
+                        .font(.system(size: S(12), weight: on ? .semibold : .regular))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .foregroundStyle(on ? Color(hex: 0xffd27a) : n == 0 && s.0 != "all" ? Brand.mute : Brand.ink)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(on ? Brand.amberDim : .clear))
+                        .contentShape(Rectangle())
+                    }.buttonStyle(SteerButton())
                 }
             }
-            HStack(spacing: 6) {
-                Text("SHOW").font(Brand.label(9)).foregroundStyle(Brand.mute).frame(width: 44, alignment: .leading)
-                HStack(spacing: 0) {
-                    ForEach(states, id: \.0) { s in
-                        Button { state = s.0 } label: {
-                            (Text(s.1) + Text(" \(counts[s.0] ?? 0)").foregroundStyle(state == s.0 ? Color(hex: 0xffd27a).opacity(0.75) : Brand.mute))
-                                .font(.system(size: S(11.5), weight: state == s.0 ? .semibold : .regular))
-                                .padding(.horizontal, 9).padding(.vertical, 3)
-                                .foregroundStyle(state == s.0 ? Color(hex: 0xffd27a) : Brand.ink)
-                                .background(state == s.0 ? Brand.amberDim : .clear)
-                        }.buttonStyle(SteerButton())
-                    }
-                }
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Brand.line2))
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-                Spacer()
-                if area != nil || state != "open" {
-                    Button("Clear") { area = nil; state = "open" }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11.5)))
-                }
+            Spacer(minLength: 8)
+            if area != nil || state != "open" {
+                Button("Clear") { area = nil; state = "open" }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11.5)))
             }
-            .font(.system(size: S(11.5)))
+            if board.areas.count > 1 {
+                Menu {
+                    Button("All areas") { area = nil }
+                    Divider()
+                    ForEach(board.areas, id: \.key) { a in
+                        Button { area = a.key } label: { if area == a.key { Label(a.name, systemImage: "checkmark") } else { Text(a.name) } }
+                    }
+                } label: {
+                    Text("Area: " + (board.areas.first { $0.key == area }?.name ?? "All")).font(.system(size: S(12)))
+                        .foregroundStyle(area == nil ? Brand.ink : Color(hex: 0xffd27a))
+                }
+                .menuStyle(.borderlessButton).fixedSize()
+                .help("Show one area only")
+            }
+            if tab == .test { LayoutSwitch() }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Brand.panel2))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.line))
-        .padding(.horizontal, 12).padding(.top, 12)
+        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
     }
+}
 
-    private func chip(_ t: String, on: Bool, _ act: @escaping () -> Void) -> some View {
-        Button(action: act) {
-            Text(t).font(.system(size: S(11.5))).padding(.horizontal, 9).padding(.vertical, 3)
-                .foregroundStyle(on ? Brand.amber : Brand.ink)
-                .overlay(Capsule().stroke(on ? Brand.amber : Brand.line2))
-        }.buttonStyle(SteerButton())
+/// List (full cards) or Grid (picture + verdict) on the To test tab.
+struct LayoutSwitch: View {
+    @AppStorage(Prefs.testLayout, store: Prefs.store) private var layout = "list"
+    var body: some View {
+        HStack(spacing: 0) {
+            seg("list", "rectangle.grid.1x2", "List: full cards")
+            seg("grid", "square.grid.2x2", "Grid: picture and verdict only")
+        }
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Brand.line2))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+    }
+    private func seg(_ k: String, _ icon: String, _ help: String) -> some View {
+        Button { layout = k } label: {
+            Image(systemName: icon)
+                .font(.system(size: S(11.5), weight: layout == k ? .semibold : .regular))
+                .padding(.horizontal, 7).padding(.vertical, 4)
+                .foregroundStyle(layout == k ? Color(hex: 0xffd27a) : Brand.ink)
+                .background(layout == k ? Brand.amberDim : .clear)
+        }.buttonStyle(SteerButton()).help(help)
     }
 }
 
@@ -375,25 +399,50 @@ struct Card<Content: View>: View {
 struct NoteField: View {
     let placeholder: String
     let initial: String
+    /// true = take all the height it is given (the note box of a test row), click anywhere to write.
+    var fill = false
     let save: (String) -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
+    init(placeholder: String, initial: String, fill: Bool = false, save: @escaping (String) -> Void) {
+        self.placeholder = placeholder; self.initial = initial; self.fill = fill; self.save = save
+    }
     var body: some View {
         TextField(placeholder, text: $text, axis: .vertical)
             .textFieldStyle(.plain).font(.system(size: S(12)))
-            .lineLimit(1...4)
+            .lineLimit(fill ? 1...12 : 1...4)
             .padding(7)
+            .frame(maxHeight: fill ? .infinity : nil, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture { focused = true }
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.35)))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.line2, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
             .focused($focused)
             .onAppear { text = initial }
             .onChange(of: initial) { _, v in if !focused { text = v } }
-            .onSubmit { if text != initial { save(text) } }
-            .onChange(of: focused) { _, f in if !f && text != initial { save(text) } }
+            .onSubmit { flush() }
+            .onChange(of: focused) { _, f in if !f { flush() } }
+            // Typing saves by itself (0.6 s after the last key): a note is never lost because the user clicked a
+            // verdict button (buttons don't take focus on macOS), switched item, or the board reloaded.
+            .onChange(of: text) { _, _ in
+                guard focused else { return }
+                pending?.cancel()
+                pending = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(600))
+                    if !Task.isCancelled { flush() }
+                }
+            }
+            .onDisappear { flush() }
+    }
+
+    @State private var pending: Task<Void, Never>?
+    private func flush() {
+        pending?.cancel(); pending = nil
+        if text != initial { save(text) }
     }
 }
 
-/// Downsampled image from the board folder (fast, small memory), cached.
+/// Image from the board folder, decoded at the size it is shown × the screen scale (sharp, small memory), cached.
 struct BoardImage: View {
     let dir: String; let path: String; var height: CGFloat = 110
     /// true = show the whole picture (hero), false = fill and crop (thumbnails)
@@ -403,30 +452,43 @@ struct BoardImage: View {
     var onOpen: (() -> Void)? = nil
     @State private var image: NSImage?
     @State private var hover = false
-    static let cache = NSCache<NSString, NSImage>()
-    static let sizes = NSCache<NSString, NSValue>()
-    /// Pixel size of the file on disk (not of the decoded thumbnail).
+    /// The box on screen (points), rounded up to 64 pt so a resize does not decode again on every pixel.
+    @State private var box: CGSize = .zero
+    nonisolated(unsafe) static let cache = NSCache<NSString, NSImage>()   // NSCache is thread-safe
+    nonisolated(unsafe) static let sizes = NSCache<NSString, NSValue>()
+    static var backing: CGFloat { NSScreen.main?.backingScaleFactor ?? 2 }
+    /// Pixel size of the file on disk (not of the decoded picture).
     private var native: CGSize? { Self.sizes.object(forKey: full as NSString)?.sizeValue }
+    /// A whole window shown small: its text is too small to read in the list.
+    private var wholeWindow: Bool {
+        guard fit, focus == nil, let n = native, n.width >= 2800, box.width > 0 else { return false }
+        return box.width * Self.backing / n.width < 0.5
+    }
     var body: some View {
         // The image never drives the layout: a fixed-height box, the picture fills it and is clipped.
         Rectangle().fill(fit ? Color.black : Brand.panel2)
             .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { box = Self.bucket(g.size) }
+                    .onChange(of: g.size) { _, v in box = Self.bucket(v) }
+            })
             .overlay {
                 if let image {
                     if fit {
-                        // Never stretch a small file past 2× its pixels (it would go soft): show it smaller instead.
+                        // Never stretch a file past one point per pixel (it would go soft): show it smaller instead.
+                        let s: CGFloat = 1
                         Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
-                            .frame(maxWidth: (native?.width ?? 4000) * (focus?.width ?? 1) * 2, maxHeight: (native?.height ?? 4000) * (focus?.height ?? 1) * 2)
+                            .frame(maxWidth: (native?.width ?? 8000) * (focus?.width ?? 1) / s, maxHeight: (native?.height ?? 8000) * (focus?.height ?? 1) / s)
                             .overlay(alignment: .bottomLeading) {
                                 if let n = native, n.width < 1000, focus == nil {
-                                    Text("LOW-RES · \(Int(n.width)) px").font(Brand.label(8.5)).foregroundStyle(Brand.mute)
-                                        .padding(.horizontal, 5).padding(.vertical, 2)
-                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.black.opacity(0.7))).padding(6)
-                                        .help("The delivered picture is only \(Int(n.width)) px wide. Sessions now deliver full-size pictures.")
+                                    badge("LOW-RES · \(Int(n.width)) px", help: "The delivered picture is only \(Int(n.width)) px wide. Sessions now deliver full-size pictures.")
+                                } else if wholeWindow {
+                                    badge("WHOLE WINDOW · click to read", help: "This picture is a whole window shown small. Sessions should crop it to the feature or add focus.")
                                 }
                             }
                     }
-                    else { Image(nsImage: image).resizable().scaledToFill() }
+                    else { Image(nsImage: image).resizable().interpolation(.high).scaledToFill() }
                 }
             }
             .clipped()
@@ -454,27 +516,50 @@ struct BoardImage: View {
         .contentShape(Rectangle())
         .onTapGesture { if let onOpen { onOpen() } else { NSWorkspace.shared.open(URL(fileURLWithPath: full)) } }
         .help("Click: preview · ⌘-click: preview ready to pin a note")
-        .task(id: "\(path)#\(Self.key(full))#\(focus.map { "\($0)" } ?? "")") { image = await Self.load(full, focus: focus) }
+        .task(id: "\(path)#\(Self.key(full))#\(focus.map { "\($0)" } ?? "")#\(box)") {
+            guard box != .zero else { return }
+            image = await Self.load(full, focus: focus, box: box, fill: !fit)
+        }
+    }
+    private func badge(_ t: String, help: String) -> some View {
+        Text(t).font(Brand.label(8.5)).foregroundStyle(Brand.mute)
+            .padding(.horizontal, 5).padding(.vertical, 2)
+            .background(RoundedRectangle(cornerRadius: 3).fill(Color.black.opacity(0.7))).padding(6)
+            .help(help)
+    }
+    private static func bucket(_ s: CGSize) -> CGSize {
+        CGSize(width: (s.width / 64).rounded(.up) * 64, height: (s.height / 64).rounded(.up) * 64)
     }
     private var full: String { path.hasPrefix("/") ? path : (dir as NSString).appendingPathComponent(path) }
     /// Cache key = path + modification date, so a re-delivered screenshot with the same name shows the new picture.
-    static func key(_ p: String) -> NSString {
+    nonisolated static func key(_ p: String) -> NSString {
         let m = (try? FileManager.default.attributesOfItem(atPath: p)[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         return "\(p)#\(m)" as NSString
     }
-    static func load(_ p: String, focus: CGRect? = nil) async -> NSImage? {
-        let k = focus.map { "\(key(p))#\($0)" as NSString } ?? key(p)
-        if let c = cache.object(forKey: k) { return c }
-        return await Task.detached(priority: .utility) {
+    /// Decode only as many pixels as the box shows on this screen (never more than the file has):
+    /// sharp on Retina, and a 4K whole-window shot does not cost 4K of memory in a thumbnail.
+    static func load(_ p: String, focus: CGRect? = nil, box: CGSize? = nil, fill: Bool = false) async -> NSImage? {
+        let scale = backing
+        return await Task.detached(priority: .utility) { () -> NSImage? in
             guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: p) as CFURL, nil) else { return nil }
+            var maxPx = 1800
             if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
-               let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int {
+               var w = props[kCGImagePropertyPixelWidth] as? Int, var h = props[kCGImagePropertyPixelHeight] as? Int {
+                if let o = props[kCGImagePropertyOrientation] as? Int, o >= 5 { swap(&w, &h) }
                 sizes.setObject(NSValue(size: CGSize(width: w, height: h)), forKey: p as NSString)
+                if let box, box.width > 8, box.height > 8 {
+                    let f = focus ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+                    let rw = CGFloat(w) * max(f.width, 0.02), rh = CGFloat(h) * max(f.height, 0.02)
+                    let s = fill ? max(box.width / rw, box.height / rh) : min(box.width / rw, box.height / rh)
+                    maxPx = Int((CGFloat(max(w, h)) * min(1, s * scale * 1.1)).rounded(.up))
+                } else { maxPx = focus == nil ? 1800 : 5000 }
+                maxPx = max(maxPx, 256)
             }
-            guard
-                  var cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                                                                       kCGImageSourceThumbnailMaxPixelSize: focus == nil ? 1800 : 5000,
-                                                                       kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
+            let k = "\(key(p))#\(focus.map { "\($0)" } ?? "")#\(maxPx)" as NSString
+            if let c = cache.object(forKey: k) { return c }
+            guard var cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                                                        kCGImageSourceThumbnailMaxPixelSize: maxPx,
+                                                                        kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
             if let f = focus?.intersection(CGRect(x: 0, y: 0, width: 1, height: 1)), f.width > 0.02, f.height > 0.02,
                let c = cg.cropping(to: CGRect(x: f.minX * CGFloat(cg.width), y: f.minY * CGFloat(cg.height),
                                               width: f.width * CGFloat(cg.width), height: f.height * CGFloat(cg.height)).integral) { cg = c }
@@ -498,19 +583,20 @@ struct ShipCard: View {
         let state = board.shipState(item)
         let prev = board.previousVerdict(item)
         Card(highlight: state == .toTest || state == .retest ? Brand.blue.opacity(0.55) : nil) {
-            HStack(spacing: 6) {
+            // Header: the title, its state, then 2–4 short bullets. No gallery: each test shows its own picture.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(item.title).font(.system(size: S(15.5), weight: .semibold)).foregroundStyle(.white)
+                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 switch state {
                 case .toTest: Pill(text: "to test", color: Brand.blue)
                 case .retest: Pill(text: "re-test", color: Brand.blue)
                 case .waiting: Pill(text: (board.effectivePick(item) ?? "refine") + " · waiting on Claude", color: board.effectivePick(item) == "broken" ? Brand.red : Brand.amber)
                 case .ok: Pill(text: "ok", color: Brand.green)
                 }
-                Pill(text: item.status.replacingOccurrences(of: "-", with: " "), color: item.status == "live" ? Brand.green : Brand.mute)
-                Text("\(board.areaName(item.area)) · v\(item.version)").font(.system(size: S(11))).foregroundStyle(Brand.mute)
-                Spacer()
+                if item.status != "local" { Pill(text: item.status.replacingOccurrences(of: "-", with: " "), color: item.status == "live" ? Brand.green : Brand.mute) }
+                Text("\(board.areaName(item.area)) · v\(item.version)").font(.system(size: S(11))).foregroundStyle(Brand.mute).fixedSize()
                 SessionChip(projectId: board.project.id, ref: "test:" + item.id)
             }
-            Text(item.title).font(.system(size: S(14.5), weight: .semibold)).foregroundStyle(.white)
             if let prev {
                 (Text("New version v\(item.version). On v\(prev.v) you said ").foregroundStyle(Brand.mute)
                  + Text(prev.pick).bold().foregroundStyle(prev.pick == "ok" ? Brand.green : Brand.amber)
@@ -519,16 +605,42 @@ struct ShipCard: View {
                     .padding(8).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 6).fill(Brand.blue.opacity(0.08)))
             }
-            ClampedText(text: BoardText.attributed(item.what), lines: 3).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(item.bullets.enumerated()), id: \.offset) { _, b in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Circle().fill(Brand.mute).frame(width: 4, height: 4).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 1 }
+                        Text(BoardText.attributed(b)).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.9)).lineLimit(2)
+                    }
+                }
+            }.help(BoardText.plain(item.what))
 
             if state == .toTest || state == .retest { ShotIssues(board: board, item: item) }
-            Gallery(dir: board.project.boardDir, items: galleryItems, heroHeight: item.tests.contains { $0.img != nil } ? 260 : 340,
-                    open: { k in if let j = images.firstIndex(of: galleryItems[k].path) { openPreview(j) } })
             let pinCount = board.pins("test:" + item.id).count
-            if pinCount > 0 {
-                Button { openPreview(0) } label: {
-                    Label("\(pinCount) note\(pinCount == 1 ? "" : "s") on the pictures", systemImage: "mappin.and.ellipse").font(.system(size: S(11.5)))
-                }.buttonStyle(SteerButton()).foregroundStyle(Brand.amber)
+            let extra = galleryItems.count
+            if pinCount > 0 || extra > 0 {
+                HStack(spacing: 14) {
+                    if pinCount > 0 {
+                        Button { openPreview(0) } label: {
+                            Label("\(pinCount) note\(pinCount == 1 ? "" : "s") on the pictures", systemImage: "mappin.and.ellipse").font(.system(size: S(11.5)))
+                        }.buttonStyle(SteerButton()).foregroundStyle(Brand.amber)
+                    }
+                    // Screenshots no test shows: one quiet link, not a gallery on top of the card.
+                    if extra > 0, !item.tests.isEmpty, let first = galleryItems.first, let j = images.firstIndex(of: first.path) {
+                        Button { openPreview(j) } label: {
+                            Label("\(extra) more picture\(extra == 1 ? "" : "s")", systemImage: "photo.on.rectangle").font(.system(size: S(11.5)))
+                        }.buttonStyle(SteerButton()).foregroundStyle(Brand.mute)
+                    }
+                }
+            }
+            if item.tests.isEmpty {
+                // Older deliveries without tests: one row per screenshot, same shape as a test row.
+                ForEach(Array(galleryItems.enumerated()), id: \.offset) { k, g in
+                    TestRowFrame(dir: board.project.boardDir, img: g.path, focus: g.focus, accent: Brand.line2,
+                                 open: { if let j = images.firstIndex(of: g.path) { openPreview(j) } }) {
+                        Text(g.caption.isEmpty ? "Screenshot \(k + 1)" : g.caption).font(.system(size: S(13.5), weight: .semibold)).foregroundStyle(.white).lineLimit(4)
+                        Spacer(minLength: 0)
+                    }
+                }
             }
 
             if !item.tests.isEmpty {
@@ -628,6 +740,76 @@ struct ShipCard: View {
     }
 }
 
+/// Grid card (choice kit-demo, option A): the picture, the title, what to check, and the verdict right under it.
+/// OK is final; Refine / Broken open the full card so the note goes with it.
+struct ShipTile: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var board: BoardStore
+    let item: ShipItem
+
+    var body: some View {
+        let pick = board.shipPick(item)
+        let state = board.shipState(item)
+        Card(highlight: state == .toTest || state == .retest ? Brand.blue.opacity(0.55) : nil) {
+            if let img = picture {
+                BoardImage(dir: board.project.boardDir, path: img, height: S(170), focus: item.focus[img], onOpen: openFull)
+            } else {
+                RoundedRectangle(cornerRadius: 6).fill(Color.black).frame(height: S(170))
+                    .overlay(Text("No picture").font(.system(size: S(11))).foregroundStyle(Brand.mute))
+                    .onTapGesture(perform: openFull)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Button(action: openFull) {
+                    Text(item.title).font(.system(size: S(13.5), weight: .semibold)).foregroundStyle(.white)
+                        .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(SteerButton()).help("Open the full card")
+                statePill(state)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "eye").font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
+                Text(checkLine).font(.system(size: S(11.5))).foregroundStyle(Brand.ink.opacity(0.85)).lineLimit(2, reservesSpace: true)
+            }
+            HStack(spacing: 6) {
+                verdict("ok", "✓ OK", Brand.green, pick)
+                verdict("refine", "↻ Refine", Brand.amber, pick)
+                verdict("broken", "✕ Broken", Brand.red, pick)
+            }
+            if !board.shipNote(item).isEmpty {
+                Text("“\(board.shipNote(item))”").font(.system(size: S(11))).foregroundStyle(Brand.amber).lineLimit(1)
+            }
+        }
+    }
+
+    /// First test picture (the feature), else the first screenshot.
+    private var picture: String? { item.tests.compactMap(\.img).first ?? item.shots.first?.img }
+    private var checkLine: String {
+        if item.tests.count == 1, let c = item.tests[0].check { return c }
+        if !item.tests.isEmpty { return "\(item.tests.count) tests · " + (item.tests[0].check ?? item.tests[0].label) }
+        return item.howTo.first ?? "\(board.areaName(item.area)) · v\(item.version)"
+    }
+    @ViewBuilder private func statePill(_ s: BoardStore.ShipState) -> some View {
+        switch s {
+        case .toTest: Pill(text: "to test", color: Brand.blue)
+        case .retest: Pill(text: "re-test", color: Brand.blue)
+        case .waiting: Pill(text: board.effectivePick(item) ?? "refine", color: board.effectivePick(item) == "broken" ? Brand.red : Brand.amber)
+        case .ok: Pill(text: "ok", color: Brand.green)
+        }
+    }
+    private func verdict(_ k: String, _ title: String, _ c: Color, _ pick: String?) -> some View {
+        Button {
+            board.setShip(item, pick: k)
+            if k != "ok" { openFull() }      // the note belongs to the verdict: write it on the full card
+        } label: {
+            Text(title).font(.system(size: S(11.5), weight: .semibold))
+                .frame(maxWidth: .infinity).padding(.vertical, 6)
+                .foregroundStyle(pick == k ? Color.black : c)
+                .background(RoundedRectangle(cornerRadius: 6).fill(pick == k ? c : .clear))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(c.opacity(0.7)))
+        }.buttonStyle(SteerButton())
+    }
+    private func openFull() { model.focusItem(projectId: board.project.id, ref: "test:" + item.id) }
+}
+
 struct TestRow: View {
     @EnvironmentObject var model: AppModel
     let test: ShipTest; let projectId: String
@@ -679,7 +861,7 @@ struct ReqGroupView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var board: BoardStore
     let group: String; let items: [Requirement]
-    @State private var showSettled = false
+    @State private var showSettled = CommandLine.arguments.contains("--show-settled")   // test hook: settled lists open
 
     var body: some View {
         let all = board.requirements.filter { $0.group == group }
@@ -743,10 +925,16 @@ struct ReqGroupView: View {
                     ForEach(settled) { r in
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "checkmark").font(.system(size: S(10), weight: .bold)).foregroundStyle(Brand.green).padding(.top, 2)
-                            Text(r.text).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.7)).fixedSize(horizontal: false, vertical: true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(r.text).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.7)).fixedSize(horizontal: false, vertical: true)
+                                // Why it is settled, in plain sight (also the tooltip): "chapter approved …", "OK on To test · …".
+                                if let ev = r.evidence, !ev.isEmpty {
+                                    Text(ev).font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1).truncationMode(.tail)
+                                }
+                            }
                             Spacer(minLength: 6)
                             Text(r.status == "built" ? "built" : r.status == "rule" ? "rule" : "agreed").font(.system(size: S(10.5))).foregroundStyle(Brand.green.opacity(0.8))
-                        }.id("req:" + r.id)
+                        }.id("req:" + r.id).help(r.evidence ?? "")
                     }
                 }
             }
@@ -1122,74 +1310,86 @@ struct TestChapter: View {
     let test: ShipTest
     let feedback: (ok: Bool, note: String)?
     let openPicture: (String) -> Void
-    @State private var writing = false
 
     var body: some View {
         let ok = feedback?.ok == true
         let note = feedback?.note ?? ""
         let accent: Color = !note.isEmpty ? Brand.amber : ok ? Brand.green : Brand.line2
-        VStack(alignment: .leading, spacing: 10) {
-            ZStack(alignment: .topLeading) {
-                if let img = test.img {
-                    BoardImage(dir: board.project.boardDir, path: img, height: S(item.focus[img] == nil ? 330 : 290), fit: true,
-                               focus: item.focus[img], onOpen: { openPicture(img) })
-                } else {
-                    RoundedRectangle(cornerRadius: 6).fill(Color.black).frame(height: S(90))
-                        .overlay(Text("No picture for this test").font(.system(size: S(11))).foregroundStyle(Brand.mute))
-                }
-                HStack(spacing: 6) {
-                    Text("\(index + 1)")
-                        .font(.system(size: S(13), weight: .heavy, design: .monospaced))
-                        .foregroundStyle(ok || !note.isEmpty ? Color(hex: 0x1a1200) : Brand.cream)
-                        .frame(width: S(26), height: S(26))
-                        .background(RoundedRectangle(cornerRadius: 6).fill(ok ? Brand.green : !note.isEmpty ? Brand.amber : Color.black.opacity(0.8)))
-                    if count > 1 { Text("of \(count)").font(.system(size: S(10.5), weight: .semibold)).foregroundStyle(Brand.cream.opacity(0.8))
-                        .padding(.horizontal, 6).padding(.vertical, 3).background(Capsule().fill(Color.black.opacity(0.7))) }
-                }.padding(8)
+        TestRowFrame(dir: board.project.boardDir, img: test.img, focus: test.img.flatMap { item.focus[$0] }, accent: accent.opacity(ok || !note.isEmpty ? 0.6 : 1),
+                     open: { if let img = test.img { openPicture(img) } }) {
+            HStack(alignment: .top, spacing: 8) {
+                Text("\(index + 1)")
+                    .font(.system(size: S(12), weight: .heavy, design: .monospaced))
+                    .foregroundStyle(ok || !note.isEmpty ? Color(hex: 0x1a1200) : Brand.cream)
+                    .frame(width: S(22), height: S(22))
+                    .background(RoundedRectangle(cornerRadius: 6).fill(ok ? Brand.green : !note.isEmpty ? Brand.amber : Color.black.opacity(0.8)))
+                    .help(count > 1 ? "Test \(index + 1) of \(count)" : "")
+                Text(test.label).font(.system(size: S(14), weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(test.label).font(.system(size: S(14.5), weight: .semibold)).foregroundStyle(.white).lineLimit(2)
-                    if let c = test.check {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Image(systemName: "eye").font(.system(size: S(11))).foregroundStyle(Brand.mute)
-                            Text(c).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.85)).lineLimit(2)
-                        }.help(c)
+            if let c = test.check {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "eye").font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
+                    Text(c).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.85)).lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }.help(c)
+            }
+            HStack(spacing: 6) {
+                if let u = test.url, let url = URL(string: u) {
+                    Button { if url.scheme == "steerify" { model.handle(url) } else { NSWorkspace.shared.open(url) } } label: {
+                        HStack(spacing: 5) { Text("Test it").font(.system(size: S(12.5), weight: .bold)); Image(systemName: "arrow.up.right").font(.system(size: S(10.5), weight: .bold)) }
+                            .lineLimit(1).fixedSize()
+                            .foregroundStyle(.white).padding(.horizontal, 11).padding(.vertical, 6)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Color(hex: 0x3b6ff5)))
+                    }.buttonStyle(SteerButton()).help(u)
+                }
+                Button { board.setTest(item, index: index, ok: !ok) } label: {
+                    HStack(spacing: 5) { Image(systemName: ok ? "checkmark.circle.fill" : "checkmark.circle"); Text("Looks right") }
+                        .lineLimit(1).fixedSize()
+                        .font(.system(size: S(12), weight: .semibold))
+                        .foregroundStyle(ok ? Color.black : Brand.green)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(ok ? Brand.green : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.green.opacity(0.7)))
+                }.buttonStyle(SteerButton())
+            }
+            // The note box is always there and takes the rest of the row: writing a note is one click.
+            NoteField(placeholder: "What is off?", initial: note, fill: true) { board.setTest(item, index: index, note: $0) }
+        }
+    }
+}
+
+/// One row of a To test card: the picture on the left (65%, fixed height, cropped to the feature),
+/// what to do on the right. Every row has the same height, whatever the picture.
+struct TestRowFrame<Side: View>: View {
+    let dir: String
+    let img: String?
+    let focus: CGRect?
+    let accent: Color
+    let open: () -> Void
+    @ViewBuilder let side: Side
+    static var height: CGFloat { S(250) }
+
+    var body: some View {
+        GeometryReader { g in
+            HStack(alignment: .top, spacing: 14) {
+                Group {
+                    if let img {
+                        BoardImage(dir: dir, path: img, height: g.size.height, fit: true, focus: focus, onOpen: open)
+                    } else {
+                        RoundedRectangle(cornerRadius: 6).fill(Color.black)
+                            .overlay(Text("No picture for this test").font(.system(size: S(11))).foregroundStyle(Brand.mute))
                     }
                 }
-                Spacer(minLength: 8)
-                HStack(spacing: 8) {
-                    if let u = test.url, let url = URL(string: u) {
-                        Button { if url.scheme == "steerify" { model.handle(url) } else { NSWorkspace.shared.open(url) } } label: {
-                            HStack(spacing: 6) { Text("Test it").font(.system(size: S(13), weight: .bold)); Image(systemName: "arrow.up.right").font(.system(size: S(11), weight: .bold)) }
-                                .foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 7)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(Color(hex: 0x3b6ff5)))
-                        }.buttonStyle(SteerButton()).help(u)
-                    }
-                    Button { board.setTest(item, index: index, ok: !ok) } label: {
-                        HStack(spacing: 5) { Image(systemName: ok ? "checkmark.circle.fill" : "checkmark.circle"); Text("Looks right") }
-                            .font(.system(size: S(12.5), weight: .semibold))
-                            .foregroundStyle(ok ? Color.black : Brand.green)
-                            .padding(.horizontal, 11).padding(.vertical, 7)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(ok ? Brand.green : .clear))
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.green.opacity(0.7)))
-                    }.buttonStyle(SteerButton())
-                    Button { writing.toggle() } label: {
-                        Image(systemName: note.isEmpty ? "square.and.pencil" : "text.bubble.fill")
-                            .font(.system(size: S(13), weight: .semibold))
-                            .foregroundStyle(note.isEmpty ? Brand.cream : Brand.amber)
-                            .frame(width: S(32), height: S(30))
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(note.isEmpty ? Brand.line2 : Brand.amber.opacity(0.7)))
-                    }.buttonStyle(SteerButton()).help("Something off? Write a note: the card becomes Refine")
-                }
-            }
-            if writing || !note.isEmpty {
-                NoteField(placeholder: "What is off?", initial: note) { board.setTest(item, index: index, note: $0) }
+                .frame(width: max(0, (g.size.width - 14) * 0.65), height: g.size.height)
+                VStack(alignment: .leading, spacing: 8) { side }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
+        .frame(height: Self.height)
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(Brand.panel2))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(ok || !note.isEmpty ? 0.6 : 1)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent))
     }
 }
 

@@ -295,6 +295,8 @@ struct ShotIssue: Hashable, Identifiable {
 
 enum ShotCheck {
     static let minWidth = 1400
+    /// A test picture this wide with no focus is a whole Retina window: unreadable in the row.
+    static let wholeWindowWidth = 2800
 
     /// Pixel size, a luminance spread (≈0 = blank) and a content hash, without loading AppKit.
     static func inspect(_ path: String) -> (w: Int, spread: Double, hash: Int)? {
@@ -320,7 +322,8 @@ enum ShotCheck {
     }
 
     /// The rules that need no model (also run by the MCP `deliver`, so Claude hears about them first).
-    static func basic(dir: String, shots: [String], tests: [(label: String, img: String?)]) -> [ShotIssue] {
+    /// `focused`: pictures that come with a `focus` crop (a whole window is fine then: the list shows the crop).
+    static func basic(dir: String, shots: [String], tests: [(label: String, img: String?)], focused: Set<String> = []) -> [ShotIssue] {
         var out: [ShotIssue] = []
         var seen: [Int: String] = [:]             // content hash → first user ("test 2" / "screenshot 1")
         func look(_ img: String, test: Int?, name: String) {
@@ -328,6 +331,9 @@ enum ShotCheck {
             guard FileManager.default.fileExists(atPath: path) else { out.append(ShotIssue(img: img, test: test, problem: "picture missing", ai: false)); return }
             guard let x = inspect(path) else { out.append(ShotIssue(img: img, test: test, problem: "can't be opened", ai: false)); return }
             if x.w < minWidth { out.append(ShotIssue(img: img, test: test, problem: "small: \(x.w) px wide (needs \(minWidth))", ai: false)) }
+            if test != nil, x.w >= wholeWindowWidth, !focused.contains(img) {
+                out.append(ShotIssue(img: img, test: test, problem: "whole window (\(x.w) px): crop to the feature or add focus", ai: false))
+            }
             if x.spread < 2.5 { out.append(ShotIssue(img: img, test: test, problem: "looks blank", ai: false)) }
             if x.hash != 0, test != nil {
                 if let first = seen[x.hash], first != name { out.append(ShotIssue(img: img, test: test, problem: "same picture as \(first)", ai: false)) }
@@ -356,7 +362,7 @@ enum ShotCheck {
     /// Basic rules + (with Apple Intelligence) "does the picture show what the test says to check?".
     static func check(_ item: ShipItem, dir: String) async -> [ShotIssue] {
         let tests = item.tests.map { (label: $0.label, img: $0.img) }
-        var out = await Task.detached(priority: .utility) { basic(dir: dir, shots: item.shots.map(\.img), tests: tests) }.value
+        var out = await Task.detached(priority: .utility) { basic(dir: dir, shots: item.shots.map(\.img), tests: tests, focused: Set(item.focus.keys)) }.value
         guard LocalAI.ready else { return out }
         let bad = Set(out.compactMap(\.img))
         for (i, t) in item.tests.enumerated() {

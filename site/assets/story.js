@@ -417,7 +417,22 @@
     }
   }
   const DECIDE = { title: 'How you decide.', text: 'Claude asks with three options as pictures; you pick B, blend in A with a note, press Done, and your answer starts the build.', dur: 6.2, draw: sDecide, h: 120, strip: false };
-  const NAMED = { hero: HERO, mac: MAC, start: START, flows: FLOWS, decide: DECIDE };
+  // The problem (240×92): 9 sessions, fine, 19, okay, 99; three of them are waiting on you.
+  function sCrowd(t) {
+    const n = t < 1 ? 9 : t < 2 ? 19 : Math.min(99, 19 + Math.floor(pr(t, 2, 3.4) * 80));
+    const wait = [3, 5, 8], found = t > 5;
+    for (let k = 0; k < n; k++) {
+      const i = (k * 37) % 99, x = 10 + (i % 11) * 20, y = 6 + ((i / 11) | 0) * 8, w = wait.includes(k) && t > 3.8;
+      alpha(found && !w ? .25 : 1, () => {
+        box(x, y, 18, 6, K.ink, w && (found || blink(t * 1.5)) ? K.amber : K.line2);
+        R(x + 3, y + 2, w ? 12 : 4 + (k * 5 + ((t * 4) | 0) * (k % 3)) % 10, 2, w ? K.amber : K.cream);
+      });
+    }
+    txt(10, 83, `${n} SESSIONS OPEN`, n > 9 && t < 3.8 ? K.amber : K.cream);
+    if (t > 3.8) txt(230, 83, found ? 'STEERIFY KNOWS WHICH 3' : '3 ARE WAITING ON YOU', K.amber, 1, 'right');
+  }
+  const CROWD = { title: 'Ninety-nine sessions, three waiting on you.', text: 'A wall of terminals grows from 9 to 19 to 99; three of them turn amber.', dur: 6.6, draw: sCrowd, h: 92, strip: false };
+  const NAMED = { hero: HERO, mac: MAC, start: START, flows: FLOWS, decide: DECIDE, crowd: CROWD };
 
   const SCENES = [
     { name: 'Say it', title: 'Say what you want.', text: 'Write it in plain words. Steerify turns it into requirements, docs and a roadmap.', dur: 6, draw: s1 },

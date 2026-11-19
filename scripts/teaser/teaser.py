@@ -67,16 +67,33 @@ def sea(f, t):
         f.rect(i + off, 126 + (i // 12 % 3) * 14, 6, 1, C['sea2'])
 
 
-def s1(f, t, T):  # nine sessions, three waiting
+def s1(f, t, T):  # nine sessions. fine, nineteen. okay, ninety-nine. three are waiting
     sea(f, t)
-    for i in range(9):
-        cx = 30 + (i % 9) * 32; bob = int(2 * math.sin(t * 2.4 + i))
-        f.spr('boat', cx, 106 + bob)
-        if i in (1, 4, 7) and t > 1.6 and int(t * 3) % 2 == 0:
-            f.rect(cx + 8, 90 + bob, 2, 7, C['amber']); f.rect(cx + 8, 99 + bob, 2, 2, C['amber'])
-    lines = [('9 SESSIONS OPEN.', C['cream'], 0.2), ('3 ARE WAITING ON YOU.', C['amber'], T * 0.35), ('GUESS WHICH.', C['cream'], T * 0.7)]
-    for k, (s, col, at) in enumerate(lines):
-        if t >= at: f.text(16, 14 + k * 20, typed(s, t - at, 30), col, F16)
+    t19, t99, tw, tg = T * 0.27, T * 0.44, T * 0.66, T * 0.86
+    n = 9 if t < t19 else 19 if t < t99 else 99
+    slots = [(30 + i * 32, 106) for i in range(9)] + [(14 + j * 30, 124) for j in range(10)]
+    for y in (74, 88, 140, 152, 164):
+        slots += [(6 + c * 22 + (8 if y % 4 else 0), y) for c in range(14)]
+    slots += [(162 + c * 22, 60) for c in range(7)] + [(262 + c * 20, 44) for c in range(3)]
+    marks = []
+    for i, (x, y) in enumerate(slots[:99]):
+        born = 0 if i < 9 else t19 + (i - 9) * 0.03 if i < 19 else t99 + (i - 19) * 0.012
+        if t < born: continue
+        bob = int(2 * math.sin(t * 2.4 + i))
+        f.spr('boat', x, y + bob)
+        if i in (1, 4, 7) and t > tw and int(t * 3) % 2 == 0: marks.append((x, y + bob))
+    for x, y in marks:  # the three waiting on you, somewhere in the crowd
+        f.rect(x + 5, y - 19, 8, 15, C['bg']); f.rect(x + 8, y - 17, 2, 7, C['amber']); f.rect(x + 8, y - 8, 2, 2, C['amber'])
+    x = 16
+    for old, at in (('9', t19), ('19', t99)):
+        if t >= at:
+            w = int(f.d.textlength(old, font=F16)); f.text(x, 14, old, (128, 132, 142), F16); f.rect(x - 1, 24, w + 2, 2, C['red']); x += w + 7
+    since = t - (0.2 if n == 9 else t19 if n == 19 else t99)
+    if since >= 0:
+        f.text(x, 14, str(n), C['amber'] if n > 9 and since < 0.6 else C['cream'], F16); x += int(f.d.textlength(str(n), font=F16)) + 7
+        f.text(x, 14, typed('SESSIONS OPEN.', t - 0.2, 30), C['cream'], F16)
+    if t >= tw: f.text(16, 34, typed('3 ARE WAITING ON YOU.', t - tw, 30), C['amber'], F16)
+    if t >= tg: f.text(16, 54, typed('GUESS WHICH.', t - tg, 30), C['cream'], F16)
 
 
 def s2(f, t, T):  # scroll, read, scroll

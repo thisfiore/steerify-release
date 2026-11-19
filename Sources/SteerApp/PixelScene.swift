@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Empty tabs: a small pixel boat on a calm sea (waves move gently), then the next steps if there are any.
 struct PixelScene: View {
+    /// true: an empty wooden pier on the left with a lantern (the "no projects yet" harbour).
+    var dock = false
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.6)) { t in
             let phase = Int(t.date.timeIntervalSinceReferenceDate / 0.6) % 8
@@ -24,6 +26,19 @@ struct PixelScene: View {
                         dot(x, sea + r * 3, (r == 0 ? Brand.blue : Brand.line2).opacity(r == 0 ? 0.55 : 0.8))
                     }
                 }
+                // pier: planks on posts, a lantern at its end (glows on the beat)
+                if dock {
+                    let px0 = max(cols / 2 - 34, 2), len = 18, top = sea - 2
+                    for x in px0..<(px0 + len) { dot(x, top, Color(hex: 0x8a5a2b)); dot(x, top + 1, Color(hex: 0x5c3b1c)) }
+                    for x in stride(from: px0 + 1, to: px0 + len, by: 5) { for y in (top + 2)...(top + 8) { dot(x, y, Color(hex: 0x4a2f16)) } }
+                    let lx = px0 + len - 2
+                    for y in (top - 6)..<top { dot(lx, y, Color(hex: 0x6b4a2a)) }
+                    dot(lx - 1, top - 8, Brand.amber.opacity(phase % 2 == 0 ? 1 : 0.6)); dot(lx, top - 8, Brand.amber); dot(lx + 1, top - 8, Brand.amber.opacity(phase % 2 == 0 ? 1 : 0.6))
+                    dot(lx, top - 9, Brand.amber.opacity(0.8)); dot(lx, top - 7, Brand.amber.opacity(0.8))
+                    // the rope from the post to the boat, slack
+                    let bx0 = cols / 2 - 7
+                    for x in (px0 + len)..<(bx0) where (x - px0 - len) % 2 == 0 { dot(x, top + 1 + ((x - px0 - len) / 2) % 2, Brand.cream.opacity(0.35)) }
+                }
                 // boat (bobs one pixel)
                 let bx = cols / 2 - 7, by = sea - 9 + (phase % 4 < 2 ? 0 : 1)
                 let boat = ["......#.......", "......##......", "......###.....", "......####....", "......#####...", "......#.......",
@@ -37,6 +52,28 @@ struct PixelScene: View {
         }
         .frame(height: 150)
         .accessibilityHidden(true)
+    }
+}
+
+/// No project yet: the empty harbour, the logo, one wry line, one button.
+struct NoProjectsView: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        VStack(spacing: 16) {
+            PixelWheel(size: S(64))
+            PixelScene(dock: true).frame(maxWidth: 560)
+            Text("NO PROJECTS YET").font(Brand.label(14)).tracking(1.6).foregroundStyle(Brand.cream)
+            Text("The boat is ready. It just needs somewhere to go.").font(.system(size: S(13))).italic().foregroundStyle(Brand.mute)
+            Text("Pick your project's folder, or start an empty one. Steerify creates its board.")
+                .font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.75))
+            HStack(spacing: 10) {
+                ActionButton(title: "Add project…", icon: "ship", primary: true) { model.addWorkspace() }
+                Text("⇧⌘O").font(.system(size: S(10.5), design: .monospaced)).foregroundStyle(Brand.mute)
+            }.padding(.top, 4)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Brand.bg)
     }
 }
 
