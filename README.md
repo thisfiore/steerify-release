@@ -63,6 +63,7 @@ Or with Homebrew:
 
 ```sh
 brew tap thisfiore/steerify https://github.com/thisfiore/steerify-release
+brew trust thisfiore/steerify   # Homebrew 7+ asks you to trust third-party taps
 brew install --cask steerify
 ```
 
