@@ -490,7 +490,7 @@ struct PaletteView: View {
 
     @ViewBuilder private func tile(_ h: PaletteHit, size: CGFloat) -> some View {
         if h.kind == .project {
-            PixelAvatar(name: h.projectName, size: size)
+            PixelAvatar(name: h.projectName, size: size, projectId: h.projectId)
         } else {
             RoundedRectangle(cornerRadius: size * 0.22).fill(h.kind.color.opacity(0.14))
                 .overlay(icon(h.kind.icon, size: size * 0.42).foregroundStyle(h.kind.color))

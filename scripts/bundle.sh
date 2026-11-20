@@ -16,17 +16,27 @@ VERSION=$(tr -d ' \n' < VERSION)
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 SIGN_ID=${STEERIFY_SIGN_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}
 PROFILE=${NOTARY_PROFILE:-steerify}
+# Updates: the appcast is an asset of the public repo's latest release (written by release.sh).
+# The private half of this key is in the login keychain (generate_keys --account steerify); back it up.
+FEED_URL=${STEERIFY_FEED_URL:-https://github.com/thisfiore/steerify-release/releases/latest/download/appcast.xml}
+SPARKLE_PUBLIC_KEY=EU+btwrNxFG3oDaH2s+owVBTN4GXeMtwyDEoodK+3YU=
 
 swift build -c release
 APP=build/Steerify.app
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/SteerApp "$APP/Contents/MacOS/Steerify"
+# Sparkle (in-app updates): the framework goes in Contents/Frameworks, found through this rpath.
+mkdir -p "$APP/Contents/Frameworks"
+ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/Steerify" 2>/dev/null || true
 if [ ! -f build/AppIcon.icns ]; then
   swift scripts/make-icon.swift build/AppIcon.iconset >/dev/null
   iconutil -c icns build/AppIcon.iconset -o build/AppIcon.icns
 fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/skills" && cp -R skills/steerify "$APP/Contents/Resources/skills/"
+# What's new (the version badge's panel): this version's notes, when release.sh wrote them before bundling.
+[ -f build/release-notes-$VERSION.md ] && cp build/release-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -43,17 +53,26 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.frenkfiore.steerify</string><key>CFBundleURLSchemes</key><array><string>steerify</string></array></dict></array>
+  <key>SUFeedURL</key><string>$FEED_URL</string>
+  <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUAutomaticallyUpdate</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>14400</integer>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 PLIST
 
 if [ -n "$SIGN_ID" ]; then
-  # Hardened runtime + secure timestamp: required for notarization.
+  # Hardened runtime + secure timestamp: required for notarization. Sparkle's parts first, inside out.
+  SPK="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+  for part in "$SPK/XPCServices/Installer.xpc" "$SPK/XPCServices/Downloader.xpc" "$SPK/Autoupdate" "$SPK/Updater.app" "$APP/Contents/Frameworks/Sparkle.framework"; do
+    codesign --force --options runtime --timestamp --preserve-metadata=entitlements --sign "$SIGN_ID" "$part"
+  done
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
   codesign --verify --strict --deep "$APP"
   echo "built $APP $VERSION ($BUILD), signed: $SIGN_ID"
 else
-  codesign --force --sign - "$APP" >/dev/null 2>&1
+  codesign --force --deep --sign - "$APP" >/dev/null 2>&1
   echo "built $APP $VERSION ($BUILD), ad-hoc signed (no Developer ID Application cert in the keychain)"
 fi
 

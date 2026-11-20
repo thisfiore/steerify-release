@@ -58,6 +58,52 @@ extension AppModel {
         editManifest(p) { ManifestText.setName($0, n) }
     }
 
+    /// The icon: automatic (favicon, or initials), initials, or a picture of yours. Saved in steerify.json →
+    /// "icon" (the picture in the board's img/project-icon.png), so a teammate sees the same icon.
+    func setIcon(_ p: Project, mode: String?) {
+        var v: [String: Any] = [:]
+        if let mode { v["mode"] = mode }
+        if let c = p.icon?.colors { v["colors"] = c }
+        writeIcon(p, v.isEmpty ? nil : v)
+    }
+
+    func pickIconPicture(_ p: Project) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Use as icon"
+        panel.message = "A logo or favicon for \(p.name). It is pixelated like the others."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        useIconPicture(p, url)
+    }
+
+    /// A picture as the icon: cleaned and saved to the board (img/project-icon.png), colours taken from it.
+    func useIconPicture(_ p: Project, _ url: URL) {
+        guard AppModel.mayWriteBoards else { return }
+        guard let img = IconMaker.loadImage(url.path), let look = IconMaker.make(img, theme: []), let pic = look.picture,
+              let rel = IconMaker.savePicture(pic, boardDir: p.boardDir) else {
+            showToast("Couldn't use that picture"); return
+        }
+        var v: [String: Any] = ["mode": "image", "img": rel]
+        v["colors"] = look.colors.map { [$0.0.hex, $0.1.hex] }   // a new picture brings its own colours
+        writeIcon(p, v)
+    }
+
+    /// Your two tile colours (nil = back to the favicon's own).
+    func setIconColors(_ p: Project, _ colors: [String]?) {
+        var v: [String: Any] = [:]
+        if let m = p.icon?.mode { v["mode"] = m }
+        if let i = p.icon?.img { v["img"] = i }
+        if let colors { v["colors"] = colors }
+        writeIcon(p, v.isEmpty ? nil : v)
+    }
+
+    private func writeIcon(_ p: Project, _ v: [String: Any]?) {
+        guard AppModel.mayWriteBoards else { return }
+        let (msg, failed) = JSONFile.edit(p.manifest, key: "icon", value: v)
+        if failed { showToast("Couldn't save the icon: \(msg)"); return }
+        reloadManifest(p.id)
+    }
+
     /// A missing folder found elsewhere on this Mac: its path in steerify.json points there now.
     func locateRepo(_ r: Repo, in p: Project) {
         guard let folder = Self.pickFolder(prompt: "Use this folder", message: "Where is \(r.name) on this Mac?") else { return }
@@ -255,7 +301,7 @@ struct ProjectManagerView: View {
         let key = model.switcherProjects.firstIndex(where: { $0.id == p.id }).flatMap { $0 < 9 ? "⌥⌘\($0 + 1)" : nil }
         return HStack(spacing: 9) {
             Image(systemName: "line.3.horizontal").font(.system(size: S(10))).foregroundStyle(Brand.mute.opacity(0.6))
-            PixelAvatar(name: p.name, size: S(24))
+            PixelAvatar(name: p.name, size: S(24), projectId: p.id)
             Text(p.name).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(Brand.ink).lineLimit(1)
             Spacer(minLength: 4)
             if hidden { Text("hidden").font(.system(size: S(10))).foregroundStyle(Brand.mute) }
@@ -279,7 +325,7 @@ private struct ProjectDetails: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 14) {
-                    PixelAvatar(name: p.name, size: S(60))
+                    PixelAvatar(name: p.name, size: S(60), projectId: p.id)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(p.name).font(.system(size: S(20), weight: .bold)).foregroundStyle(.white)
                         Text(Self.tilde(p.boardDir)).font(.system(size: S(11), design: .monospaced)).foregroundStyle(Brand.mute)
@@ -302,6 +348,7 @@ private struct ProjectDetails: View {
                             .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
                     }
                 }
+                field("Icon") { IconField(project: p) }
                 field("Switcher") {
                     Toggle(isOn: Binding(get: { !hidden }, set: { model.setHidden(p, !$0) })) {
                         Text(hidden ? "Hidden: not in the switcher or ⌥⌘1…9" : "Shown in the switcher")
@@ -380,4 +427,99 @@ struct ManageProjectsButton: View {
             .keyboardShortcut("p", modifiers: [.command, .shift])
     }
     private func open() { openWindow(id: "projects"); NSApp.activate(ignoringOtherApps: true) }
+}
+
+/// Projects window → Icon: where it comes from, how it looks at each size, and your override.
+private struct IconField: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject private var icons = ProjectIcons.shared
+    let project: Project
+    @State private var c1 = Color.gray
+    @State private var c2 = Color.gray
+    @State private var save: Task<Void, Never>?
+
+    private var mode: String { project.icon?.mode ?? "auto" }
+
+    var body: some View {
+        let look = icons.look(project.id)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 12) {
+                PixelAvatar(name: project.name, size: S(60), projectId: project.id)
+                PixelAvatar(name: project.name, size: S(24), projectId: project.id)
+                PixelAvatar(name: project.name, size: 20, projectId: project.id)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sourceLine(look)).font(.system(size: S(11.5))).foregroundStyle(Brand.ink)
+                    if mode == "auto" && look?.small == nil {
+                        Text("No favicon found in its folders").font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                Picker("", selection: Binding(get: { mode == "image" ? "image" : mode }, set: { m in
+                    switch m {
+                    case "auto": model.setIcon(project, mode: nil)
+                    case "initials": model.setIcon(project, mode: "initials")
+                    default: model.pickIconPicture(project)
+                    }
+                })) {
+                    Text("Automatic").tag("auto")
+                    Text("Initials").tag("initials")
+                    Text("Picture…").tag("image")
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: S(260))
+                if mode == "image" {
+                    Button("Change…") { model.pickIconPicture(project) }.buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+            HStack(spacing: 8) {
+                Text("Colours").font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
+                ColorPicker("", selection: $c1, supportsOpacity: false).labelsHidden()
+                ColorPicker("", selection: $c2, supportsOpacity: false).labelsHidden()
+                if project.icon?.colors != nil {
+                    Button("From the icon") { model.setIconColors(project, nil) }.buttonStyle(SteerButton())
+                        .font(.system(size: S(11))).foregroundStyle(Brand.mute)
+                }
+            }
+            Text("Saved in steerify.json, so your team sees the same icon.")
+                .font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
+        }
+        .onAppear { load(look) }
+        .onChange(of: look) { _, l in load(l) }
+        .onChange(of: c1) { _, _ in queueSave() }
+        .onChange(of: c2) { _, _ in queueSave() }
+    }
+
+    private func sourceLine(_ l: ProjectIconLook?) -> String {
+        switch mode {
+        case "initials": return "Pixel initials"
+        case "image": return "Your picture"
+        default: return l?.small != nil ? "From \(l!.source)" : "Pixel initials"
+        }
+    }
+
+    /// The pickers show what the tile uses now (yours, or the favicon's).
+    private func load(_ l: ProjectIconLook?) {
+        save?.cancel()
+        let cur = currentHex(l)
+        c1 = RGBA(hex: cur[0]).map(\.color) ?? .gray
+        c2 = RGBA(hex: cur[1]).map(\.color) ?? .gray
+    }
+
+    private func currentHex(_ l: ProjectIconLook?) -> [String] {
+        if let c = project.icon?.colors, c.count >= 2 { return c }
+        if let c = l?.colors { return [c.0.hex, c.1.hex] }
+        return ["#888888", "#444444"]
+    }
+
+    /// Picker drags fire many times: save once it settles.
+    private func queueSave() {
+        let next = [RGBA(c1).hex, RGBA(c2).hex]
+        guard next != currentHex(icons.look(project.id)) else { return }
+        save?.cancel()
+        save = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            model.setIconColors(project, next)
+        }
+    }
 }

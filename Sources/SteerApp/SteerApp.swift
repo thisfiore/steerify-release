@@ -17,15 +17,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .frame(minWidth: 980, minHeight: 600)
             .preferredColorScheme(.dark)
             .tint(Brand.amber)
+        // `--fake-update <version>`: the top bar as it looks when a downloaded update waits (screenshots).
+        if let i = a0.firstIndex(of: "--fake-update"), i + 1 < a0.count { AppUpdater.shared.fake(a0[i + 1], m) }
         let panelOnly = a0.contains("--menubar")
+        let whatsNew = a0.contains("--whats-new")   // the version badge's panel alone
+
         let manager = a0.contains("--projects")     // the Projects window (⇧⌘P) alone
-        let host = panelOnly
+        let host = whatsNew
+            ? NSHostingController(rootView: AnyView(WhatsNewPanel(close: {}).background(Brand.bg).preferredColorScheme(.dark)))
+            : panelOnly
             ? NSHostingController(rootView: AnyView(MenuBarPanel().environmentObject(m)))
             : manager ? NSHostingController(rootView: AnyView(ProjectManagerView().environmentObject(m).preferredColorScheme(.dark).tint(Brand.amber)))
             : NSHostingController(rootView: AnyView(root))
         host.sceneBridgingOptions = [.toolbars, .title]
         host.sizingOptions = []                       // keep our size, not the content's ideal size
-        let size = panelOnly ? NSSize(width: 320, height: 760) : manager ? NSSize(width: 960, height: 620) : NSSize(width: 1500, height: 940)
+        let size = whatsNew ? NSSize(width: 380, height: 330) : panelOnly ? NSSize(width: 320, height: 760) : manager ? NSSize(width: 960, height: 620) : NSSize(width: 1500, height: 940)
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 40, y: 40), size: size),
                          styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.contentViewController = host
@@ -128,6 +134,10 @@ enum SteerifyMain {
             Task { @MainActor in await LocalAICheck.run(dir) }
             dispatchMain()
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--outlook-check"), i + 1 < CommandLine.arguments.count {
+            MainActor.assumeIsolated { SessionOutlookCheck.run(CommandLine.arguments[i + 1]) }
+            exit(0)
+        }
         SteerApp.main()
     }
 }
@@ -140,7 +150,7 @@ struct SteerApp: App {
         if let i = a.firstIndex(of: "--project"), i + 1 < a.count, m.projects.contains(where: { $0.id == a[i + 1] }) { m.selectedProjectId = a[i + 1] }
         // Test hook: `--add-folder <path>` adds any folder as a project, as Add project… does after the panel.
         if let i = a.firstIndex(of: "--add-folder"), i + 1 < a.count { m.addWorkspace(folder: a[i + 1]) }
-        // Test hook: `--projects-do "move:3:0,rename:<id>:<name>,hide:<id>,show:<id>,remove:<id>"` runs those Projects
+        // Test hook: `--projects-do "move:3:0,rename:<id>:<name>,hide:<id>,show:<id>,remove:<id>,icon:<id>:auto|initials|<picture>,iconcolors:<id>:#a;#b|none"` runs those Projects
         // window actions 1 s in, in order (same functions as the window's buttons and drag).
         if let i = a.firstIndex(of: "--projects-do"), i + 1 < a.count {
             let steps = a[i + 1].split(separator: ",").map { $0.split(separator: ":", maxSplits: 2).map(String.init) }
@@ -153,6 +163,14 @@ struct SteerApp: App {
                     case "hide": if let p { m.setHidden(p, true) }
                     case "show": if let p { m.setHidden(p, false) }
                     case "remove": if let p { m.removeProject(p) }
+                    case "icon": if let p, s.count == 3 {
+                        switch s[2] {
+                        case "auto": m.setIcon(p, mode: nil)
+                        case "initials": m.setIcon(p, mode: "initials")
+                        default: m.useIconPicture(p, URL(fileURLWithPath: s[2]))
+                        }
+                    }
+                    case "iconcolors": if let p, s.count == 3 { m.setIconColors(p, s[2] == "none" ? nil : s[2].split(separator: ";").map(String.init)) }
                     default: NSLog("projects-do: unknown step \(s)")
                     }
                 }
@@ -228,6 +246,7 @@ struct SteerApp: App {
                     delegate.model = model
                     model.restoreSessions()
                     model.watchForUpdates()
+                    AppUpdater.shared.start(model)
                     model.startAutomation()
                     SteerApp.applyTestArgs(model)
                     if !CommandLine.arguments.contains("--background") { GlobalHotKey.install(model) }
@@ -236,6 +255,10 @@ struct SteerApp: App {
         .windowToolbarStyle(.unifiedCompact)
         .defaultLaunchBehavior(.presented)          // always open the main window at launch (fresh installs too)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { AppUpdater.shared.checkForUpdates() }
+                    .disabled(AppUpdater.isDevBuild)
+            }
             CommandMenu("Projects") {
                 ForEach(0..<9, id: \.self) { i in
                     let list = model.switcherProjects

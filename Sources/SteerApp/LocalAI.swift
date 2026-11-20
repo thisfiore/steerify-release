@@ -128,15 +128,19 @@ enum SessionSummaries {
         return out
     }
 
-    nonisolated(unsafe) private static var memo: [String: SessionSummary] = [:]
+    nonisolated(unsafe) private static var memoStore: [String: SessionSummary] = [:]
+    private static let memoLock = NSLock()
+    /// Summaries load from many chips at once: the cache is locked.
+    private static func memo(_ k: String) -> SessionSummary? { memoLock.lock(); defer { memoLock.unlock() }; return memoStore[k] }
+    private static func memo(_ k: String, _ v: SessionSummary) { memoLock.lock(); memoStore[k] = v; memoLock.unlock() }
 
     /// One or two plain lines: what was done, what it waits on. Apple Intelligence when on, else Claude's last words.
     static func summary(_ id: String) async -> SessionSummary? {
         guard let url = transcript(id) else { return nil }
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         let key = "sum|\(id)|\(size / 4096)"          // a new summary every ~4 KB of conversation
-        if let m = memo[key] { return m }
-        if let c = LocalAI.cached(key) { let s = SessionSummary(text: c, ai: true); memo[key] = s; return s }
+        if let m = memo(key) { return m }
+        if let c = LocalAI.cached(key) { let s = SessionSummary(text: c, ai: true); memo(key, s); return s }
         guard let x = await Task.detached(priority: .utility, operation: { extract(url) }).value else { return nil }
         let fallback = x.replies.last.map { plain($0) } ?? x.asks.last.map { "Asked: " + plain($0, max: 120) } ?? ""
         var parts = ["FIRST ASK: " + String((x.asks.first ?? "").prefix(600))]
@@ -150,10 +154,10 @@ enum SessionSummaries {
             """,
             prompt: parts.joined(separator: "\n\n")) {
             let tidy = ai.replacingOccurrences(of: "**", with: "").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: "\n")
-            let s = SessionSummary(text: tidy, ai: true); memo[key] = s; return s
+            let s = SessionSummary(text: tidy, ai: true); memo(key, s); return s
         }
         guard !fallback.isEmpty else { return nil }
-        let s = SessionSummary(text: fallback, ai: false); memo[key] = s; return s
+        let s = SessionSummary(text: fallback, ai: false); memo(key, s); return s
     }
 }
 

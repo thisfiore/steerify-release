@@ -29,7 +29,7 @@
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"HowTo","name":"How to steer Claude Code with Steerify","description":"Seven short chapters on working with Steerify.","url":"https://steerify.dev/tutorial.html","tool":{"@id":"https://steerify.dev/#app"},"step":[{"@type":"HowToStep","position":1,"name":"Hold the wheel","text":"Steerify keeps your Claude Code sessions next to a board: what to decide, what to look at, what to ship. Claude builds. You steer. Someone has to.","url":"https://steerify.dev/tutorial.html#wheel"},{"@type":"HowToStep","position":2,"name":"Sessions in sync with the roadmap","text":"Every roadmap item has a Start button. The session opens in the right repo, already briefed, and the item shows its status as the work moves. No orphan terminals.","url":"https://steerify.dev/tutorial.html#sync"},{"@type":"HowToStep","position":3,"name":"Choices, with pictures","text":"When Claude needs a decision, it asks on the board, with a mockup for every option and one marked as suggested. Pick one, or write a note. That's the meeting.","url":"https://steerify.dev/tutorial.html#choose"},{"@type":"HowToStep","position":4,"name":"Visual review","text":"Finished work lands in To test as pictures. Press ⌘ and click to pin a note exactly where it's wrong. Refine goes back to the session that built it.","url":"https://steerify.dev/tutorial.html#look"},{"@type":"HowToStep","position":5,"name":"Organised progress","text":"Every item moves from choose, to build, to test, to shipped. The progress bar fills itself. Nobody updates it by hand, least of all you.","url":"https://steerify.dev/tutorial.html#progress"},{"@type":"HowToStep","position":6,"name":"Say OK. It ships.","text":"What you approved waits in Release. One click, and the session commits its own changes, deploys, and marks it live.","url":"https://steerify.dev/tutorial.html#ship"},{"@type":"HowToStep","position":7,"name":"Never get lost","text":"Lost? Press ⌘J. Steerify shows the one thing waiting on you, in any project. Read less. Ship more.","url":"https://steerify.dev/tutorial.html#next"}]},{"@type":"VideoObject","name":"Steerify teaser (30 seconds)","description":"A 30-second pixel-art teaser for Steerify, the Mac app for steering Claude Code.","thumbnailUrl":"https://steerify.dev/teaser/poster.jpg","contentUrl":"https://steerify.dev/teaser/teaser.mp4","uploadDate":"2026-11-18","duration":"PT32S"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Steerify","item":"https://steerify.dev/"},{"@type":"ListItem","position":2,"name":"Tutorial","item":"https://steerify.dev/tutorial.html"}]}]}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="assets/site.css?v=7">
+<link rel="stylesheet" href="assets/site.css?v=10">
 <script src="assets/brand.js?v=7" defer></script>
 <script src="assets/infographics.js?v=7" defer></script>
 <script src="assets/tutorial.js?v=7" defer></script>
@@ -38,6 +38,7 @@
 <header class="nav">
   <div class="wrap">
     <a class="brand" href="index.html"><span data-wheel="tile"></span><b>STEERIFY</b></a>
+    <span class="by" title="Made by a human"><span class="me me-live" role="img" aria-label="Frenk, in pixels, reacting"></span><i>by Frenk</i></span>
     <nav>
       <a href="index.html#loop">How it works</a>
       <a href="index.html#itself">Built in itself</a>
@@ -95,7 +96,7 @@
 <footer>
   <div class="wrap">
     <div class="credits">
-      <p><span class="slot"><span class="pixi" data-pix="dragon" style="--w:18;--h:12"></span></span><span>Made by a human, <b>Frenk</b>.</span></p>
+      <p class="me-row"><span class="slot"><span class="me" role="img" aria-label="Frenk, in pixels"></span><span class="pixi" data-pix="dragon" style="--w:18;--h:12"></span></span><span>Made by a human, <b>Frenk</b>. <i class="me-note">Pixels may flatter.</i></span></p>
       <p><span class="slot"><span class="pixi" data-pix="phoenix" style="--w:16;--h:13"></span></span><span>With <b>1 phoenix</b>, a wonderful woman.</span></p>
       <p><span class="slot"><span class="pixi" data-pix="cat" style="--w:10;--h:10"></span><span class="pixi" data-pix="cat" data-pal="orange" style="--w:10;--h:10"></span><span class="pixi" data-pix="cat" data-pal="black" style="--w:10;--h:10"></span></span><span>And <b>3 cats</b>, on the keyboard.</span></p>
       <p class="aside"><span class="slot"></span><span>Typed mostly by Claude.</span></p>

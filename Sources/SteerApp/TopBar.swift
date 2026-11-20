@@ -66,7 +66,14 @@ extension AppModel {
             case .toTest: add(NextStep(ref: "test:" + s.id, title: s.title, reason: "new to test", score: fresh(80, age(s.updated))))
             case .retest: add(NextStep(ref: "test:" + s.id, title: s.title, reason: "re-test v\(s.version)", score: fresh(78, age(s.updated))))
             case .waiting where liveSession(for: "test:" + s.id, in: p) == nil:
-                add(NextStep(ref: "test:" + s.id, title: s.title, reason: "\(b.effectivePick(s) ?? "refine") · no session on it", score: fresh(70, age(b.verdict("ship:" + s.id).at))))
+                // Your verdict is given. Only if no session ever took it is the next move yours (start one);
+                // once a session took it, it is Claude's turn (a new version comes back to To test), not ⌘J's.
+                let v = b.verdict("ship:" + s.id)
+                if b.takenBySession("test:" + s.id, since: v.at) {
+                    add(NextStep(ref: "test:" + s.id, title: s.title, reason: "\(b.effectivePick(s) ?? "refine") · Claude took it, no new version yet", score: 10))
+                } else {
+                    add(NextStep(ref: "test:" + s.id, title: s.title, reason: "\(b.effectivePick(s) ?? "refine") · no session on it", score: fresh(70, age(v.at))))
+                }
             default: break
             }
         }
@@ -162,22 +169,104 @@ struct NextUp: View {
     }
 }
 
-/// Top bar, center: our mark, "Steerify", and a small "beta v0.x".
+/// Top bar, center: our mark, "Steerify", and a small "beta v0.x". Click the version: what's new in it.
+/// After an update the same panel opens once by itself.
 struct Wordmark: View {
     static let version: String = {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1"
         let parts = v.split(separator: ".")
         return parts.count > 2 && parts[2] == "0" ? parts.prefix(2).joined(separator: ".") : v
     }()
+    @State private var open = false
+    @State private var hover = false
     var body: some View {
         HStack(spacing: 7) {
             PixelWheel(size: 16)
             Text("Steerify").font(.system(size: S(13), weight: .semibold)).foregroundStyle(Brand.cream)
-            Text("beta v\(Self.version)").font(.system(size: S(9.5), design: .monospaced)).foregroundStyle(Brand.mute)
-                .padding(.horizontal, 5).padding(.vertical, 1)
-                .overlay(Capsule().stroke(Brand.line2))
+            Button { open.toggle() } label: {
+                Text("beta v\(Self.version)").font(.system(size: S(9.5), design: .monospaced))
+                    .foregroundStyle(hover || open ? Brand.cream : Brand.mute)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .overlay(Capsule().stroke(hover || open ? Brand.amber.opacity(0.7) : Brand.line2))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .onHover { hover = $0; if $0 { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+            .help("What's new in v\(Self.version)")
+            .popover(isPresented: $open, arrowEdge: .bottom) { WhatsNewPanel(close: { open = false }) }
         }
         .fixedSize()
-        .help("Steerify beta v\(Self.version)")
+        .onAppear {
+            if WhatsNew.shouldShowAfterUpdate() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { open = true } }
+        }
+    }
+}
+
+/// The release notes bundled with this build (Resources/whats-new.md, written by release.sh from the board).
+enum WhatsNew {
+    static let full = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1"
+    static let allNotes = URL(string: "https://github.com/thisfiore/steerify-release/releases")!
+    static var thisRelease: URL { URL(string: "https://github.com/thisfiore/steerify-release/releases/tag/v\(full)")! }
+
+    /// Feature titles: the bold part of each "- **Title** — what" line.
+    static let titles: [String] = {
+        guard let url = Bundle.main.url(forResource: "whats-new", withExtension: "md"),
+              let md = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return md.split(separator: "\n").compactMap { line -> String? in
+            guard line.hasPrefix("- **"), let end = line.range(of: "**", range: line.index(line.startIndex, offsetBy: 4)..<line.endIndex)
+            else { return nil }
+            return String(line[line.index(line.startIndex, offsetBy: 4)..<end.lowerBound])
+        }.reversed()   // newest first
+    }()
+
+    /// True once per new version that has notes; a first install only remembers the version.
+    static func shouldShowAfterUpdate() -> Bool {
+        guard !CommandLine.arguments.contains("--background") else { return false }
+        let key = "lastSeenVersion", seen = Prefs.store.string(forKey: key)
+        Prefs.store.set(full, forKey: key)
+        return seen != nil && seen != full && !titles.isEmpty
+    }
+}
+
+struct WhatsNewPanel: View {
+    let close: () -> Void
+    @State private var all = false
+    var body: some View {
+        let list = WhatsNew.titles
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                PixelWheel(size: 18)
+                Text("What's new in v\(WhatsNew.full)").font(.system(size: S(14), weight: .semibold)).foregroundStyle(Brand.cream)
+            }
+            if list.isEmpty {
+                Text(AppUpdater.isDevBuild ? "Dev build: notes come with a release." : "Small fixes and polish.")
+                    .font(.system(size: S(12))).foregroundStyle(Brand.mute)
+            } else {
+                let rows = VStack(alignment: .leading, spacing: 7) {
+                    ForEach(Array((all ? list : Array(list.prefix(8))).enumerated()), id: \.offset) { _, t in
+                        HStack(alignment: .firstTextBaseline, spacing: 7) {
+                            Circle().fill(Brand.amber).frame(width: 5, height: 5).offset(y: -2)
+                            Text(t).font(.system(size: S(12))).foregroundStyle(Brand.cream).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    if list.count > 8 && !all {
+                        Button("+ \(list.count - 8) more") { all = true }.buttonStyle(.plain)
+                            .font(.system(size: S(11.5))).foregroundStyle(Brand.amber)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                if all { ScrollView { rows }.frame(height: 320) } else { rows }
+            }
+            Divider()
+            HStack(spacing: 14) {
+                Button("Release notes ↗") { NSWorkspace.shared.open(WhatsNew.thisRelease); close() }
+                Button("All versions ↗") { NSWorkspace.shared.open(WhatsNew.allNotes); close() }
+                Spacer()
+                if AppUpdater.shared.enabled {
+                    Button("Check for updates") { close(); AppUpdater.shared.checkForUpdates() }
+                }
+            }
+            .buttonStyle(.plain).font(.system(size: S(11.5))).foregroundStyle(Brand.amber)
+        }
+        .padding(16).frame(width: 380)
     }
 }

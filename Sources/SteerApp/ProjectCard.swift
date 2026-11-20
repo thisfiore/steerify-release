@@ -38,36 +38,73 @@ enum PixelFont {
     }
 }
 
-/// Pixel avatar: initials on a gradient tile whose colours come from the project name.
+/// Pixel avatar: the project's favicon pixelated on a tile in its brand colours (ProjectIcon.swift), or its
+/// initials on a gradient whose colours come from the project name. Pixels snap to whole screen pixels, so
+/// it stays sharp at 20 pt.
 struct PixelAvatar: View {
     let name: String
     var size: CGFloat = 44
+    /// The project, to show its favicon. nil = initials only.
+    var projectId: String? = nil
+    /// Shown instead of the project's own look (the Projects window's preview).
+    var look: ProjectIconLook? = nil
+    @ObservedObject private var icons = ProjectIcons.shared
+    @Environment(\.displayScale) private var scale
+
     var body: some View {
+        let l = look ?? icons.look(projectId)
         let h = abs(name.unicodeScalars.reduce(7) { ($0 &* 31) &+ Int($1.value) })
         let hue = Double(h % 360) / 360
+        let colors = l?.colors.map { [$0.0.color, $0.1.color] }
+            ?? [Color(hue: hue, saturation: 0.75, brightness: 0.85),
+                Color(hue: (hue + 0.12).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.55)]
+        let grid = size > 32 ? (l?.large ?? l?.small) : (l?.small ?? l?.large)
         RoundedRectangle(cornerRadius: size * 0.24)
-            .fill(LinearGradient(colors: [Color(hue: hue, saturation: 0.75, brightness: 0.85),
-                                          Color(hue: (hue + 0.12).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.55)],
-                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+            .fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
             .overlay {
                 Canvas { ctx, sz in
-                    let letters = Array(PixelFont.initials(name))
-                    let cols = letters.count * 5 + (letters.count - 1)
-                    let cell = floor(sz.width * 0.68 / CGFloat(cols))
-                    let ox = (sz.width - CGFloat(cols) * cell) / 2, oy = (sz.height - 7 * cell) / 2
-                    for (i, ch) in letters.enumerated() {
-                        for (y, row) in (PixelFont.glyphs[ch] ?? []).enumerated() {
-                            for (x, c) in row.enumerated() where c == "#" {
-                                let r = CGRect(x: ox + CGFloat(i * 6 + x) * cell, y: oy + CGFloat(y) * cell, width: cell, height: cell)
-                                ctx.fill(Path(r.offsetBy(dx: cell * 0.35, dy: cell * 0.35)), with: .color(.black.opacity(0.25)))   // drop shadow
-                                ctx.fill(Path(r), with: .color(.white))
-                            }
-                        }
-                    }
+                    if let grid { drawGrid(grid, ctx, sz) } else { drawInitials(ctx, sz) }
                 }
             }
             .overlay(RoundedRectangle(cornerRadius: size * 0.24).stroke(Color.white.opacity(0.15)))
             .frame(width: size, height: size)
+    }
+
+    /// One whole number of screen pixels per cell, centred.
+    private func drawGrid(_ g: PixelGrid, _ ctx: GraphicsContext, _ sz: CGSize) {
+        let s = max(1, scale)
+        // Whole screen pixels per cell, as big as fits in ~80% of the tile.
+        var px = (sz.width * 0.8 / CGFloat(g.n) * s).rounded()
+        if px * CGFloat(g.n) > sz.width * 0.86 * s { px -= 1 }
+        let cell = max(1, px) / s
+        let w = cell * CGFloat(g.n)
+        let ox = (floor((sz.width - w) / 2 * s)) / s, oy = (floor((sz.height - w) / 2 * s)) / s
+        let shadow = max(1 / s, floor(cell * 0.3 * s) / s)
+        for (i, p) in g.px.enumerated() {
+            guard let p else { continue }
+            let r = CGRect(x: ox + CGFloat(i % g.n) * cell, y: oy + CGFloat(i / g.n) * cell, width: cell, height: cell)
+            ctx.fill(Path(r.offsetBy(dx: shadow, dy: shadow)), with: .color(.black.opacity(0.22)))
+        }
+        for (i, p) in g.px.enumerated() {
+            guard let p else { continue }
+            ctx.fill(Path(CGRect(x: ox + CGFloat(i % g.n) * cell, y: oy + CGFloat(i / g.n) * cell, width: cell, height: cell)), with: .color(p.color))
+        }
+    }
+
+    private func drawInitials(_ ctx: GraphicsContext, _ sz: CGSize) {
+        let letters = Array(PixelFont.initials(name))
+        let cols = letters.count * 5 + (letters.count - 1)
+        let cell = floor(sz.width * 0.68 / CGFloat(cols))
+        let ox = (sz.width - CGFloat(cols) * cell) / 2, oy = (sz.height - 7 * cell) / 2
+        for (i, ch) in letters.enumerated() {
+            for (y, row) in (PixelFont.glyphs[ch] ?? []).enumerated() {
+                for (x, c) in row.enumerated() where c == "#" {
+                    let r = CGRect(x: ox + CGFloat(i * 6 + x) * cell, y: oy + CGFloat(y) * cell, width: cell, height: cell)
+                    ctx.fill(Path(r.offsetBy(dx: cell * 0.35, dy: cell * 0.35)), with: .color(.black.opacity(0.25)))   // drop shadow
+                    ctx.fill(Path(r), with: .color(.white))
+                }
+            }
+        }
     }
 }
 
@@ -112,7 +149,7 @@ struct ProjectCard: View {
 
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                PixelAvatar(name: project.name, size: S(40))
+                PixelAvatar(name: project.name, size: S(40), projectId: project.id)
                 Text(project.name).font(.system(size: S(16), weight: .bold)).foregroundStyle(.white).lineLimit(2)
             }
             if !b.goal.isEmpty {

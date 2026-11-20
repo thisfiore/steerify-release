@@ -1024,6 +1024,7 @@ struct RoadTrackView: View {
     let track: String; let items: [RoadItem]
     @State private var consolidating = CommandLine.arguments.contains("--consolidate-open")   // test hook: panels open
     @State private var showArchived = false
+    @State private var showDone = true
     private var info: Chapter? { board.chapters.first { $0.name == track } }
     private var rolling: Bool { track == RequestLog.fixesChapter }
     /// Rolling chapter: done fixes older than a week are archived (folded away), so it never grows forever.
@@ -1090,122 +1091,155 @@ struct RoadTrackView: View {
         let done = all.filter { $0.status == "done" }.count
         let pct = all.isEmpty ? 0 : Double(done) / Double(all.count)
         Card {
-            HStack(alignment: .center, spacing: 14) {
-                ZStack {
-                    Circle().stroke(Brand.line2, lineWidth: 5)
-                    Circle().trim(from: 0, to: pct).stroke(Brand.green, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
-                    Text("\(Int(pct * 100))%").font(.system(size: S(12), weight: .bold).monospacedDigit()).foregroundStyle(.white)
-                }.frame(width: S(52), height: S(52))
+            // Header: icon + title + objective get the full width; progress and actions share one line below.
+            HStack(alignment: .top, spacing: 12) {
                 AutoIcon(title: track, size: S(30), tile: true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(info?.draft == true ? "NEW CHAPTER · DRAFT" : rolling ? "ROLLING CHAPTER · FIXES FROM YOUR REQUESTS" : "OBJECTIVE")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(info?.draft == true ? "NEW CHAPTER · DRAFT" : rolling ? "ROLLING CHAPTER · FIXES FROM YOUR REQUESTS" : "CHAPTER")
                         .font(Brand.label(8.5)).tracking(0.8).foregroundStyle(info?.draft == true ? Brand.green : Brand.mute)
                     Text(track).font(.system(size: S(14.5), weight: .semibold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
-                    if let o = info?.objective, !o.isEmpty { Text(o).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.85)).fixedSize(horizontal: false, vertical: true) }
-                    Text("\(done) of \(all.count) key results done").font(.system(size: S(11))).foregroundStyle(Brand.mute)
-                }
-                Spacer()
-                SessionChip(projectId: board.project.id, ref: "track:" + BoardFiles.slug(track))
-                if info?.draft != true {
-                let props = board.consolidation(track: track)
-                Button { consolidating.toggle(); if consolidating { selected = Set(props.filter(\.sure).map(\.id)) } } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "checklist").font(.system(size: S(11), weight: .semibold))
-                        Text("Consolidate").font(.system(size: S(11.5), weight: .semibold))
-                        if !props.isEmpty { Text("\(props.count)").font(.system(size: S(10), weight: .bold)).foregroundStyle(Color(hex: 0x1a1200)).padding(.horizontal, 4).background(Capsule().fill(Brand.amber)) }
+                    if let o = info?.objective, !o.isEmpty {
+                        Text(o).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.75)).fixedSize(horizontal: false, vertical: true)
                     }
-                    .foregroundStyle(Brand.cream).padding(.horizontal, 10).padding(.vertical, 5)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.line2))
-                }.buttonStyle(SteerButton()).help("Bring this chapter up to date: what the board already proves, then Claude for the rest")
-                if done < all.count {
-                    Button { markAll(all) } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark.seal").font(.system(size: S(11), weight: .semibold))
-                            Text("Mark chapter done").font(.system(size: S(11.5), weight: .semibold))
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    progressBar(all)
+                    HStack(spacing: 12) {
+                        Text("\(done)/\(all.count) done · \(Int(pct * 100))%").font(.system(size: S(11), weight: .semibold).monospacedDigit())
+                            .foregroundStyle(done == all.count && !all.isEmpty ? Brand.green : Brand.ink)
+                        ForEach(Self.order.filter { $0 != "done" }, id: \.self) { st in
+                            let n = all.filter { $0.status == st }.count
+                            if n > 0 {
+                                HStack(spacing: 4) {
+                                    Circle().fill(Self.color(st)).frame(width: 7, height: 7)
+                                    Text("\(n) \(Self.label(st))").font(.system(size: S(11))).foregroundStyle(Brand.ink.opacity(0.7))
+                                }
+                            }
                         }
-                        .foregroundStyle(Brand.green).padding(.horizontal, 10).padding(.vertical, 5)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.green.opacity(0.5)))
-                    }.buttonStyle(SteerButton()).help("Every key result of this chapter → done (Undo in the message)")
+                    }
                 }
-                ActionButton(title: "Resume this chapter", primary: true) {
-                    var x = ItemRef(ref: "track:" + BoardFiles.slug(track))!; x.title = "Chapter: " + track; x.area = all.first?.area
-                    model.start(projectId: board.project.id, item: x, intent: .resume)
-                }.help("Claude reads this chapter, checks the code (state of the art) and picks the next step")
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                SessionChip(projectId: board.project.id, ref: "track:" + BoardFiles.slug(track))
+                if info?.draft != true { actions(all, done: done) }
             }
             if info?.draft == true { draftPanel(all) }
             if consolidating { consolidatePanel(all).task { await board.refreshCommitProposals(force: true) } }
-            GeometryReader { g in
-                HStack(spacing: 2) {
-                    ForEach(Self.order, id: \.self) { st in
-                        let n = all.filter { $0.status == st }.count
-                        if n > 0 {
-                            RoundedRectangle(cornerRadius: 2).fill(Self.color(st))
-                                .frame(width: max(4, (g.size.width - 8) * CGFloat(n) / CGFloat(max(all.count, 1))))
-                        }
-                    }
-                }
-            }.frame(height: 6)
-            HStack(spacing: 12) {
+            Divider().overlay(Brand.line)
+            let open = items.filter { $0.status != "done" }
+            ForEach(open) { row($0) }
+            doneSection(all)
+        }
+        .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
+    }
+
+    /// One bar, coloured by status (done first), so the share already done reads at a glance.
+    private func progressBar(_ all: [RoadItem]) -> some View {
+        GeometryReader { g in
+            HStack(spacing: 2) {
                 ForEach(Self.order, id: \.self) { st in
                     let n = all.filter { $0.status == st }.count
                     if n > 0 {
-                        HStack(spacing: 4) {
-                            Circle().fill(Self.color(st)).frame(width: 7, height: 7)
-                            Text("\(n) \(Self.label(st))").font(.system(size: S(11))).foregroundStyle(Brand.ink.opacity(0.8))
-                        }
+                        RoundedRectangle(cornerRadius: 2).fill(Self.color(st))
+                            .frame(width: max(4, (g.size.width - 8) * CGFloat(n) / CGFloat(max(all.count, 1))))
                     }
                 }
             }
-            Divider().overlay(Brand.line)
-            let old = items.filter(archived)
-            ForEach(items.filter { showArchived || !archived($0) }) { r in
-                HStack(alignment: .top, spacing: 10) {
-                    Button { set(r, r.status == "done" ? "todo" : "done") } label: { statusMark(r.status) }
-                        .buttonStyle(SteerButton()).padding(.top, 2)
-                        .help(r.status == "done" ? "Done · click to reopen" : "Click: mark as done · right-click: any status")
-                        .contextMenu { statusMenu(r) }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(r.text).font(.system(size: S(12.5))).foregroundStyle(r.status == "done" ? Brand.mute : Brand.ink)
-                            .strikethrough(r.status == "done", color: Brand.mute.opacity(0.6))
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let f = r.forChapter {
-                            Button { model.focusItem(projectId: board.project.id, ref: "track:" + BoardFiles.slug(f)) } label: {
-                                Text("↳ \(f)").font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1)
-                            }.buttonStyle(.plain).pointerStyle(.link).help("The chapter this fix belongs to")
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    if r.status != "done" && r.status != "todo" {
-                        Text(Self.label(r.status)).font(.system(size: S(10.5))).foregroundStyle(Self.color(r.status))
-                    }
-                    SessionChip(projectId: board.project.id, ref: "road:" + r.id)
-                    if r.status == "done" {
-                        Menu { statusMenu(r) } label: { Image(systemName: "ellipsis") }
-                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Brand.mute).pointerStyle(.link)
-                    }
-                    if r.status != "done" {
-                        Menu {
-                            Button("Check the code, then plan") { start(r, .plan) }
-                            Button("Build it") { start(r, .build) }
-                            Button("Just look") { start(r, .look) }
-                            Divider()
-                            Menu("Mark as") { statusMenu(r) }
-                        } label: { HStack(spacing: 4) { PixelIcon(name: "play", size: 8); Text("Start") } }
-                        .menuStyle(.borderlessButton).fixedSize().font(.system(size: S(11))).pointerStyle(.link)
-                    }
+        }.frame(height: 6)
+    }
+
+    @ViewBuilder private func actions(_ all: [RoadItem], done: Int) -> some View {
+        let props = board.consolidation(track: track)
+        HStack(spacing: 6) {
+            Button { consolidating.toggle(); if consolidating { selected = Set(props.filter(\.sure).map(\.id)) } } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "checklist").font(.system(size: S(11), weight: .semibold))
+                    Text("Consolidate").font(.system(size: S(11.5), weight: .semibold))
+                    if !props.isEmpty { Text("\(props.count)").font(.system(size: S(10), weight: .bold)).foregroundStyle(Color(hex: 0x1a1200)).padding(.horizontal, 4).background(Capsule().fill(Brand.amber)) }
                 }
-                .padding(.vertical, 3)
-                .id("road:" + r.id).flash("road:" + r.id)
+                .foregroundStyle(Brand.cream).padding(.horizontal, 9).padding(.vertical, 5)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.line2))
+            }.buttonStyle(SteerButton()).help("Bring this chapter up to date: what the board already proves, then Claude for the rest")
+            if done < all.count {
+                Button { markAll(all) } label: {
+                    Image(systemName: "checkmark.seal").font(.system(size: S(12), weight: .semibold))
+                        .foregroundStyle(Brand.green).padding(.horizontal, 8).padding(.vertical, 5)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.green.opacity(0.5)))
+                }.buttonStyle(SteerButton()).help("Mark chapter done: every key result → done (Undo in the message)")
             }
-            if !old.isEmpty {
-                Button { showArchived.toggle() } label: {
-                    Text(showArchived ? "Hide archived" : "\(old.count) archived · done more than a week ago")
-                        .font(.system(size: S(11))).foregroundStyle(Brand.mute)
-                }.buttonStyle(.plain).pointerStyle(.link)
+            ActionButton(title: "Resume", primary: true) {
+                var x = ItemRef(ref: "track:" + BoardFiles.slug(track))!; x.title = "Chapter: " + track; x.area = all.first?.area
+                model.start(projectId: board.project.id, item: x, intent: .resume)
+            }.help("Resume this chapter: Claude reads it, checks the code (state of the art) and picks the next step")
+        }
+        .fixedSize()
+    }
+
+    /// What is already done in the chapter, always shown (the list filter only hides it from the open rows).
+    @ViewBuilder private func doneSection(_ all: [RoadItem]) -> some View {
+        let doneItems = all.filter { $0.status == "done" }
+        let old = doneItems.filter(archived)
+        let shown = doneItems.filter { showArchived || !archived($0) }
+        if !doneItems.isEmpty {
+            Button { withAnimation(.easeOut(duration: 0.15)) { showDone.toggle() } } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showDone ? "chevron.down" : "chevron.right").font(.system(size: S(9), weight: .bold))
+                    Text("DONE · \(doneItems.count)").font(Brand.label(8.5)).tracking(0.8)
+                    Rectangle().fill(Brand.line).frame(height: 1)
+                }.foregroundStyle(Brand.green).contentShape(Rectangle())
+            }.buttonStyle(.plain).pointerStyle(.link).padding(.top, 4)
+                .help(showDone ? "Fold what is done" : "Show what is done")
+            if showDone {
+                ForEach(shown) { row($0) }
+                if !old.isEmpty {
+                    Button { showArchived.toggle() } label: {
+                        Text(showArchived ? "Hide archived" : "\(old.count) archived · done more than a week ago")
+                            .font(.system(size: S(11))).foregroundStyle(Brand.mute)
+                    }.buttonStyle(.plain).pointerStyle(.link)
+                }
             }
         }
-        .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
+    }
+
+    @ViewBuilder private func row(_ r: RoadItem) -> some View {
+        let isDone = r.status == "done"
+        HStack(alignment: .top, spacing: 10) {
+            Button { set(r, isDone ? "todo" : "done") } label: { statusMark(r.status) }
+                .buttonStyle(SteerButton()).padding(.top, isDone ? 1 : 2)
+                .help(isDone ? "Done · click to reopen" : "Click: mark as done · right-click: any status")
+                .contextMenu { statusMenu(r) }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.text).font(.system(size: S(isDone ? 11.5 : 12.5))).foregroundStyle(isDone ? Brand.mute : Brand.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let f = r.forChapter {
+                    Button { model.focusItem(projectId: board.project.id, ref: "track:" + BoardFiles.slug(f)) } label: {
+                        Text("↳ \(f)").font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1)
+                    }.buttonStyle(.plain).pointerStyle(.link).help("The chapter this fix belongs to")
+                }
+            }
+            Spacer(minLength: 8)
+            if !isDone && r.status != "todo" {
+                Text(Self.label(r.status)).font(.system(size: S(10.5))).foregroundStyle(Self.color(r.status))
+            }
+            SessionChip(projectId: board.project.id, ref: "road:" + r.id)
+            if isDone {
+                Menu { statusMenu(r) } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Brand.mute).pointerStyle(.link)
+            } else {
+                Menu {
+                    Button("Check the code, then plan") { start(r, .plan) }
+                    Button("Build it") { start(r, .build) }
+                    Button("Just look") { start(r, .look) }
+                    Divider()
+                    Menu("Mark as") { statusMenu(r) }
+                } label: { HStack(spacing: 4) { PixelIcon(name: "play", size: 8); Text("Start") } }
+                .menuStyle(.borderlessButton).fixedSize().font(.system(size: S(11))).pointerStyle(.link)
+            }
+        }
+        .padding(.vertical, isDone ? 1 : 3)
+        .id("road:" + r.id).flash("road:" + r.id)
     }
 
     /// A chapter Claude drafted from a feature request: nothing is on the roadmap until you say so.

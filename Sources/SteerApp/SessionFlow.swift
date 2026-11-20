@@ -86,9 +86,11 @@ extension BoardStore {
 }
 
 extension AppModel {
-    /// Finished: the process ended, or Claude is idle and every item it covers is through its cycle.
+    /// Finished: the process ended, Claude is idle and every item it covers is through its cycle, or (SessionOutlook.swift)
+    /// it is idle with nothing open outside the board: no question, no next step, or a newer session took its work.
     func isWrapped(_ s: TerminalSession) -> Bool {
         if !s.running { return true }
+        if outlook(s)?.isDone == true { return true }
         guard s.kind == .claude, s.status == .idle,
               let p = projects.first(where: { $0.id == s.projectId }), let item = s.item else { return false }
         let b = board(for: p)

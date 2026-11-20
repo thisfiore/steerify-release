@@ -66,6 +66,7 @@ enum SessionLayout: String, CaseIterable { case tabs, list
 
 /// One session, curated: status dot (pulsing while rowing), short name, mood, close.
 struct SessionChip2: View {
+    @EnvironmentObject var model: AppModel
     @ObservedObject var session: TerminalSession
     let selected: Bool
     /// Through its cycle (released / done / ended): dimmed, "done", suggested for closing.
@@ -78,31 +79,55 @@ struct SessionChip2: View {
     @State private var hover = false
 
     var body: some View {
+        let outlook = model.outlook(session)
         HStack(spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
                 AutoIcon(title: session.item?.title ?? session.title, size: S(18))
                 PulseDot(color: wrapped ? Brand.green : session.moodColor, pulsing: session.running && session.status == .working).scaleEffect(0.8).offset(x: 5, y: 5)
             }
             .opacity(wrapped && !selected ? 0.55 : 1)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 5) {
-                    Text(session.title).font(.system(size: S(12), weight: selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? Color.white : Brand.ink.opacity(wrapped ? 0.45 : 0.85)).lineLimit(1)
+            VStack(alignment: .leading, spacing: vertical ? 2 : 1) {
+                if vertical {
+                    // Column mode: verb + stage tag on their own small row, so the name keeps the full width.
+                    let (verb, name) = splitTitle
+                    let tag = wrapped ? nil : stage
+                    if verb != nil || tag != nil {
+                        HStack(spacing: 5) {
+                            if let verb { Text(verb.uppercased()).font(Brand.label(8)).tracking(0.6).foregroundStyle(Brand.mute) }
+                            if let tag { StageTag(tab: tag) }
+                        }
+                    }
+                    Text(name).font(.system(size: S(12), weight: selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Color.white : Brand.ink.opacity(wrapped ? 0.45 : 0.85))
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         .strikethrough(wrapped && !selected, color: Brand.mute.opacity(0.6))
-                    if let stage, !wrapped { StageTag(tab: stage) }
+                } else {
+                    HStack(spacing: 5) {
+                        Text(session.title).font(.system(size: S(12), weight: selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? Color.white : Brand.ink.opacity(wrapped ? 0.45 : 0.85)).lineLimit(1)
+                            .strikethrough(wrapped && !selected, color: Brand.mute.opacity(0.6))
+                        if let stage, !wrapped { StageTag(tab: stage) }
+                    }
                 }
                 if vertical || selected {
-                    Text((wrapped ? (session.running ? "done · close it" : "ended · close it") : session.moodWord) + (vertical ? " · " + session.repo.name : ""))
-                        .font(.system(size: S(10))).foregroundStyle(wrapped ? Brand.green.opacity(0.8) : session.moodColor).lineLimit(1)
+                    Text(subtitle(outlook) + (vertical && outlook == nil ? " · " + session.repo.name : ""))
+                        .font(.system(size: S(10))).foregroundStyle(subtitleColor(outlook))
+                        .lineLimit(vertical && outlook?.isDone == false ? 3 : 1).fixedSize(horizontal: false, vertical: true)
                 }
             }
             if vertical { Spacer(minLength: 4) }
+            if case .next? = outlook, hover || selected {
+                Button { model.goOn(session) } label: {
+                    Image(systemName: "arrow.right.circle.fill").font(.system(size: S(15))).foregroundStyle(Brand.amber)
+                }
+                .buttonStyle(SteerButton()).pointerStyle(.link).help("Tell the session to take the next step it named")
+            }
             if hover || selected {
                 Button(action: close) { Image(systemName: "xmark").font(.system(size: S(8), weight: .bold)) }
                     .buttonStyle(SteerButton()).foregroundStyle(Brand.mute).help("Close session (⌘W)")
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, vertical ? 7 : 5)
+        .padding(.horizontal, 10).padding(.vertical, vertical ? 8 : 5)
         .frame(maxWidth: vertical ? .infinity : nil, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Brand.panel2 : hover ? Color.white.opacity(0.04) : .clear))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(selected ? session.moodColor.opacity(0.5) : .clear))
@@ -110,8 +135,35 @@ struct SessionChip2: View {
         .onHover { hover = $0 }
         .onTapGesture(perform: select)
         .pointerStyle(.link)
-        .help(wrapped ? "Done: released / finished. Close it — the conversation stays resumable from its item."
-                      : (session.item?.title ?? session.repo.name))
+        .help(help(outlook))
+    }
+
+    /// "Tidy · Project ops" → ("Tidy", "Project ops"); a title without a known verb stays whole.
+    private var splitTitle: (String?, String) {
+        let parts = session.title.components(separatedBy: " · ")
+        if parts.count > 1, SessionName.verbs.values.contains(parts[0]) { return (parts[0], parts.dropFirst().joined(separator: " · ")) }
+        return (nil, session.title)
+    }
+
+    private func subtitle(_ o: SessionOutlook?) -> String {
+        if !session.running { return "ended · close it" }
+        if let o { return o.line }
+        return wrapped ? "done · close it" : session.moodWord
+    }
+    private func subtitleColor(_ o: SessionOutlook?) -> Color {
+        if wrapped { return Brand.green.opacity(0.8) }
+        switch o { case .ask?: return Brand.amber; case .next?: return Brand.cream; default: return session.moodColor }
+    }
+    private func help(_ o: SessionOutlook?) -> String {
+        let name = session.item?.title ?? session.repo.name
+        switch o {
+        case .ask(let t)?: return name + "\nAsks you: " + t
+        case .next(let t)?: return name + "\nNext step: " + t + "\nGo on sends it to the session."
+        case .takenOver(let by)?: return "Done: \(by) took over this work. Close it — the conversation stays resumable from its item."
+        case .onBoard(let w)?: return "Done: what it waits on is on \(w). Close it — the conversation stays resumable from its item."
+        case .nothing?: return "Done: nothing left to do. Close it — the conversation stays resumable from its item."
+        case nil: return wrapped ? "Done: released / finished. Close it — the conversation stays resumable from its item." : name
+        }
     }
 }
 

@@ -175,6 +175,7 @@ struct MenuBarPanel: View {
     /// Sessions that need you or are working first; idle ones fill up to 4 rows.
     private var shownSessions: [TerminalSession] {
         func rank(_ s: TerminalSession) -> Int {
+            if model.isWrapped(s) { return 4 }
             let st = s.kind == .claude ? s.status : (s.running ? .working : .ended)
             switch st { case .waiting: return 0; case .working: return 1; case .starting: return 2; case .idle: return 3; case .ended: return 4 }
         }
@@ -192,7 +193,7 @@ struct MenuBarPanel: View {
             }
             ForEach(shownSessions) { s in
                 Button { go { model.selectedProjectId = s.projectId; model.selectedSession[s.projectId] = s.id } } label: {
-                    MenuSessionRow(session: s, project: model.projects.first { $0.id == s.projectId }?.name ?? "")
+                    MenuSessionRow(session: s, project: model.projects.first { $0.id == s.projectId }?.name ?? "", outlook: model.outlook(s))
                 }.buttonStyle(SteerButton())
             }
         }
@@ -205,6 +206,7 @@ struct MenuBarPanel: View {
                 let n = model.nextSteps(p).filter(\.urgent).count
                 Button { go { model.selectedProjectId = p.id } } label: {
                     HStack {
+                        PixelAvatar(name: p.name, size: 16, projectId: p.id)
                         Text(p.name).font(.system(size: 12)).foregroundStyle(Brand.ink).lineLimit(1)
                         Spacer()
                         Text(n == 0 ? "all clear" : "\(n) for you").font(.system(size: 11)).foregroundStyle(n == 0 ? Brand.mute : Brand.amber)
@@ -265,9 +267,16 @@ struct MenuBarPanel: View {
 struct MenuSessionRow: View {
     @ObservedObject var session: TerminalSession
     let project: String
+    var outlook: SessionOutlook? = nil
     var body: some View {
         let st = session.kind == .claude ? session.status : (session.running ? .working : .ended)
         let (word, c): (String, Color) = {
+            switch outlook {
+            case .ask?: return ("asks you", Brand.amber)
+            case .next?: return ("next step", Brand.cream)
+            case let o? where o.isDone: return ("done", Brand.green)
+            default: break
+            }
             switch st {
             case .working: return (session.kind == .claude ? "rowing…" : "shell", Brand.green)
             case .waiting: return ("raising a hand", Brand.amber)

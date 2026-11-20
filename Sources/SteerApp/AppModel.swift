@@ -5,7 +5,7 @@ import WebKit
 /// App state. Board web views and terminal views are cached per project so switching is instant.
 @MainActor
 final class AppModel: ObservableObject {
-    @Published var projects: [Project]
+    @Published var projects: [Project] { didSet { ProjectIcons.shared.refresh(projects) } }
     @Published var selectedProjectId: String? {
         didSet {
             if let id = selectedProjectId { Prefs.store.set(id, forKey: Prefs.lastProject) }
@@ -140,8 +140,11 @@ final class AppModel: ObservableObject {
         guard let p = project else { return }
         let list = nextSteps(p).filter(\.urgent)
         guard !list.isEmpty else { return }
-        let step = list[nextIndex % list.count]
+        let i = nextIndex % list.count
+        let step = list[i]
         nextIndex = (nextIndex + 1) % list.count
+        // Always say why ⌘J brought you here, so a jump is never a mystery.
+        showToast("⌘J \(i + 1)/\(list.count) · \(step.reason.prefix(1).uppercased() + step.reason.dropFirst())", projectId: p.id, ref: step.ref)
         if step.ref.hasPrefix("session:"), let id = UUID(uuidString: String(step.ref.dropFirst(8))) {
             selectedSession[p.id] = id; return
         }
@@ -214,6 +217,7 @@ final class AppModel: ObservableObject {
 
     init() {
         projects = ProjectStore.load()
+        ProjectIcons.shared.refresh(projects)
         let last = Prefs.store.string(forKey: Prefs.lastProject)
         selectedProjectId = projects.first(where: { $0.id == last })?.id ?? projects.first?.id
     }
@@ -516,6 +520,7 @@ final class AppModel: ObservableObject {
     func restartForUpdate() {
         quittingForUpdate = true
         persistSessions()
+        if AppUpdater.shared.installIfReady() { return }   // a downloaded release: Sparkle replaces the app and reopens it
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", "sleep 0.8; /usr/bin/open '\(Bundle.main.bundleURL.path)'"]

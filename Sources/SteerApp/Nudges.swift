@@ -111,6 +111,8 @@ extension AppModel {
                         list.append(Nudge(projectId: p.id, ref: a.ref, title: a.title, reason: a.reason, intent: a.intent, at: a.at, kind: .waiting(s.title)))
                     default: break   // working / starting: it will be told when it stops
                     }
+                } else if board(for: p).takenBySession(a.ref, since: a.at) {
+                    continue      // a session already took this answer and ended: nothing to start, not yours to do
                 } else {
                     let resumable = board(for: p).lastLink(a.ref).map { SessionLinks.resumable($0.claudeSession) } ?? false
                     list.append(Nudge(projectId: p.id, ref: a.ref, title: a.title, reason: a.reason, intent: a.intent, at: a.at, kind: .noSession(resumable: resumable)))

@@ -20,9 +20,11 @@ struct ContentView: View {
             if let p = model.project {
                 // The tabs span the whole window: board and sessions below both follow them.
                 VStack(spacing: 0) {
-                    TabBar(board: model.board(for: p), tab: $boardTab).id(p.id).background(Brand.bg)
+                    let b = model.board(for: p)
+                    // A new project with an empty board opens on its welcome screen until it is set up (Setup.swift).
+                    SetupGate(board: b) { TabBar(board: b, tab: $boardTab).id(p.id).background(Brand.bg) } welcome: { EmptyView() }
                     BoardTerminalSplit {
-                        BoardScreen(board: model.board(for: p)).id(p.id)
+                        SetupGate(board: b) { BoardScreen(board: b).id(p.id) } welcome: { NewProjectWelcome(board: b).id(p.id) }
                     } right: {
                         TerminalPane(project: p)
                     }
@@ -70,7 +72,7 @@ struct ContentView: View {
                             .background(Capsule().fill(Brand.amber))
                     }
                     .buttonStyle(SteerButton())
-                    .help("A new build of Steerify is ready (⌥⌘R). Your sessions come back: Claude conversations resume with their history.")
+                    .help("\(AppUpdater.shared.readyVersion.map { "Steerify \($0)" } ?? "A new build of Steerify") is ready (⌥⌘R). Your sessions come back: Claude conversations resume with their history.")
                 }
                 Button { model.reloadBoard() } label: { Image(systemName: "arrow.clockwise") }.help("Reload board (⌘R)")
                 if (model.project?.port ?? 0) > 0 {
@@ -92,6 +94,7 @@ struct Sidebar: View {
                 header("PROJECTS")
                 ForEach(Array(model.switcherProjects.enumerated()), id: \.element.id) { i, p in
                     row(selected: model.selectedProjectId == p.id, action: { model.selectedProjectId = p.id }) {
+                        PixelAvatar(name: p.name, size: S(16), projectId: p.id)
                         Text(p.name)
                         Spacer()
                         let n = model.sessions(of: p.id).count
@@ -570,14 +573,18 @@ struct ProjectSwitcher: View {
             if let p = model.project {
                 Button { open.toggle() } label: {
                     HStack(spacing: 7) {
-                        PixelAvatar(name: p.name, size: S(20))
+                        PixelAvatar(name: p.name, size: S(20), projectId: p.id)
                         Text(p.name).font(.system(size: S(13), weight: .semibold)).foregroundStyle(Brand.ink)
                             .lineLimit(1).fixedSize()   // the project name is always shown in full
+                        if ProjectSetup.needsWelcome(model.board(for: p)) {
+                            SetupTag()   // a new project: "not set up" instead of an empty 0% bar
+                        } else {
                         let road = model.board(for: p).roadmap
                         let frac = road.isEmpty ? 0 : Double(road.filter { $0.status == "done" }.count) / Double(road.count)
                         PixelProgress(fraction: frac, blocks: 10, working: road.contains { $0.status == "wip" })
                             .frame(width: S(64)).scaleEffect(y: 0.8)
                         Text("\(Int(frac * 100))%").font(.system(size: S(11), weight: .bold).monospacedDigit()).foregroundStyle(Brand.green)
+                        }
                         Image(systemName: "chevron.down").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 3)
@@ -593,9 +600,10 @@ struct ProjectSwitcher: View {
                             let n = model.nextSteps(q).filter(\.urgent).count
                             Button { model.selectedProjectId = q.id; open = false } label: {
                                 HStack(spacing: 8) {
-                                    PixelAvatar(name: q.name, size: S(22))
+                                    PixelAvatar(name: q.name, size: S(22), projectId: q.id)
                                     Text(q.name).font(.system(size: S(12.5), weight: q.id == p.id ? .semibold : .regular)).foregroundStyle(Brand.ink)
                                     Spacer()
+                                    if ProjectSetup.needsWelcome(model.board(for: q)) { SetupTag() }
                                     if n > 0 { Text("\(n)").font(.system(size: S(10), weight: .bold)).foregroundStyle(Color(hex: 0x1a1200)).padding(.horizontal, 5).background(Capsule().fill(Brand.amber)) }
                                     if i < 9 { Text("⌥⌘\(i + 1)").font(.system(size: S(10))).foregroundStyle(Brand.mute) }
                                 }

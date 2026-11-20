@@ -273,6 +273,13 @@ final class BoardStore: ObservableObject {
     /// Latest Claude conversation started for an item, if any.
     func lastLink(_ ref: String) -> SessionLink? { links.last { $0.item == ref } }
 
+    /// A session already took this answer: one was started on the item at or after your verdict.
+    /// From then on the item is in Claude's court, not yours, even when that session has ended.
+    func takenBySession(_ ref: String, since at: String?) -> Bool {
+        guard let at else { return false }
+        return links.contains { $0.item == ref && $0.started >= at }
+    }
+
     func areaName(_ k: String) -> String { areas.first { $0.key == k }?.name ?? k }
 
     private var choices: [String: Any] { store["choices"] as? [String: Any] ?? [:] }
