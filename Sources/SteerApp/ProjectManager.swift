@@ -113,12 +113,18 @@ extension AppModel {
     /// Another folder (repo) for the project: sessions can start there too.
     func addFolder(to p: Project) {
         guard let folder = Self.pickFolder(prompt: "Add folder", message: "Add a folder or repository to \(p.name)") else { return }
+        addFolder(folder, to: p)
+    }
+
+    /// `folder` becomes one more folder of the project (picked, or dropped on the window).
+    func addFolder(_ folder: String, to p: Project) {
         let name = (folder as NSString).lastPathComponent
         guard !p.repos.contains(where: { $0.path == folder || $0.name == name }) else {
             showToast("\(name) is already one of \(p.name)'s folders"); return
         }
         editManifest(p) { ManifestText.addRepo($0, name: name, path: ManifestText.relative(folder, from: p.boardDir),
                                                 git: BoardTemplate.gitRemote(folder)) }
+        showToast("\(name) added to \(p.name)", projectId: p.id)
     }
 
     /// A missing repo with a git remote: clone it where steerify.json expects it.

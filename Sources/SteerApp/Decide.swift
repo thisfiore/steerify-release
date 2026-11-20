@@ -45,6 +45,9 @@ struct DecisionCard: View {
     /// First setup's choices (`setup-…`): the why is Claude's snapshot of the project, one fact per line: show it whole.
     private var whole: Bool { d.id.hasPrefix("setup-") }
     private var stage: BoardOption? { d.options.first { $0.id == focus } ?? d.options.first { $0.rec } ?? d.options.first }
+    /// A logic decision (scope, order, yes/no: `simple`, no picture or prototype): nothing to look at, so no tabs and no
+    /// empty stage. Every option is one row of a list you choose from, its points and steps laid out side by side.
+    private var listed: Bool { d.options.allSatisfy { ($0.simple || $0.mockHTML == nil) && $0.shot == nil && $0.proto == nil } }
 
     var body: some View {
         let decided = board.isDecided(d)
@@ -144,8 +147,12 @@ struct DecisionCard: View {
             }
 
             steps
-            optionTabs
-            if let o = stage { stageView(o) }
+            if listed {
+                optionList
+            } else {
+                optionTabs
+                if let o = stage { stageView(o) }
+            }
             answerBar(decided)
 
             HStack(spacing: 6) {
@@ -280,6 +287,108 @@ struct DecisionCard: View {
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Brand.panel2))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(chosen ? Brand.amber.opacity(0.8) : mixed ? Brand.blue.opacity(0.8) : Brand.line, lineWidth: chosen || mixed ? 1.5 : 1))
+    }
+
+    /// All options at once, one row each: a radio (or a checkbox for `multi`), letter, name, suggested; the points as
+    /// bullets; the option's small mock as numbered steps. Click a row to choose it; "+ Blend in" on the others.
+    private var optionList: some View {
+        VStack(spacing: 8) {
+            ForEach(d.options) { o in
+                let chosen = d.multi ? draftPicks.contains(o.id) : draftPick == o.id
+                let mixed = !d.multi && draftMix.contains(o.id)
+                let steps = Self.mockSteps(o)
+                HStack(alignment: .top, spacing: 12) {
+                    Group {
+                        if d.multi {
+                            Image(systemName: chosen ? "checkmark.square.fill" : "square")
+                        } else {
+                            Image(systemName: chosen ? "largecircle.fill.circle" : mixed ? "plus.circle.fill" : "circle")
+                        }
+                    }
+                    .font(.system(size: S(17), weight: .medium))
+                    .foregroundStyle(chosen ? Brand.amber : mixed ? Brand.blue : Brand.mute)
+                    .padding(.top, 1)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text(Self.letter(o, in: d)).font(.system(size: S(12), weight: .heavy, design: .rounded))
+                                .foregroundStyle(chosen ? Color(hex: 0x1a1200) : Brand.cream)
+                                .frame(width: S(22), height: S(22))
+                                .background(RoundedRectangle(cornerRadius: 6).fill(chosen ? Brand.amber : mixed ? Brand.blue.opacity(0.85) : Brand.line2))
+                            Text(Self.name(o)).font(.system(size: S(14), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+                            if o.rec { Pill(text: "suggested", color: Brand.blue) }
+                            if chosen { Pill(text: d.multi ? "picked" : "your choice", color: Brand.amber) }
+                            if mixed { Pill(text: "blended in", color: Brand.blue) }
+                            Spacer(minLength: 0)
+                        }
+                        if !o.points.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(o.points, id: \.self) { p in
+                                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                                        Circle().fill(Brand.cream.opacity(0.5)).frame(width: 4, height: 4).offset(y: -2)
+                                        Text(p).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.88)).fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+                        if !steps.isEmpty {
+                            // In a row with arrows when it fits, else one step per line.
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 6) {
+                                    ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                                        if i > 0 { Image(systemName: "arrow.right").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute) }
+                                        stepChip(s).fixedSize()
+                                    }
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                                        HStack(spacing: 6) {
+                                            Text("\(i + 1)").font(.system(size: S(9.5), weight: .heavy, design: .monospaced)).foregroundStyle(Brand.mute).frame(width: S(12))
+                                            stepChip(s)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !d.multi, draftPick != nil, !chosen {
+                        Button { toggleMix(o) } label: {
+                            Text(mixed ? "✓ Blended in" : "+ Blend in").font(.system(size: S(11), weight: .semibold))
+                                .foregroundStyle(mixed ? Color.black : Brand.blue)
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(RoundedRectangle(cornerRadius: 7).fill(mixed ? Brand.blue : .clear))
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.blue.opacity(0.7)))
+                        }.buttonStyle(SteerButton()).help("Take something from this option too; say what in the note")
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 10).fill(chosen ? Brand.amberDim.opacity(0.6) : Brand.panel2))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(chosen ? Brand.amber.opacity(0.8) : mixed ? Brand.blue.opacity(0.8) : Brand.line, lineWidth: chosen || mixed ? 1.5 : 1))
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.easeOut(duration: 0.12)) { choose(o) } }
+                .pointerStyle(.link)
+                .help(chosen ? "Click again to unselect" : "Make this your answer")
+            }
+        }
+    }
+
+    private func stepChip(_ s: String) -> some View {
+        Text(s).font(.system(size: S(11), design: .monospaced)).foregroundStyle(Brand.ink.opacity(0.85)).lineLimit(1)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color.black.opacity(0.3)))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Brand.line2))
+    }
+
+    /// A simple option's mock as steps: each top-level line of text (`<div class='kr'>…</div>`, `<br>`) is one step.
+    static func mockSteps(_ o: BoardOption) -> [String] {
+        guard let h = o.mockHTML else { return [] }
+        let split = h.replacingOccurrences(of: "</(div|li|p|tr)>|<br\\s*/?>", with: "\n", options: [.regularExpression, .caseInsensitive])
+        let lines = BoardText.plain(split).replacingOccurrences(of: "**", with: "")
+            .components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            .map { $0.replacingOccurrences(of: #"^\d+\s*[·.)]\s*"#, with: "", options: .regularExpression) }   // the arrows give the order
+        // A single glyph (✓ / ✎) is decoration, not a step.
+        return lines.filter { $0.count > 2 }.prefix(5).map { $0.count > 46 ? String($0.prefix(45)) + "…" : $0 }
     }
 
     /// Your answer, in words, with the note and Done.

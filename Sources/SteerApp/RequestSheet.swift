@@ -241,6 +241,7 @@ struct RequestSheet: View {
         case .fix: return "Filed now as a key result of “\(RequestLog.fixesChapter)”" + (chapter.map { ", linked to “\($0)”" } ?? "") + ". Claude checks the code, fixes it and puts it in To test."
         case .refine: return "Filed now as a key result of “\(RequestLog.fixesChapter)”" + (chapter.map { ", linked to “\($0)”" } ?? "") + ". Claude makes the change and puts it in To test."
         case .feature: return "Claude checks the code and drafts a chapter (objective, key results, requirements, choices). Nothing lands on the roadmap without your OK."
+        case .task: return "Not code: Claude sets it up on the Tasks tab (outcome, checks, once or on a schedule), runs it and hands you the result to check."
         case .question: return "Claude reads the code and turns it into a choice with options and mockups, on the Choices tab."
         }
     }
@@ -290,6 +291,7 @@ struct RequestSheet: View {
 
     private func setUp() {
         text = model.requestSeed; model.requestSeed = ""
+        if let k = model.requestKindSeed { kindSet = k; model.requestKindSeed = nil }
         focused = true
         lookContext()
         recent = Array(RequestLog.load(project.boardDir).prefix(5))
@@ -447,7 +449,7 @@ struct RequestSheet: View {
                                    context: context, contextTitle: contextTitle, fileOnly: fileOnly)
         close()
         guard id != nil else { model.showToast("Could not file the request"); return }
-        let where_ = k == .fix || k == .refine ? "“\(RequestLog.fixesChapter)”" : k == .feature ? "a chapter draft" : "a choice"
+        let where_ = k == .fix || k == .refine ? "“\(RequestLog.fixesChapter)”" : k == .feature ? "a chapter draft" : k == .task ? "Tasks" : "a choice"
         let away = project.id != model.selectedProjectId ? "\(project.name) · " : ""   // filed elsewhere: say where, you stay here
         model.showToast(away + (fileOnly ? "Filed: \(k.label.lowercased()) → \(where_)" : "Filed: \(k.label.lowercased()) → \(where_) · Claude is on it"),
                         projectId: project.id)

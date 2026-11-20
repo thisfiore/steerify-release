@@ -199,3 +199,50 @@ enum SessionOutlookCheck {
         fflush(stdout)
     }
 }
+
+// MARK: - Your turn on the board (choice session-status-colors, request r261120-174008)
+//
+// "Waits on the board" is not done: something of yours is open there (a test, a choice, a release). The session
+// stays in the list in its own colour with a button that opens that item; only sessions with nothing left are
+// grey, ticked and closed by "Close N done". Rowing is blue, needs you (in the chat) amber.
+
+/// The board item of a session's work that waits on you, and the button that opens it.
+struct BoardTurn: Equatable {
+    let ref: String
+    let verb: String
+    let tab: BoardTab
+}
+
+extension BoardStore {
+    func yourTurn(of refs: [String]) -> BoardTurn? {
+        guard !refs.isEmpty else { return nil }
+        return memoized("turn:" + refs.joined(separator: "|")) { computeTurn(refs) }
+    }
+    private func computeTurn(_ refs: [String]) -> BoardTurn? {
+        var all = Set<String>()
+        for r in refs { all.formUnion(thread(of: r)) }
+        let tests = ships.filter { all.contains("test:" + $0.id) }
+        if let t = tests.first(where: { [.toTest, .retest].contains(shipState($0)) }) {
+            return BoardTurn(ref: "test:" + t.id, verb: "Test", tab: .test)
+        }
+        if let c = decisions.first(where: { all.contains("choice:" + $0.id) && !isDecided($0) && !isParked($0) }) {
+            return BoardTurn(ref: "choice:" + c.id, verb: "Answer", tab: .choice)
+        }
+        if let t = tests.first(where: { shipState($0) == .ok && $0.status != "live" }) {
+            return BoardTurn(ref: "release:" + t.id, verb: "Release", tab: .release)
+        }
+        return nil
+    }
+}
+
+extension AppModel {
+    /// Idle and its work waits on you on the board (nil while it rows, asks in the chat, names a next step, or was taken over).
+    func yourTurn(_ s: TerminalSession) -> BoardTurn? {
+        guard s.kind == .claude, s.running, s.status == .idle, let item = s.item,
+              let p = projects.first(where: { $0.id == s.projectId }) else { return nil }
+        switch outlook(s) {
+        case .ask?, .next?, .takenOver?: return nil
+        default: return board(for: p).yourTurn(of: [item.ref] + s.alsoRefs)
+        }
+    }
+}

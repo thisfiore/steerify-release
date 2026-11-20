@@ -83,6 +83,14 @@ enum SteerifyMCP {
         ["name": "update_request",
          "description": "Record what a request became: {id, status (working | done | needs-you | discarded), became? [board refs: road:<slug>, track:<slug>, choice:<id>, test:<id>], note? (one line)}. Keeps the request history in Steerify honest.",
          "inputSchema": schema(["id": str, "status": str, "became": ["type": "array", "items": ["type": "string"]], "note": str], ["id"])],
+        ["name": "add_task",
+         "description": "Put a task on the Tasks tab: work Claude DOES for the user with existing tools and standards (a tutorial from the SOP, a data collection, a report), never code. {id? (slug), title, outcome (what done looks like, concrete: what file / where / how many), checks: [how to tell the result is right, 2–5 short lines], sop? (the standard, skill or doc it follows), brief? (anything else), every? (\"mon 08:00\", \"mon,thu 09:30\", \"weekdays 08:00\", \"daily 07:00\"; omit = once), maxMinutes? (default 120: no result by then = No result), area?, request? (request id), runNow? (true: this session runs it now; you get the run id)}. Same id = update the task. Steerify starts scheduled runs itself and watches each run for a result.",
+         "inputSchema": schema(["id": str, "title": str, "outcome": str, "checks": ["type": "array", "items": ["type": "string"]], "sop": str, "brief": str,
+                                "every": str, "maxMinutes": ["type": "integer"], "area": str, "request": str, "runNow": ["type": "boolean"]], ["title", "outcome"])],
+        ["name": "finish_task",
+         "description": "Hand in the result of a task run (the only way a run ends well). {run? (run id from the brief) or task (task id: closes its running run), summary (1–2 lines: what you produced), files: [paths relative to the board, absolute paths or URLs to open the result], counts?: {name: number} (records, pages, …), checks: [{text, ok}] (every check of the task, honestly), failed? (true: you could not reach the outcome; say why in summary)}. The run goes to To check on the Tasks tab; the user says OK or Redo.",
+         "inputSchema": schema(["run": str, "task": str, "summary": str, "files": ["type": "array", "items": ["type": "string"]], "counts": ["type": "object"],
+                                "checks": ["type": "array", "items": ["type": "object"]], "failed": ["type": "boolean"]], ["summary"])],
         ["name": "notify",
          "description": "Tell the user in the Steerify window (a toast), optionally jumping to an item. Use after delivering, when a choice is waiting, or when you need them.",
          "inputSchema": schema(["message": str, "ref": str], ["message"])],
@@ -101,13 +109,26 @@ enum SteerifyMCP {
             guard let item = a["item"] as? [String: Any] else { return ("item is required", true) }
             // Test links go to the project's own environments only (steerify.json), never a guessed host.
             let envs = TestEnvs.load(board), testList = item["tests"] as? [[String: Any]] ?? []
-            let wrong = TestEnvs.problems(tests: testList, area: item["area"] as? String, envs: envs)
+            var wrong = TestEnvs.problems(tests: testList, area: item["area"] as? String, envs: envs)
+            // The Test it button opens the exact thing under test: no home pages, no bare app links.
+            for (i, t) in testList.enumerated() {
+                if let u = t["url"] as? String, let why = TestEnvs.generic(u, envs: envs) {
+                    wrong.append("test \(i + 1): \(u) opens \(why). Link the exact page / record / item to test "
+                                 + "(e.g. …/image/<id>, steerify://open?project=<p>&item=test:<id>), or leave url out if the picture is the test")
+                }
+            }
+            let reach = TestEnvs.reach(tests: testList)
+            wrong += reach.broken
             if !wrong.isEmpty {
                 return ("Not delivered: wrong test link\(wrong.count == 1 ? "" : "s"). Fix the url and deliver again with the same id:\n"
                         + wrong.map { "- " + $0 }.joined(separator: "\n")
                         + "\nThis project's environments: " + TestEnvs.describe(envs), true)
             }
             var r = node(board, "deliver.mjs", [jsonString(item)])
+            if !r.1, !reach.down.isEmpty {
+                r.0 += "\n\nThese test links did not answer just now (server stopped?). Start it, or the user's Test it button will not work:\n"
+                    + reach.down.map { "- " + $0 }.joined(separator: "\n")
+            }
             let unchecked = envs.isEmpty ? TestEnvs.unchecked(tests: testList) : []
             if !r.1, !unchecked.isEmpty {
                 r.0 += "\n\nThis project has no environments in steerify.json, so the links (\(unchecked.joined(separator: ", "))) were not checked. "
@@ -248,6 +269,57 @@ enum SteerifyMCP {
             if !ok { return ("no request \(id)", true) }
             ui(["action": "refresh", "board": board])
             return ("request \(id) updated", false)
+        case "add_task":
+            guard let title = a["title"] as? String, let outcome = a["outcome"] as? String else { return ("title and outcome are required", true) }
+            let id = (a["id"] as? String).flatMap { $0.isEmpty ? nil : BoardFiles.slug($0) } ?? BoardFiles.slug(title)
+            if let e = a["every"] as? String, !e.isEmpty, TaskSchedule(e) == nil {
+                return ("every: can't read \"\(e)\". Use e.g. \"mon 08:00\", \"mon,thu 09:30\", \"weekdays 08:00\", \"daily 07:00\".", true)
+            }
+            var existed = false
+            let ok = TaskStore.edit(board) { tasks, _ in
+                var t: [String: Any] = tasks.first { $0["id"] as? String == id } ?? ["id": id, "created": TaskStore.now()]
+                existed = tasks.contains { $0["id"] as? String == id }
+                t["title"] = title; t["outcome"] = outcome
+                for k in ["checks", "sop", "brief", "every", "maxMinutes", "area", "request"] { if let v = a[k] { t[k] = v } }
+                if let i = tasks.firstIndex(where: { $0["id"] as? String == id }) { tasks[i] = t } else { tasks.append(t) }
+            }
+            if !ok { return ("could not write tasks.json", true) }
+            if let rq = a["request"] as? String {
+                RequestLog.edit(board, id: rq) { r in r["became"] = Array(NSOrderedSet(array: (r["became"] as? [String] ?? []) + ["task:" + id])) }
+            }
+            var msg = (existed ? "updated" : "added") + " task:\(id)"
+            if let e = a["every"] as? String, let s = TaskSchedule(e) { msg += " (\(s.describe); Steerify starts each run and briefs a fresh session)" }
+            if a["runNow"] as? Bool == true {
+                let env = ProcessInfo.processInfo.environment
+                if let run = TaskStore.addRun(board, task: id, due: nil, late: false, session: nil, term: env["STEERIFY_SESSION"], note: nil) {
+                    msg += ". Run \(run) started in this session: reach the outcome, then finish_task with run \"\(run)\"."
+                }
+            }
+            ui(["action": "refresh", "board": board])
+            return (msg, false)
+        case "finish_task":
+            guard let summary = a["summary"] as? String else { return ("summary is required", true) }
+            let (_, runs) = TaskStore.load(board)
+            var runId = a["run"] as? String
+            if runId == nil, let t = a["task"] as? String {
+                runId = runs.first { $0.task == t && $0.status == "running" }?.id
+                    ?? TaskStore.addRun(board, task: t, due: nil, late: false, session: nil, term: ProcessInfo.processInfo.environment["STEERIFY_SESSION"], note: nil)
+            }
+            guard let rid = runId, TaskStore.raw(board).runs.contains(where: { $0["id"] as? String == rid }) else {
+                return ("no such run; pass run (from your brief) or task", true)
+            }
+            var result: [String: Any] = ["summary": summary]
+            for k in ["files", "counts", "checks"] { if let v = a[k] { result[k] = v } }
+            let failed = a["failed"] as? Bool == true
+            TaskStore.setRun(board, id: rid) { r in
+                r["status"] = failed ? "noresult" : "done"; r["finished"] = TaskStore.now(); r["result"] = result
+                if failed { r["why"] = "Claude couldn't reach the outcome" }
+            }
+            let bad = (a["checks"] as? [[String: Any]] ?? []).filter { $0["ok"] as? Bool != true }.count
+            let task = TaskStore.load(board).runs.first { $0.id == rid }?.task ?? ""
+            ui(["action": "notify", "board": board, "ref": "task:" + task,
+                "message": failed ? "Task result: couldn't reach the outcome" : "Task result to check" + (bad > 0 ? " · \(bad) check\(bad == 1 ? "" : "s") failed" : "")])
+            return ("run \(rid) handed in: it is on the Tasks tab, To check. Say in the chat what you produced and where.", false)
         case "notify":
             guard let m = a["message"] as? String else { return ("message is required", true) }
             var info: [String: String] = ["action": "notify", "message": m, "board": board]
@@ -324,6 +396,8 @@ enum SteerifyMCP {
         lines.append("\nWAITING ON CLAUDE: refine/broken (\(waiting.count))"); lines += waiting.prefix(15)
         lines.append("\nOPEN CHOICES (\(open.count))"); lines += open.prefix(15)
         lines.append("\nROADMAP in progress / review / waiting on the user (\(road.count))"); lines += road.prefix(25)
+        let tasks = TaskStore.summary(board)
+        if !tasks.isEmpty { lines.append("\nTASKS (\(tasks.count))"); lines += tasks.prefix(15) }
         return lines.joined(separator: "\n")
     }
 
@@ -364,8 +438,14 @@ enum SteerifyMCP {
             var x = r
             x["imgs"] = (r["imgs"] as? [String] ?? []).map { (board as NSString).appendingPathComponent($0) }
             out["request"] = x
+        case "task":
+            let (tasks, runs) = TaskStore.raw(board)
+            guard let t = tasks.first(where: { $0["id"] as? String == parts[1] }) else { return ("no task \(parts[1])", true) }
+            out["task"] = t
+            out["runs"] = Array(runs.filter { $0["task"] as? String == parts[1] }.sorted { ($0["started"] as? String ?? "") > ($1["started"] as? String ?? "") }.prefix(8))
+            if let e = t["every"] as? String, let s = TaskSchedule(e) { out["schedule"] = s.describe }
         default:
-            return ("unknown ref kind; use test:, choice:, req:, track:, reqs:, request:", true)
+            return ("unknown ref kind; use test:, choice:, req:, track:, reqs:, request:, task:", true)
         }
         return (jsonString(out), false)
     }

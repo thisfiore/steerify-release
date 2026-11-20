@@ -8,7 +8,7 @@ struct ItemRef: Hashable {
     var area: String?
 
     var ref: String { "\(kind):\(id)" }
-    static let kinds = ["test", "choice", "road", "req", "track", "reqs", "release", "request", "setup"]
+    static let kinds = ["test", "choice", "road", "req", "track", "reqs", "release", "request", "setup", "task", "past"]
 
     init?(ref: String) {
         let parts = ref.split(separator: ":", maxSplits: 1).map(String.init)
@@ -20,6 +20,7 @@ struct ItemRef: Hashable {
 /// What a session is asked to do with its item. Mirrors the intents of the steerify skill.
 enum Intent: String, CaseIterable {
     case fix, release, plan, build, check, look, resume, ship, consolidate, choose, intake
+    case run                      // task:<id>: reach the task's outcome, hand in the result (Tasks.swift)
     case initialize = "init"     // setup:<project>: Claude reads the project, interviews you, drafts the board
 }
 
@@ -73,6 +74,8 @@ enum BoardFiles {
             r.title = "Release: " + project.name
         case "setup":
             r.title = "Setup: " + project.name
+        case "task":
+            if let t = TaskStore.load(project.boardDir).tasks.first(where: { $0.id == ref.id }) { r.title = t.title; r.area = t.area }
         case "request":
             if let q = RequestLog.load(project.boardDir).first(where: { $0.id == ref.id }) { r.title = "Request: " + q.short; r.area = q.area }
         case "track":

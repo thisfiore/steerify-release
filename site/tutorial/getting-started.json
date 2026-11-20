@@ -1,0 +1,91 @@
+{
+ "title": "Steerify: getting started, from zero",
+ "seconds": 144.3,
+ "chapters": [
+  {
+   "id": "l01",
+   "t": 0,
+   "label": "Hello"
+  },
+  {
+   "id": "l02",
+   "t": 9.64,
+   "label": "What you need"
+  },
+  {
+   "id": "l03",
+   "t": 19.1,
+   "label": "Install Claude Code"
+  },
+  {
+   "id": "l04",
+   "t": 30.73,
+   "label": "Install Steerify"
+  },
+  {
+   "id": "l05",
+   "t": 41.26,
+   "label": "Try the demo"
+  },
+  {
+   "id": "l06",
+   "t": 49.0,
+   "label": "Your own project"
+  },
+  {
+   "id": "l07",
+   "t": 60.08,
+   "label": "How Claude gets inside"
+  },
+  {
+   "id": "l08",
+   "t": 75.86,
+   "label": "How it knows your project"
+  },
+  {
+   "id": "l09",
+   "t": 87.25,
+   "label": "The six tabs"
+  },
+  {
+   "id": "l10",
+   "t": 91.59,
+   "label": "Choices"
+  },
+  {
+   "id": "l11",
+   "t": 98.36,
+   "label": "Requirements"
+  },
+  {
+   "id": "l12",
+   "t": 103.96,
+   "label": "Roadmap"
+  },
+  {
+   "id": "l13",
+   "t": 110.07,
+   "label": "To test"
+  },
+  {
+   "id": "l14",
+   "t": 117.34,
+   "label": "Release"
+  },
+  {
+   "id": "l15",
+   "t": 120.79,
+   "label": "Ready"
+  },
+  {
+   "id": "l16",
+   "t": 125.73,
+   "label": "A new request"
+  },
+  {
+   "id": "l17",
+   "t": 134.12,
+   "label": "The loop"
+  }
+ ]
+}

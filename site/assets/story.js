@@ -432,7 +432,46 @@
     if (t > 3.8) txt(230, 83, found ? 'STEERIFY KNOWS WHICH 3' : '3 ARE WAITING ON YOU', K.amber, 1, 'right');
   }
   const CROWD = { title: 'Ninety-nine sessions, three waiting on you.', text: 'A wall of terminals grows from 9 to 19 to 99; three of them turn amber.', dur: 6.6, draw: sCrowd, h: 92, strip: false };
-  const NAMED = { hero: HERO, mac: MAC, start: START, flows: FLOWS, decide: DECIDE, crowd: CROWD };
+  // Focused tests (240×124): not the whole app, one picture of the thing to check and a link that opens right there.
+  function sFocus(t) {
+    const opened = t > 2.5, right = t > 5;
+    // left: the app. Before the click, the whole window with one small region marked; after, that screen with sample data.
+    box(8, 8, 98, 70, K.bg2, opened ? K.blue : K.line2);
+    R(9, 9, 96, 6, K.panel); R(12, 11, 1, 1, K.red); R(14, 11, 1, 1, K.amber); R(16, 11, 1, 1, K.green);
+    if (!opened) {
+      R(12, 19, 18, 55, K.panel);
+      for (let j = 0; j < 6; j++) R(14, 22 + j * 8, 12, 2, K.mute);
+      for (let j = 0; j < 5; j++) { R(34, 20 + j * 11, 66, 8, K.panel); R(37, 23 + j * 11, 20 + (j * 13) % 30, 2, K.mute); }
+      box(58, 40, 42, 12, K.amberDim, blink(t * 1.5) ? K.amber : K.line2); R(61, 45, 14, 2, K.cream); txt(96, 44, '3', K.amber, 1, 'right');
+      txt(57, 83, 'THE WHOLE APP', K.mute, 1, 'center');
+    } else {
+      txt(24, 10, 'APP/TODOS', K.blue);
+      ['BUY OAT MILK', 'BOOK THE DENTIST', 'WATER THE PLANTS'].forEach((r, j) => {
+        if (t < 2.8 + j * .3) return;
+        box(13, 20 + j * 13, 88, 11, K.panel, K.line); box(16, 23 + j * 13, 5, 5, K.bg2, K.cream); txt(25, 23 + j * 13, r, K.cream);
+      });
+      if (t > 3.8) { txt(13, 63, '3 LEFT', K.amber); box(54, 60, 49, 9, K.bg2, K.blue); txt(79, 62, 'SAMPLE DATA', K.blue, 1, 'center'); }
+      txt(57, 83, 'OPENED RIGHT THERE', K.blue, 1, 'center');
+    }
+    for (let x = 108; x < 116; x += 3) R(x, 43, 2, 1, opened ? K.blue : K.amber);
+    // right: the test card
+    box(118, 8, 114, 108, K.bg2, right ? K.green : K.line2);
+    box(122, 12, 106, 40, K.panel, K.line);
+    box(130, 22, 90, 20, K.amberDim, K.amber); R(136, 30, 30, 4, K.cream); txt(212, 27, '3', K.amber, 2, 'right');
+    txt(122, 58, 'ADD THREE TODOS', K.cream);
+    txt(122, 67, 'COUNTER SAYS 3 LEFT', K.dim);
+    R(122, 79, 44, 12, opened ? K.cream : K.blue); txt(144, 82, 'TEST IT', K.ink, 1, 'center');
+    if (right) R(170, 79, 58, 12, K.green); else box(170, 79, 58, 12, K.bg2, K.green);
+    txt(199, 82, 'LOOKS RIGHT', right ? K.ink : K.green, 1, 'center');
+    txt(122, 100, 'ONE PICTURE. ONE LINE.', K.mute); txt(122, 108, 'ONE LINK.', K.mute);
+    [['RIGHT SCREEN', 2.6], ['SAMPLE DATA', 3.9], ['ONE LOOK', 5]].forEach(([l, at], j) => { if (t > at) { check(10, 94 + j * 9, K.green); txt(19, 94 + j * 9, l, K.green); } });
+    if (t > 1.2 && t < 5.4) {
+      const a = ease(pr(t, 1.6, 2.4)), b = ease(pr(t, 4.3, 4.9));
+      spr(CUR, lerp(lerp(204, 142, a), 198, b), lerp(lerp(112, 84, a), 84, b));
+    }
+  }
+  const FOCUS = { title: 'Tests that open in the right place.', text: 'A test card with one picture of the thing to check; Test it opens that exact screen with sample data; Looks right closes it.', dur: 6.2, draw: sFocus, h: 124, strip: false };
+  const NAMED = { hero: HERO, mac: MAC, start: START, flows: FLOWS, decide: DECIDE, crowd: CROWD, focus: FOCUS };
 
   const SCENES = [
     { name: 'Say it', title: 'Say what you want.', text: 'Write it in plain words. Steerify turns it into requirements, docs and a roadmap.', dur: 6, draw: s1 },

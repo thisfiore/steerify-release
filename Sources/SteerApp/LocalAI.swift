@@ -176,7 +176,7 @@ extension RequestTriage {
         \(context.map { "The user was looking at the chapter: \($0)\n" } ?? "")Request: \(clean.prefix(1500))
 
         Answer in exactly this form:
-        kind: fix|refine|feature|question
+        kind: fix|refine|feature|task|question
         chapter: <number, or 0 if none fits>
         why: <max 10 words>
         """
@@ -185,6 +185,7 @@ extension RequestTriage {
             fix = something is broken, wrong or does nothing ("the button does nothing", "crashes when…").
             refine = a small change to how something that exists looks or reads ("make the tabs smaller", "rename X").
             feature = a capability that does not exist yet ("let me export…", "add a calendar", "integrate with…").
+            task = work to DO with tools and standards that exist, not code to build: make a tutorial or a report, collect or process data, send something; often repeats ("every Monday").
             question = the user asks what to do or how something works ("should we…?", "how does…?").
             Pick the chapter only when the request is clearly about it.
             """, prompt: prompt) else { return nil }

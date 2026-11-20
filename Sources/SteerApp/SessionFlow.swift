@@ -91,6 +91,7 @@ extension AppModel {
     /// it is idle with nothing open outside the board: no question, no next step, or a newer session took its work.
     func isWrapped(_ s: TerminalSession) -> Bool {
         if !s.running { return true }
+        if yourTurn(s) != nil { return false }      // waits on you on the board: not done
         if outlook(s)?.isDone == true { return true }
         guard s.kind == .claude, s.status == .idle,
               let p = projects.first(where: { $0.id == s.projectId }), let item = s.item else { return false }

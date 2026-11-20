@@ -24,6 +24,7 @@ extension BoardStore {
         return memoized("stage:" + refs.joined(separator: "|")) { computeStage(of: refs) }
     }
     private func computeStage(of refs: [String]) -> BoardTab? {
+        if refs.contains(where: { $0.hasPrefix("task:") }) { return .task }                // a task run lives on Tasks
         var all = Set<String>()
         for r in refs { all.formUnion(thread(of: r)) }
         let shipIds = all.filter { $0.hasPrefix("test:") }.map { String($0.dropFirst(5)) }
@@ -93,7 +94,7 @@ struct StageTag: View {
 }
 
 extension BoardTab {
-    var short: String { ["ready": "READY", "test": "TO TEST", "choice": "CHOICE", "req": "REQ", "road": "ROADMAP", "release": "RELEASE"][rawValue] ?? rawValue.uppercased() }
+    var short: String { ["ready": "READY", "test": "TO TEST", "choice": "CHOICE", "req": "REQ", "road": "ROADMAP", "task": "TASK", "release": "RELEASE"][rawValue] ?? rawValue.uppercased() }
 }
 
 /// "Follow tab" checkbox in the session list header (same setting as in Settings → Personalisation).

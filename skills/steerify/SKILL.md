@@ -17,7 +17,7 @@ Steerify sets these in the session's environment (read them with `echo $STEERIFY
 | --- | --- |
 | `STEERIFY_PROJECT` | project id (e.g. `sb`, `blink`) |
 | `STEERIFY_BOARD` | the board folder |
-| `STEERIFY_ITEM` | the item this session was started from, if any (`test:<id>`, `choice:<id>`, `road:<slug>`, `req:<id>`) |
+| `STEERIFY_ITEM` | the item this session was started from, if any (`test:<id>`, `choice:<id>`, `road:<slug>`, `req:<id>`, `task:<id>`) |
 | `STEERIFY_SESSION` | this session's id |
 | `STEERIFY_ENVS` | where this project is tested (`steerify.json → environments`): the only hosts for To test links |
 
@@ -31,7 +31,8 @@ Board folder files (plain JSON, never reformat them; keep their indentation; sta
 - **Notes pinned on pictures:** `choices[<key>].pins = [{img, x, y, note, v}]` (key = `ship:<id>` for a To test item,
   the decision id for a choice). `img` is relative to the board folder, `x`/`y` are 0–1 from the top-left. Open the
   image, look at that spot, and treat every pin as a required change; say per pin what you did.
-- `sessions.json` — which Claude Code conversation belongs to which item (written by Steerify; don't edit).
+- `sessions.json` — which Claude Code conversation belongs to which item (written by Steerify; don't edit) except to map
+  the `past:<id>` links at setup, see **First setup**).
 - `delivered.json` — the **To test** tab. Only change it through `node $STEERIFY_BOARD/deliver.mjs '<json>'`.
 - `README.md` in the board's repo, if present, has the project's own rules (test data, areas, deploy). **Follow it**;
   it wins over the generic steps below.
@@ -40,7 +41,7 @@ Board folder files (plain JSON, never reformat them; keep their indentation; sta
 
 Sessions started by Steerify have an MCP server named **steerify**. Prefer its tools over editing board files:
 `board_summary`, `get_item` (verdict, notes, pinned picture notes), `deliver` (To test), `ask_choice`,
-`set_roadmap_status`, `set_release_config`, `set_environments`, `add_roadmap_item`, `add_chapter`, `update_request`, and `notify` (a toast in the user's Steerify window, with a jump to the
+`set_roadmap_status`, `set_release_config`, `set_environments`, `add_roadmap_item`, `add_chapter`, `add_task`, `finish_task`, `update_request`, and `notify` (a toast in the user's Steerify window, with a jump to the
 item). The app updates at once. After delivering or adding a choice, `notify` the user in one short line.
 Without the MCP (a plain terminal), edit the files as described below.
 
@@ -67,7 +68,8 @@ go straight to it. The item's conversation is resumed on later starts (Steerify 
 | `consolidate` | reqs | For each open requirement of the chapter: check the code. Built and verified → `set_requirement_status built` with one line of evidence (file / commit). Not built but agreed in spirit → add a roadmap item. Questions → a choice (`ask_choice`). Never record the user's verdict for them. Report a table. |
 | `consolidate` | track | Bring a chapter's statuses up to date, nothing else. For every key result not `done`: look for evidence (To test verdicts, commits in the chapter's repos — `git log --since=<chapter start> --oneline`, the code itself, deploys.json / live versions). Mark `done` only with evidence, `review` if delivered but not approved, `wip` if partly there, leave it otherwise. Use `set_roadmap_status` (MCP). Report a short table: item · old → new · evidence. Don't build anything. |
 | `resume` | track / reqs | A whole chapter (`track:<slug>` = a roadmap track, `reqs:<slug>` = a requirements group). **State of the art:** read every item of the chapter, its linked choices, To test items and requirements, then check the code to see what really exists (not what the board claims). Report done / partly done / missing in a few lines, fix wrong statuses on the board, name the **next step** and start it (mark it `wip`), unless it needs a choice from the user: then add the choice and do what is ready. |
-| `intake` | request | A new request the user filed with **+ Request** (⌘N). The brief has the text, screenshots, kind, chapter. Never ask what it is; open every screenshot. **Fix / refinement:** it is already a key result in "Fixes & refinements" (linked to its chapter): mark it `wip`, check the code, fix it, test, deliver (`road` = that key result), mark it `review`. **Feature:** read the code, then `add_chapter` (a draft: objective, 3–7 key results, requirements; the user approves it in Steerify) and put open questions on the board with `ask_choice`; build nothing until it is approved. **Question:** answer it from the code as a choice (`ask_choice`, 2–4 options, each showing its result). The kind is wrong? Say so and treat it as the right one. Always finish with `update_request` (status, became[], one-line note). |
+| `intake` | request | A new request the user filed with **+ Request** (⌘N). The brief has the text, screenshots, kind, chapter. Never ask what it is; open every screenshot. **Fix / refinement:** it is already a key result in "Fixes & refinements" (linked to its chapter): mark it `wip`, check the code, fix it, test, deliver (`road` = that key result), mark it `review`. **Feature:** read the code, then `add_chapter` (a draft: objective, 3–7 key results, requirements; the user approves it in Steerify) and put open questions on the board with `ask_choice`; build nothing until it is approved. **Task** (doing, not building: a tutorial from the SOP, a data collection, a report, anything on a schedule): never a chapter. Read the standard / tools it names, then `add_task` (concrete `outcome`, 2–5 `checks`, `sop`, `every` if it repeats, `request` = the request id, `runNow: true` for a one-off or a first run) and do it as `run` below; a repeating task's later runs are started by Steerify. **Question:** answer it from the code as a choice (`ask_choice`, 2–4 options, each showing its result). The kind is wrong? Say so and treat it as the right one. Always finish with `update_request` (status, became[], one-line note). |
+| `run` | task | One run of a task (Tasks tab; the brief has the run id, outcome, checks, the standard to follow, a Redo note if the user sent the last result back). Do the work with the project's tools, not code changes (a needed code change → `add_roadmap_item`, then carry on). Check the result against **every** check yourself. Finish with `finish_task` (run id, `summary`, `files` to open it, `counts`, `checks: [{text, ok}]` honestly); can't reach the outcome → `finish_task` with `failed: true` and why. Without `finish_task` the run shows "No result" when its time is up. Never deliver a task to To test. |
 | `init` | setup | A new project (`setup:<project>`), started from its welcome screen: the board is empty. Follow **First setup** below: read and run the project, show what you understood, ask with choices (never a wall of questions in the chat), then draft the first chapter. Write only in the board folder; everything is a draft for the user to approve. |
 
 ## Branches and releases (the project's flow)
@@ -95,6 +97,12 @@ normal chat. Short chat lines; questions and proposals are choices with pictures
 
 1. **Read** the project: README, code layout, package files, `git log --oneline -30`, briefs / docs / backlog.
    Find what it is, its parts (→ areas), how it ships, what is in flight, dates and deadlines. Empty folder: skip to 3.
+   **Past conversations:** links in `sessions.json` with `"item": "past:<id>"` are this folder's earlier Claude Code
+   chats, linked by Steerify when setup started (title = the first thing asked; transcript in
+   `~/.claude/projects/*/<id>.jsonl`). Read them: they tell you what is in flight. Say in the snapshot what they were
+   about. Once a choice or key result exists that one continues, map it exactly: append a link with the same
+   `claudeSession`, `"item"` = that board ref (`road:<slug>`, `choice:<id>`, `track:<slug>`), `"by": "init"`, keeping the
+   file's format. The user can then resume it from that item.
 2. **Run it** when you can do it safely in a few minutes (dev server, simulator, `swift run`, the built app; never
    deploy, never touch production data). Take 1–3 full-size screenshots into `img/setup/` in the board folder.
    Can't run it (needs secrets, devices, long builds)? Say why in one line and use what exists (README images, store
@@ -149,7 +157,7 @@ normal chat. Short chat lines; questions and proposals are choices with pictures
      `mock` (rows, a ✓). If you hesitate, it is visual.
    `ask_choice` refuses a mock that is only words in a box on a choice that is not `simple`.
 3. **Build and test it yourself** (the project's real tests, the real UI for anything visible).
-4. **Deliver** with `deliver.mjs`: honest `tested[]`, one direct link per test, screenshots taken after testing,
+4. **Deliver** with `deliver.mjs`: honest `tested[]`, one direct link per test (the exact page / record / item under test, opened on the state to check: never a home page, a bare `steerify://` or a repo front page; `deliver` refuses those and 404s), screenshots taken after testing,
    known `issues[]`. Same id = new version of the same item. **Every picture full size** (≥1400 px wide, shots and
    per-test `img` alike, never pre-shrunk thumbnails): Steerify shows them big and makes its own thumbnails.
    **Focused on the feature:** each test picture shows the thing under test, never the whole window: crop it to the

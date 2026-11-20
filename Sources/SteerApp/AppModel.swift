@@ -32,6 +32,8 @@ final class AppModel: ObservableObject {
     /// Opened from outside the window (⌃⌥N, menu bar): the sheet asks which project it is for.
     @Published var requestPickProject = false
     var requestSeed = ""
+    /// "+ Task" on the Tasks tab opens New request with Task already picked.
+    var requestKindSeed: RequestKind?
     var paletteSeed = ""
     /// Ask the board to show an item: switch tab, scroll to it, flash it.
     @Published var focus: FocusRequest?
@@ -116,6 +118,7 @@ final class AppModel: ObservableObject {
         for p in projects { _ = board(for: p) }       // watch every project's board, not only the open one
         statusWatcher?.refresh()
         evaluateNudges()
+        startTaskClock()
     }
 
     func sessionsChanged() {
@@ -192,6 +195,7 @@ final class AppModel: ObservableObject {
         case "release": return .ship
         case "req": return .check
         case "request": return .intake
+        case "task": return .run
         default: return .look
         }
     }
@@ -307,10 +311,10 @@ final class AppModel: ObservableObject {
     /// Start (or focus) a Claude session for a board item, already briefed: "/steerify <intent> <item>".
     @discardableResult
     func start(projectId: String, item ref: ItemRef, intent: Intent, dry: Bool = false,
-               extraBrief: String? = nil, also: [String] = [], focus: Bool = true) -> TerminalSession? {
+               extraBrief: String? = nil, also: [String] = [], focus: Bool = true, fresh: Bool = false) -> TerminalSession? {
         guard let p = projects.first(where: { $0.id == projectId }) else { return nil }
         if focus { selectedProjectId = p.id }   // false: the session starts in the background (a request filed for another project)
-        if let existing = sessions.first(where: { $0.projectId == p.id && $0.covers(ref.ref) && $0.running }) {
+        if !fresh, let existing = sessions.first(where: { $0.projectId == p.id && $0.covers(ref.ref) && $0.running }) {
             selectedSession[p.id] = existing.id          // one live session per item: jump to it
             if let extraBrief { existing.view.send(txt: extraBrief.replacingOccurrences(of: "\n", with: " ") + "\r") }
             existing.alsoRefs += also.filter { !existing.covers($0) }
@@ -319,7 +323,7 @@ final class AppModel: ObservableObject {
         let item = BoardFiles.resolve(ref, in: p)
         let prompt = "/steerify \(intent.rawValue) \(item.ref)"
         // Same feature (design → dev → test → release) already open → continue in that conversation (SessionFlow.swift).
-        if let live = liveThreadSession(projectId: p.id, ref: item.ref) {
+        if !fresh, let live = liveThreadSession(projectId: p.id, ref: item.ref) {
             selectedSession[p.id] = live.id
             let extra = extraBrief.map { " — " + $0.replacingOccurrences(of: "\n", with: " ") } ?? ""
             live.view.send(txt: prompt + extra + "\r")
@@ -333,8 +337,9 @@ final class AppModel: ObservableObject {
         }
         // Same item, or the same feature, again → resume that Claude conversation (history + your new instruction), in its repo.
         let b = board(for: p)
-        let prevOwn = b.lastLink(item.ref).flatMap { SessionLinks.resumable($0.claudeSession) ? $0 : nil }
-        let prevThread = prevOwn == nil ? b.lastLink(inThread: b.thread(of: item.ref)).flatMap { SessionLinks.resumable($0.claudeSession) ? $0 : nil } : nil
+        // fresh: a task run starts a new conversation each time (its brief has the run id + outcome).
+        let prevOwn = fresh ? nil : b.lastLink(item.ref).flatMap { SessionLinks.resumable($0.claudeSession) ? $0 : nil }
+        let prevThread = prevOwn == nil && !fresh ? b.lastLink(inThread: b.thread(of: item.ref)).flatMap { SessionLinks.resumable($0.claudeSession) ? $0 : nil } : nil
         if let prev = prevOwn ?? prevThread,
            let repo = p.repos.first(where: { $0.name == prev.repo && $0.exists }) ?? BoardFiles.repo(for: item.area, in: p) {
             var cmd = ["--resume", prev.claudeSession, prompt]

@@ -54,7 +54,7 @@ extension TerminalSession {
     var moodColor: Color {
         guard running else { return Brand.mute }
         if kind != .claude { return Brand.cream.opacity(0.6) }
-        switch status { case .working: return Brand.green; case .waiting: return Brand.amber; case .idle: return Brand.cream.opacity(0.75); default: return Brand.mute }
+        switch status { case .working: return Brand.blue; case .waiting: return Brand.amber; case .idle: return Brand.cream.opacity(0.75); default: return Brand.mute }
     }
 }
 
@@ -80,10 +80,16 @@ struct SessionChip2: View {
 
     var body: some View {
         let outlook = model.outlook(session)
+        let turn = wrapped ? nil : model.yourTurn(session)
+        let tone = turn != nil ? Brand.violet : session.moodColor
         HStack(spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
                 AutoIcon(title: session.item?.title ?? session.title, size: S(18))
-                PulseDot(color: wrapped ? Brand.green : session.moodColor, pulsing: session.running && session.status == .working).scaleEffect(0.8).offset(x: 5, y: 5)
+                if wrapped {
+                    DoneTick().offset(x: 5, y: 5)
+                } else {
+                    PulseDot(color: tone, pulsing: session.running && session.status == .working).scaleEffect(0.8).offset(x: 5, y: 5)
+                }
             }
             .opacity(wrapped && !selected ? 0.55 : 1)
             VStack(alignment: .leading, spacing: vertical ? 2 : 1) {
@@ -109,13 +115,20 @@ struct SessionChip2: View {
                         if let stage, !wrapped { StageTag(tab: stage) }
                     }
                 }
-                if vertical || selected {
-                    Text(subtitle(outlook) + (vertical && outlook == nil ? " · " + session.repo.name : ""))
-                        .font(.system(size: S(10))).foregroundStyle(subtitleColor(outlook))
+                if vertical, let turn {
+                    // Column mode: the button gets its own row so the name keeps the full width.
+                    HStack(spacing: 6) {
+                        turnButton(turn)
+                        Text("your turn").font(.system(size: S(10))).foregroundStyle(Brand.violet.opacity(0.85)).lineLimit(1).fixedSize()
+                    }.padding(.top, 2)
+                } else if vertical || selected {
+                    Text(subtitle(outlook, turn) + (vertical && outlook == nil && turn == nil ? " · " + session.repo.name : ""))
+                        .font(.system(size: S(10))).foregroundStyle(subtitleColor(outlook, turn))
                         .lineLimit(vertical && outlook?.isDone == false ? 3 : 1).fixedSize(horizontal: false, vertical: true)
                 }
             }
             if vertical { Spacer(minLength: 4) }
+            if !vertical, let turn { turnButton(turn) }
             if case .next? = outlook, hover || selected {
                 Button { model.goOn(session) } label: {
                     Image(systemName: "arrow.right.circle.fill").font(.system(size: S(15))).foregroundStyle(Brand.amber)
@@ -130,12 +143,28 @@ struct SessionChip2: View {
         .padding(.horizontal, 10).padding(.vertical, vertical ? 8 : 5)
         .frame(maxWidth: vertical ? .infinity : nil, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Brand.panel2 : hover ? Color.white.opacity(0.04) : .clear))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(selected ? session.moodColor.opacity(0.5) : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(selected ? (wrapped ? Brand.mute : tone).opacity(0.5) : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture(perform: select)
         .pointerStyle(.link)
-        .help(help(outlook))
+        .help(help(outlook, turn))
+    }
+
+    /// "Test →", "Answer →", "Release →": opens the board item that waits on you.
+    private func turnButton(_ turn: BoardTurn) -> some View {
+        Button { model.focusItem(projectId: session.projectId, ref: turn.ref) } label: {
+            HStack(spacing: 3) {
+                Text(turn.verb).font(.system(size: S(10.5), weight: .semibold))
+                Image(systemName: "arrow.right").font(.system(size: S(8), weight: .bold))
+            }
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Capsule().fill(Brand.violet.opacity(0.14)))
+            .overlay(Capsule().stroke(Brand.violet.opacity(0.5)))
+            .foregroundStyle(Brand.violet)
+        }
+        .buttonStyle(SteerButton()).pointerStyle(.link).fixedSize()
+        .help("Your turn: open it on \(turn.tab.title.capitalized)")
     }
 
     /// "Tidy · Project ops" → ("Tidy", "Project ops"); a title without a known verb stays whole.
@@ -145,17 +174,20 @@ struct SessionChip2: View {
         return (nil, session.title)
     }
 
-    private func subtitle(_ o: SessionOutlook?) -> String {
+    private func subtitle(_ o: SessionOutlook?, _ t: BoardTurn?) -> String {
         if !session.running { return "ended · close it" }
+        if let t { return "your turn · " + t.tab.title.capitalized.replacingOccurrences(of: "To Test", with: "To test") }
         if let o { return o.line }
         return wrapped ? "done · close it" : session.moodWord
     }
-    private func subtitleColor(_ o: SessionOutlook?) -> Color {
-        if wrapped { return Brand.green.opacity(0.8) }
+    private func subtitleColor(_ o: SessionOutlook?, _ t: BoardTurn?) -> Color {
+        if wrapped { return Brand.mute }
+        if t != nil { return Brand.violet }
         switch o { case .ask?: return Brand.amber; case .next?: return Brand.cream; default: return session.moodColor }
     }
-    private func help(_ o: SessionOutlook?) -> String {
+    private func help(_ o: SessionOutlook?, _ t: BoardTurn?) -> String {
         let name = session.item?.title ?? session.repo.name
+        if let t { return name + "\nYour turn on \(t.tab.title.capitalized): \(t.verb) opens it. The session stays until it is through." }
         switch o {
         case .ask(let t)?: return name + "\nAsks you: " + t
         case .next(let t)?: return name + "\nNext step: " + t + "\nGo on sends it to the session."
@@ -175,17 +207,26 @@ struct CloseWrappedButton: View {
         if count > 0 {
             Button(action: action) {
                 HStack(spacing: 4) {
-                    Image(systemName: "checkmark").font(.system(size: S(9), weight: .bold))
-                    Text("Close \(count) done").font(.system(size: S(11), weight: .medium))
+                    Image(systemName: "checkmark").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.green)
+                    Text("Close \(count) done").font(.system(size: S(11), weight: .medium)).foregroundStyle(Brand.ink.opacity(0.75))
                 }
                 .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Capsule().fill(Brand.green.opacity(0.12)))
-                .overlay(Capsule().stroke(Brand.green.opacity(0.35)))
-                .foregroundStyle(Brand.green)
+                .background(Capsule().fill(Color.white.opacity(0.04)))
+                .overlay(Capsule().stroke(Brand.line2))
             }
             .buttonStyle(SteerButton()).pointerStyle(.link).fixedSize()
             .help("Close the sessions whose work is released or done. Their conversations stay resumable from the item.")
         }
+    }
+}
+
+/// Done: a small green tick on a dark disc instead of the status dot.
+struct DoneTick: View {
+    var body: some View {
+        Image(systemName: "checkmark").font(.system(size: S(6.5), weight: .heavy)).foregroundStyle(Brand.green)
+            .frame(width: S(11), height: S(11))
+            .background(Circle().fill(Color(hex: 0x0b0c0f)))
+            .overlay(Circle().stroke(Brand.green.opacity(0.5), lineWidth: 1))
     }
 }
 

@@ -10,15 +10,16 @@ import AppKit
 // <board>/requests.json so each request stays traceable: where it went, which session, what it became.
 
 enum RequestKind: String, CaseIterable, Identifiable {
-    case fix, refine, feature, question
+    case fix, refine, feature, task, question
     var id: String { rawValue }
-    var label: String { ["fix": "Fix", "refine": "Refinement", "feature": "New feature", "question": "Question"][rawValue]! }
-    var color: Color { [.fix: Brand.amber, .refine: Brand.blue, .feature: Brand.green, .question: Brand.cream][self]! }
+    var label: String { ["fix": "Fix", "refine": "Refinement", "feature": "New feature", "task": "Task", "question": "Question"][rawValue]! }
+    var color: Color { [.fix: Brand.amber, .refine: Brand.blue, .feature: Brand.green, .task: Brand.claude, .question: Brand.cream][self]! }
     /// Where this kind lands, in plain words.
     func destination(_ chapter: String?) -> String {
         switch self {
         case .fix, .refine: return RequestLog.fixesChapter
         case .feature: return "New chapter · Claude drafts it, you approve"
+        case .task: return "Tasks · Claude does it, you check the result"
         case .question: return "A choice on the board"
         }
     }
@@ -108,6 +109,12 @@ enum RequestTriage {
                               "instead", "should be", "too ", "more ", "less ", "a bit", "più", "meno", "sposta"]
     static let featureWords = ["new ", "add ", "support", "integrate", "integration", "would like", "i want", "we need", "feature",
                                "allow", "let me", "ability", "option to", "build ", "create ", "aggiungi", "nuov", "vorrei", "serve "]
+    /// Doing, not building (choice tasks-place): an outcome with existing tools and standards, often repeating.
+    static let taskWords = ["process ", "collect", "collection", "download ", "scrape", "every day", "every week", "every monday", "every morning",
+                            "weekly", "daily", "each week", "each month", "monthly", "recurring", "schedule ", "our sop", "our standard",
+                            "standard operating", "procedure", "tutorial", "prepare ", "send the", "send a ", "report on", "weekly report",
+                            "newsletter", "run our", "using our", "with our tools", "data collection", "ogni settimana", "ogni giorno",
+                            "settimanal", "raccogli", "prepara ", "procedura"]
     static let questionWords = ["how ", "why ", "should we", "should i", "which ", "what if", "can we", "is it", "does it",
                                 "come ", "perché", "quale", "dovremmo"]
 
@@ -134,13 +141,13 @@ enum RequestTriage {
             let h = list.filter { t.contains($0) }
             return h.filter { w in !h.contains { $0 != w && $0.contains(w) } }     // "disappears" covers "disappear"
         }
-        let fx = hits(fixWords), rf = hits(refineWords), ft = hits(featureWords), qs = hits(questionWords)
-        var score: [RequestKind: Int] = [.fix: fx.count * 2, .refine: rf.count, .feature: ft.count * 2, .question: qs.count]
+        let fx = hits(fixWords), rf = hits(refineWords), ft = hits(featureWords), qs = hits(questionWords), tk = hits(taskWords)
+        var score: [RequestKind: Int] = [.fix: fx.count * 2, .refine: rf.count, .feature: ft.count * 2, .question: qs.count, .task: tk.count * 2]
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasSuffix("?") { score[.question, default: 0] += 3 }
         let n = words(text).count
         if n > 45 { score[.feature, default: 0] += 2 }      // long, many-sided asks are features more often than not
-        let order: [RequestKind] = [.fix, .feature, .question, .refine]
+        let order: [RequestKind] = [.fix, .feature, .task, .question, .refine]
         let best = order.max { (score[$0] ?? 0) < (score[$1] ?? 0) || ((score[$0] ?? 0) == (score[$1] ?? 0) && order.firstIndex(of: $0)! < order.firstIndex(of: $1)!) }!
         var kind = (score[best] ?? 0) == 0 ? RequestKind.refine : best
         if kind == .question && trimmed.hasSuffix("?") == false && (score[.question] ?? 0) < 2 { kind = .refine }
@@ -149,6 +156,7 @@ enum RequestTriage {
         switch kind {
         case .fix: why = "Sounds like something broken: " + quoted(fx)
         case .feature: why = ft.isEmpty ? "Long and many-sided: a feature" : "Asks for something new: " + quoted(ft)
+        case .task: why = "Something to do, not to build: " + quoted(tk)
         case .question: why = trimmed.hasSuffix("?") ? "Ends with a question mark" : "Asks a question: " + quoted(qs)
         case .refine: why = rf.isEmpty ? "Short change to something that exists" : "A change to something that exists: " + quoted(rf)
         }
@@ -260,7 +268,10 @@ extension AppModel {
            let it = b.roadmap.first(where: { "road:" + $0.id == road }) {
             out.append("Already filed as the key result \"\(it.text)\" in the chapter \"\(RequestLog.fixesChapter)\" (mark it wip / review / done with set_roadmap_status).")
         }
-        if let c = r.chapter {
+        if r.kind == .task {
+            let known = TaskStore.summary(p.boardDir)
+            out.append(known.isEmpty ? "No tasks on the board yet." : "Tasks already on the board (reuse one if it is the same work):\n" + known.joined(separator: "\n"))
+        } else if let c = r.chapter {
             let items = b.roadmap.filter { $0.track == c }
             out.append("Matching chapter \"\(c)\" — key results:\n" + items.map { "- [\($0.status)] \($0.text)" }.joined(separator: "\n"))
             if let g = b.requirements.first(where: { b.roadChapter(for: $0.group)?.name == c })?.group {
@@ -283,6 +294,16 @@ extension AppModel {
         if let road = r.became.first(where: { $0.hasPrefix("road:") }), let it = b.roadmap.first(where: { "road:" + $0.id == road }) {
             let l = ["done": "done", "review": "to test", "wip": "in progress", "you": "waits on you", "todo": "to do"][it.status] ?? it.status
             return (l, it.status == "done" ? Brand.green : it.status == "todo" ? Brand.mute : Brand.amber)
+        }
+        if let t = r.became.first(where: { $0.hasPrefix("task:") }) {
+            let last = TaskStore.load(p.boardDir).runs.first { "task:" + $0.task == t }
+            switch last?.status {
+            case "running": return ("task running", Brand.claude)
+            case "done": return ("result to check", Brand.amber)
+            case "noresult": return ("no result", Brand.red)
+            case "ok": return ("task done", Brand.green)
+            default: return ("task ready", Brand.cream)
+            }
         }
         if let c = r.became.first(where: { $0.hasPrefix("choice:") }), let d = b.decisions.first(where: { "choice:" + $0.id == c }) {
             return b.isDecided(d) ? ("choice answered", Brand.green) : ("choice to make", Brand.amber)

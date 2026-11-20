@@ -58,6 +58,59 @@ enum TestEnvs {
         return out
     }
 
+    /// Why a test link does not lead to the feature (nil = it does). The Test it button must open the exact
+    /// page / record / item under test, never a home page (request r261120-174139: a test linked to
+    /// https://platform.synthetic-brain.com and the user had to find the feature by hand).
+    static func generic(_ s: String, envs: [TestEnv] = []) -> String? {
+        let raw = s.trimmingCharacters(in: .whitespaces)
+        guard let u = URL(string: raw), let sch = u.scheme?.lowercased() else { return "nothing (not a valid link)" }
+        let path = u.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let query = u.query ?? "", frag = u.fragment ?? ""
+        switch sch {
+        case "http", "https":
+            guard let h = host(raw) else { return "nothing (not a valid link)" }
+            if h == "github.com" || h.hasSuffix(".github.com") {
+                return path.split(separator: "/").count <= 2 ? "a repository's front page, not the change" : nil
+            }
+            // An environment's own base address (with or without the trailing slash) is its home page.
+            let bases = envs.compactMap { e -> String? in
+                guard let eh = host(e.url), eh == h, let eu = URL(string: e.url) else { return nil }
+                return eu.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            }
+            if query.isEmpty, frag.isEmpty, path.isEmpty || bases.contains(path) { return "the home page of \(h), not the feature" }
+            return nil
+        case "steerify":
+            let action = u.host ?? ""
+            if action.isEmpty { return "Steerify only, not the item" }
+            if action == "open", !query.contains("item=") { return "the project, not the item" }
+            return nil
+        case "file":
+            return raw.hasSuffix("/") ? "a folder, not the thing to look at" : nil
+        default:
+            return nil
+        }
+    }
+
+    /// Links that answer 404 (or a server that does not answer at all) when Steerify tries them now.
+    /// 404 → refused; unreachable → a warning (a local dev server may be stopped on purpose).
+    static func reach(tests: [[String: Any]]) -> (broken: [String], down: [String]) {
+        var broken: [String] = [], down: [String] = []
+        for (i, t) in tests.enumerated() {
+            guard let s = t["url"] as? String, host(s) != nil, let url = URL(string: s) else { continue }
+            var req = URLRequest(url: url, timeoutInterval: 4)
+            req.httpMethod = "GET"
+            let sem = DispatchSemaphore(value: 0)
+            var code: Int? = nil, failed = false
+            URLSession.shared.dataTask(with: req) { _, resp, err in
+                code = (resp as? HTTPURLResponse)?.statusCode; failed = err != nil && code == nil; sem.signal()
+            }.resume()
+            if sem.wait(timeout: .now() + 5) == .timedOut { failed = true }
+            if code == 404 || code == 410 { broken.append("test \(i + 1): \(s) answers \(code!) (page not found)") }
+            else if failed { down.append("test \(i + 1): \(s)") }
+        }
+        return (broken, down)
+    }
+
     /// Outside links in a delivery of a project with no environments yet: Claude must ask, not guess.
     static func unchecked(tests: [[String: Any]]) -> [String] {
         Array(Set(tests.compactMap { ($0["url"] as? String).flatMap(host) }.filter { !isLocal($0) && !$0.hasSuffix("github.com") })).sorted()

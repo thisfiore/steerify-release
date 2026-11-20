@@ -11,6 +11,8 @@ enum Brand {
     static let ink = Color(hex: 0xece8dc), mute = Color(hex: 0x8f8a7d), cream = Color(hex: 0xf2e8cf)
     static let amber = Color(hex: 0xffb020), amberDim = Color(hex: 0x2a2110)
     static let green = Color(hex: 0x4ade80), red = Color(hex: 0xf87171), blue = Color(hex: 0x8fb0ff)
+    /// Your turn on the board (a test, a choice, a release waits on you).
+    static let violet = Color(hex: 0xc4a7ff)
     /// Label face: monospaced caps, the in-app stand-in for the pixel font.
     static func label(_ size: CGFloat = 10) -> Font { .system(size: S(size), weight: .bold, design: .monospaced) }
 }
@@ -30,6 +32,7 @@ struct PixelIcon: View {
         "road": [".#.......", ".######..", ".#######.", ".######..", ".#.......", ".#.......", ".#.......", ".#.......", "###......"],
         "term": ["#########", "#.......#", "#.#.....#", "#..#....#", "#.#..##.#", "#.......#", "#########", ".........", "........."],
         "play": [".#.......", ".##......", ".###.....", ".####....", ".#####...", ".####....", ".###.....", ".##......", ".#......."],
+        "task": ["..####...", ".#....#.#", "#......##", "#.....###", "#........", "#.......#", "#.......#", ".#.....#.", "..#####.."],
         "ship": ["....#....", "...###...", "..#####..", "....#....", "....#....", "#########", ".#######.", "..#####..", "........."],
     ]
     var body: some View {
@@ -47,10 +50,10 @@ struct PixelIcon: View {
 
 // MARK: - Board screen
 
-enum BoardTab: String, CaseIterable { case ready, test, choice, req, road, release
-    var title: String { ["ready": "READY", "test": "TO TEST", "choice": "CHOICES", "req": "REQUIREMENTS", "road": "ROADMAP", "release": "RELEASE"][rawValue]! }
+enum BoardTab: String, CaseIterable { case ready, test, choice, req, road, task, release
+    var title: String { ["ready": "READY", "test": "TO TEST", "choice": "CHOICES", "req": "REQUIREMENTS", "road": "ROADMAP", "task": "TASKS", "release": "RELEASE"][rawValue]! }
     var icon: String { self == .release ? "ship" : self == .ready ? "play" : rawValue }
-    var color: Color { [.ready: Brand.amber, .test: Brand.blue, .choice: Brand.amber, .req: Color(hex: 0xc4a7ff), .road: Brand.green, .release: Brand.claude][self]! }
+    var color: Color { [.ready: Brand.amber, .test: Brand.blue, .choice: Brand.amber, .req: Color(hex: 0xc4a7ff), .road: Brand.green, .task: Brand.claude, .release: Brand.claude][self]! }
 }
 
 struct BoardScreen: View {
@@ -67,11 +70,13 @@ struct BoardScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             // The TabBar lives in ContentView, across the full window (board + sessions).
-            if tab != .ready { NudgeStrip(projectId: board.project.id, open: { tab = .ready }).padding(.top, 6).padding(.bottom, 4) }
+            if tab != .ready { NextStrip(board: board, openReady: { tab = .ready }).padding(.top, 6).padding(.bottom, 4) }
             if tab == .release {
                 ReleaseScreen(board: board)
             } else if tab == .ready {
                 ReadyScreen(projectId: board.project.id)
+            } else if tab == .task {
+                TasksScreen(board: board)
             } else {
             FilterBar(board: board, tab: tab, area: $area, state: $state, counts: counts)
             ScrollViewReader { proxy in
@@ -112,7 +117,7 @@ struct BoardScreen: View {
         case .req:
             ForEach(reqGroups, id: \.self) { g in ReqGroupView(board: board, group: g, items: reqs.filter { $0.group == g }) }
             if reqs.isEmpty { EmptyBoard(projectId: board.project.id, title: "NOTHING TO REVIEW", line: "Every requirement has an answer. Suspicious, but nice.") }
-        case .release, .ready:
+        case .release, .ready, .task:
             EmptyView()
         case .road:
             let allProps = roadTracks.flatMap { board.consolidation(track: $0) }.filter(\.sure)
@@ -195,7 +200,7 @@ struct BoardScreen: View {
     }
 
     private func count(_ st: String) -> Int {
-        switch tab { case .test: shipsIn(st).count; case .choice: choicesIn(st).count; case .req: reqsIn(st).count; case .road: roadIn(st).count; case .release, .ready: 0 }
+        switch tab { case .test: shipsIn(st).count; case .choice: choicesIn(st).count; case .req: reqsIn(st).count; case .road: roadIn(st).count; case .release, .ready, .task: 0 }
     }
     private var counts: [String: Int] {
         Dictionary(uniqueKeysWithValues: FilterBar.states(tab).map { ($0.0, count($0.0)) })
@@ -252,6 +257,7 @@ struct TabBar: View {
         case .choice: return board.decisions.filter { !board.isDecided($0) && !board.isParked($0) }.count
         case .req: return board.requirements.filter { $0.status == "question" && board.isOpen($0) }.count
         case .road: return 0
+        case .task: return TaskStore.load(board.project.boardDir).runs.filter { $0.status == "done" || $0.status == "noresult" }.count
         case .release: return board.ships.filter { board.shipState($0) == .ok && $0.status != "live" }.count
         }
     }
@@ -270,7 +276,7 @@ struct FilterBar: View {
         case .choice: [("open", "Open"), ("decided", "Decided"), ("parked", "Parked"), ("all", "All")]
         case .req: [("open", "Open"), ("decide", "To decide"), ("confirm", "To confirm"), ("agreed", "Settled"), ("all", "All")]
         case .road: [("open", "Active"), ("done", "Done"), ("all", "All")]
-        case .release, .ready: [("all", "All")]
+        case .release, .ready, .task: [("all", "All")]
         }
     }
     private var states: [(String, String)] { Self.states(tab) }
@@ -1376,12 +1382,19 @@ struct TestChapter: View {
             }
             HStack(spacing: 6) {
                 if let u = test.url, let url = URL(string: u) {
+                    // A link that does not reach the feature (older deliveries) says so instead of looking like a test.
+                    let vague = TestEnvs.generic(u, envs: TestEnvs.load(board.project.boardDir))
                     Button { if url.scheme == "steerify" { model.handle(url) } else { NSWorkspace.shared.open(url) } } label: {
-                        HStack(spacing: 5) { Text("Test it").font(.system(size: S(12.5), weight: .bold)); Image(systemName: "arrow.up.right").font(.system(size: S(10.5), weight: .bold)) }
+                        HStack(spacing: 5) {
+                            if vague != nil { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: S(10.5))) }
+                            Text(vague == nil ? "Test it" : "Home page only").font(.system(size: S(12.5), weight: .bold))
+                            Image(systemName: "arrow.up.right").font(.system(size: S(10.5), weight: .bold))
+                        }
                             .lineLimit(1).fixedSize()
-                            .foregroundStyle(.white).padding(.horizontal, 11).padding(.vertical, 6)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(Color(hex: 0x3b6ff5)))
-                    }.buttonStyle(SteerButton()).help(u)
+                            .foregroundStyle(vague == nil ? .white : Brand.amber).padding(.horizontal, 11).padding(.vertical, 6)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(vague == nil ? Color(hex: 0x3b6ff5) : .clear))
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(vague == nil ? .clear : Brand.amber.opacity(0.7)))
+                    }.buttonStyle(SteerButton()).help(vague.map { "This link opens \($0): \(u)\nSend it back with Refine to get a direct link." } ?? u)
                 }
                 Button { board.setTest(item, index: index, ok: !ok) } label: {
                     HStack(spacing: 5) { Image(systemName: ok ? "checkmark.circle.fill" : "checkmark.circle"); Text("Looks right") }

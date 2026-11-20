@@ -19,15 +19,18 @@ struct ContentView: View {
         Group {
             if let p = model.project {
                 // The tabs span the whole window: board and sessions below both follow them.
-                VStack(spacing: 0) {
-                    let b = model.board(for: p)
-                    // A new project with an empty board opens on its welcome screen until it is set up (Setup.swift).
-                    SetupGate(board: b) { TabBar(board: b, tab: $boardTab).id(p.id).background(Brand.bg) } welcome: { EmptyView() }
-                    BoardTerminalSplit {
-                        SetupGate(board: b) { BoardScreen(board: b).id(p.id) } welcome: { NewProjectWelcome(board: b).id(p.id) }
-                    } right: {
-                        TerminalPane(project: p)
+                let b = model.board(for: p)
+                // A new project opens on one centered "Set up with Claude" modal; while setup runs, the board fills
+                // in live on the left with Claude on the right; then the normal board (Setup.swift).
+                SetupGate(board: b) {
+                    VStack(spacing: 0) {
+                        TabBar(board: b, tab: $boardTab).id(p.id).background(Brand.bg)
+                        BoardTerminalSplit { BoardScreen(board: b).id(p.id) } right: { TerminalPane(project: p) }
                     }
+                } live: {
+                    BoardTerminalSplit { SetupLive(board: b).id(p.id) } right: { TerminalPane(project: p) }
+                } welcome: {
+                    SetupModal(board: b).id(p.id)
                 }
                 .navigationTitle("")
                 .overlay {
@@ -46,6 +49,7 @@ struct ContentView: View {
                 NoProjectsView()
             }
         }
+        .folderDropTarget()       // folders dropped on the window become projects (FolderDrop.swift)
         // "Since you left": on open, when you come back to the app, and when you switch to a project you left a while ago.
         .onAppear {
             let a = CommandLine.arguments

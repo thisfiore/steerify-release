@@ -119,7 +119,7 @@ struct MenuBarPanel: View {
     }
 
     private var moodColor: Color {
-        switch model.mood { case .working: Brand.green; case .yourTurn: Brand.amber; case .idle: Brand.cream; case .quiet: Brand.mute }
+        switch model.mood { case .working: Brand.blue; case .yourTurn: Brand.amber; case .idle: Brand.cream; case .quiet: Brand.mute }
     }
 
     private var moodLine: String {
@@ -193,7 +193,7 @@ struct MenuBarPanel: View {
             }
             ForEach(shownSessions) { s in
                 Button { go { model.selectedProjectId = s.projectId; model.selectedSession[s.projectId] = s.id } } label: {
-                    MenuSessionRow(session: s, project: model.projects.first { $0.id == s.projectId }?.name ?? "", outlook: model.outlook(s))
+                    MenuSessionRow(session: s, project: model.projects.first { $0.id == s.projectId }?.name ?? "", outlook: model.outlook(s), turn: model.yourTurn(s))
                 }.buttonStyle(SteerButton())
             }
         }
@@ -268,17 +268,19 @@ struct MenuSessionRow: View {
     @ObservedObject var session: TerminalSession
     let project: String
     var outlook: SessionOutlook? = nil
+    var turn: BoardTurn? = nil
     var body: some View {
         let st = session.kind == .claude ? session.status : (session.running ? .working : .ended)
         let (word, c): (String, Color) = {
+            if turn != nil { return ("your turn", Brand.violet) }
             switch outlook {
             case .ask?: return ("asks you", Brand.amber)
             case .next?: return ("next step", Brand.cream)
-            case let o? where o.isDone: return ("done", Brand.green)
+            case let o? where o.isDone: return ("done", Brand.mute)
             default: break
             }
             switch st {
-            case .working: return (session.kind == .claude ? "rowing…" : "shell", Brand.green)
+            case .working: return (session.kind == .claude ? "rowing…" : "shell", session.kind == .claude ? Brand.blue : Brand.cream.opacity(0.6))
             case .waiting: return ("raising a hand", Brand.amber)
             case .idle: return ("idle \(MenuBarPanel.since(session.statusAt).replacingOccurrences(of: "for ", with: ""))", Brand.cream)
             case .starting: return ("warming up", Brand.mute)

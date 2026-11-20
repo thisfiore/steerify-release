@@ -2,7 +2,9 @@ import SwiftUI
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    var model: AppModel?
+    var model: AppModel? { didSet { flushOpened() } }
+    /// URLs that arrive before the window (and its model) exist: a folder dropped on the Dock icon at launch.
+    private var opened: [URL] = []
     private var testWindow: NSWindow?
 
     /// Test copies (`--background`) are never activated, and SwiftUI only presents its window on activation:
@@ -38,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.setContentSize(size)
         w.toolbarStyle = .unifiedCompact
         w.isRestorable = false
+        w.identifier = NSUserInterfaceItemIdentifier("main-test")   // the window questions attach to (FolderDrop.swift)
         w.orderFrontRegardless()
         testWindow = w
         // `--snapshot <file.png> [seconds]`: render the window (titlebar + toolbar included) to a PNG, then quit.
@@ -94,6 +97,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !CommandLine.arguments.contains("--background") { NSApp.activate(ignoringOtherApps: true) }
         else { MainActor.assumeIsolated { openTestWindow() } }
     }
+    /// Every URL the app is asked to open: steerify:// links, and folders dropped on the Dock icon or opened
+    /// with Steerify from Finder (Info.plist declares public.folder). One place, so each is handled once.
+    func application(_ app: NSApplication, open urls: [URL]) {
+        opened += urls
+        flushOpened()
+    }
+    private func flushOpened() {
+        guard let m = model, !opened.isEmpty else { return }
+        let urls = opened; opened = []
+        MainActor.assumeIsolated {
+            let folders = urls.filter(\.isFileURL).map(\.path)
+            if !folders.isEmpty { m.openFolders(folders) }
+            urls.filter { !$0.isFileURL }.forEach(m.handle)
+        }
+    }
     func applicationWillTerminate(_ n: Notification) {
         MainActor.assumeIsolated { model?.shutdown() }
     }
@@ -148,6 +166,11 @@ struct SteerApp: App {
         // Test hook: `open Steerify.app --args --open-shells N` opens N shell sessions (perf measuring).
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--project"), i + 1 < a.count, m.projects.contains(where: { $0.id == a[i + 1] }) { m.selectedProjectId = a[i + 1] }
+        // `--drop <folder>`: as if the folder were dropped on the window (`--drop-answer new|add` skips the question).
+        if let i = a.firstIndex(of: "--drop"), i + 1 < a.count {
+            let f = a[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { m.dropFolders([f]) }
+        }
         // `--test-persist`: sessions saved / restored in the test settings, as a real restart does (test windows skip the main window's onAppear).
         if a.contains("--test-persist") { m.restoreSessions() }
         // Test hook: `--add-folder <path>` adds any folder as a project, as Add project… does after the panel.
@@ -269,7 +292,6 @@ struct SteerApp: App {
                 .tint(Brand.amber)
                 .id(preset)                                   // rebuild the UI at the new text size
                 .onChange(of: preset) { _, _ in model.applyFonts() }
-                .onOpenURL { model.handle($0) }
                 .onAppear {
                     delegate.model = model
                     model.restoreSessions()
