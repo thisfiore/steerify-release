@@ -31,11 +31,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="assets/site.css?v=10">
-<link rel="stylesheet" href="assets/story.css?v=7">
+<link rel="stylesheet" href="assets/story.css?v=10">
 <script src="assets/brand.js?v=10" defer></script>
 <script src="assets/infographics.js?v=8" defer></script>
 <script src="assets/story.js?v=7" defer></script>
 <script src="assets/beta.js?v=10" defer></script>
+<script src="assets/gallery.js?v=1" defer></script>
 <script src="assets/github.js?v=2" defer></script>
 </head>
 <body>
@@ -47,6 +48,7 @@
     <nav>
       <a href="#decide">Deciding</a>
       <a href="#how">How it works</a>
+      <a href="#real">Screenshots</a>
       <a href="releases.html">What's new</a>
       <a href="tutorial.html">Tutorial</a>
       <a class="btn sm amber" href="#get">Download</a>
@@ -144,6 +146,23 @@
           <div><span class="num">09</span><h3>The small jobs stay on your Mac.</h3><p>Session summaries, sorting a new request, roadmap ideas from your commits, a first check of each screenshot: Apple Intelligence does them on your Mac's own chip. Free, private, and optional. Claude still does the building.</p><p class="aside">Not everything needs the cloud.</p></div>
           <div data-scene="mac"></div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="real" style="padding-top:0">
+    <div class="wrap">
+      <span class="eyebrow">The real app</span>
+      <h2 style="margin-top:14px">And this is what it looks like.</h2>
+      <p class="lead" style="margin-top:14px">The demo project, Tiny Todo. It comes with the app, so you can click through all of this before touching your own code.</p>
+      <div class="gal" data-gallery aria-label="Screenshots of the app on the demo project">
+        <figure data-label="Decide"><a href="assets/shots/demo/choice-making.png"><img src="assets/shots/demo/web/choice-making.jpg" width="1600" height="1043" alt="A choice opened full screen: the Tiny Todo list with due-date chips, option A suggested, and a Choose A button" loading="lazy"></a><figcaption><span><b>Decide</b> · A choice, full screen. The option is a picture; one button chooses it.</span></figcaption></figure>
+        <figure data-label="Look"><a href="assets/shots/demo/test-preview.png"><img src="assets/shots/demo/web/test-preview.jpg" width="1600" height="1043" alt="A delivered test with its picture, a Mark it right button and the verdict buttons OK, Refine, Broken" loading="lazy"></a><figcaption><span><b>Look</b> · One test, one picture. Mark it right, then OK, Refine or Broken.</span></figcaption></figure>
+        <figure data-label="To test"><a href="assets/shots/demo/test.png"><img src="assets/shots/demo/web/test.jpg" width="1600" height="1043" alt="The To test tab: a delivery with two tests, each with a picture, Test it and Looks right" loading="lazy"></a><figcaption><span><b>To test</b> · Every delivery with its tests, a picture for each one.</span></figcaption></figure>
+        <figure data-label="Roadmap"><a href="assets/shots/demo/roadmap.png"><img src="assets/shots/demo/web/roadmap.jpg" width="1600" height="1043" alt="The roadmap: two chapters with progress bars and a Start button on each item" loading="lazy"></a><figcaption><span><b>Roadmap</b> · Chapters, progress, and a Start button on every item.</span></figcaption></figure>
+        <figure data-label="Requirements"><a href="assets/shots/demo/requirements.png"><img src="assets/shots/demo/web/requirements.jpg" width="1600" height="1043" alt="The Requirements tab: three proposed requirements with confirm, edit and later buttons" loading="lazy"></a><figcaption><span><b>Requirements</b> · Claude proposes them. You confirm, edit or park each line.</span></figcaption></figure>
+        <figure data-label="Request"><a href="assets/shots/demo/new-request.png"><img src="assets/shots/demo/web/new-request.jpg" width="1600" height="1043" alt="The New request sheet: a typed request sorted as a refinement and filed under a chapter" loading="lazy"></a><figcaption><span><b>Request</b> · Type a fix or an idea from anywhere. Steerify files it in the right chapter.</span></figcaption></figure>
+        <figure data-label="Search"><a href="assets/shots/demo/search.png"><img src="assets/shots/demo/web/search.jpg" width="1600" height="1043" alt="The search palette: results for "due" grouped by roadmap and choices" loading="lazy"></a><figcaption><span><b>Search</b> · One search across sessions, choices, roadmap and requests.</span></figcaption></figure>
       </div>
     </div>
   </section>

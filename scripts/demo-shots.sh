@@ -40,3 +40,7 @@ for s in $SHOTS; do
   [ -f $OUT/$name.png ] && echo "$name  $(sips -g pixelWidth $OUT/$name.png | awk '/pixelWidth/{print $2}') px" || echo "$name  FAILED"
 done
 rm -rf $TMP
+
+# Web copies for the landing and the README: 1600 px JPEGs in $OUT/web (the PNGs stay as the full-size originals).
+mkdir -p $OUT/web
+for f in $OUT/*.png; do sips -s format jpeg -s formatOptions 82 -Z 1600 $f --out $OUT/web/${f:t:r}.jpg >/dev/null; done

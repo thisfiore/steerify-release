@@ -42,3 +42,33 @@
 .bb-copy:hover { filter: brightness(1.08) }
 .brewbox pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 12.5px/1.7 var(--f-mono); color: var(--cream) }
 .brewbox pre i { font-style: normal; color: var(--amber); user-select: none; margin-right: 8px }
+/* The real app: screenshot gallery (gallery.js). Without JS the figures simply stack. */
+.gal { margin: 36px auto 0; max-width: 1000px }
+.gal figure { margin: 0; border: 1px solid #2c3038; border-radius: 12px; overflow: hidden; background: var(--panel); box-shadow: 0 40px 90px -40px #000 }
+.gal figure + figure { margin-top: 18px }
+.gal figure a { display: block; cursor: zoom-in }
+.gal figure img { display: block; width: 100%; height: auto }
+.gal figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 14px 16px; font-size: 15px; color: var(--mute) }
+.gal figcaption b { color: var(--cream) }
+.gal figcaption i { font: 12px var(--f-mono); font-style: normal; white-space: nowrap }
+.gal-on .gal-stage { position: relative }
+.gal-on figure + figure { margin-top: 0 }
+.gal-on figure:not([hidden]) { animation: gal-in .25s ease-out }
+@keyframes gal-in { from { opacity: .35 } to { opacity: 1 } }
+.gal-nav { position: absolute; top: calc(50% - 48px); z-index: 2; width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--line2); background: rgba(7, 8, 10, .86); color: var(--cream); font: 700 16px/1 var(--f-pix); cursor: pointer }
+.gal-nav:hover, .gal-nav:focus-visible { background: var(--amber); border-color: var(--amber); color: #1a1200 }
+.gal-nav.prev { left: -23px } .gal-nav.next { right: -23px }
+.gal-thumbs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; margin-top: 14px }
+.gal-thumbs button { padding: 0; text-align: left; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg2); color: var(--mute); cursor: pointer }
+.gal-thumbs img { display: block; width: 100%; height: auto; aspect-ratio: 1600 / 1043; object-fit: cover; opacity: .55 }
+.gal-thumbs span { display: block; padding: 8px 9px 9px; font: 700 10px/1 var(--f-pix); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.gal-thumbs button:hover img, .gal-thumbs button.on img { opacity: 1 }
+.gal-thumbs button:hover { border-color: var(--line2); color: var(--cream) }
+.gal-thumbs button.on { border-color: var(--amber); color: var(--cream) }
+.gal-zoom { border: 0; padding: 0; background: transparent; max-width: 96vw; max-height: 96vh; overflow: visible }
+.gal-zoom::backdrop { background: rgba(0, 0, 0, .88) }
+.gal-zoom img { display: block; max-width: 96vw; max-height: 88vh; width: auto; height: auto; border-radius: 10px; border: 1px solid #2c3038; cursor: zoom-out }
+.gal-zoom p { margin: 12px 0 0; display: flex; justify-content: space-between; gap: 16px; font-size: 14px; color: #c8c2b3 }
+.gal-zoom button { font: 700 11px var(--f-pix); letter-spacing: .06em; color: var(--cream); background: transparent; border: 1px solid var(--line2); border-radius: 6px; padding: 7px 10px; cursor: pointer }
+@media (max-width: 1240px) { .gal-nav.prev { left: 10px } .gal-nav.next { right: 10px } }
+@media (max-width: 760px) { .gal-thumbs { grid-template-columns: repeat(4, minmax(0, 1fr)) } .gal figcaption { flex-direction: column; gap: 6px } }

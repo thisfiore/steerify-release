@@ -49,9 +49,24 @@ pick one, blend two with a note, write your own, or park it. Your answers start 
   </tr>
 </table>
 
-And this is the real thing, on Steerify's own board:
+And this is the real app, on the demo project that comes with it:
 
-<p align="center"><img src="site/assets/shots/hero-now.jpg" width="820" alt="Steerify: a choice with three visual options next to the session panel"></p>
+<p align="center"><img src="site/assets/shots/demo/web/choice-making.jpg" width="820" alt="A choice opened full screen: the option as a picture, one button to choose it"><br><b>Decide.</b> A choice, full screen. The option is a picture; one button chooses it.</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="site/assets/shots/demo/web/test-preview.jpg" alt="Look"><br><b>Look.</b> One test, one picture. Mark it right, then OK, Refine or Broken.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/test.jpg" alt="To test"><br><b>To test.</b> Every delivery with its tests, a picture for each one.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="site/assets/shots/demo/web/roadmap.jpg" alt="Roadmap"><br><b>Roadmap.</b> Chapters, progress, and a Start button on every item.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/requirements.jpg" alt="Requirements"><br><b>Requirements.</b> Claude proposes them. You confirm, edit or park each line.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="site/assets/shots/demo/web/new-request.jpg" alt="Request"><br><b>Request.</b> Type a fix or an idea from anywhere. Steerify files it in the right chapter.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/search.jpg" alt="Search"><br><b>Search.</b> One search across sessions, choices, roadmap and requests.</td>
+  </tr>
+</table>
 
 ## Install
 
