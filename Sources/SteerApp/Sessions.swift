@@ -69,6 +69,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         env["STEERIFY_SESSION"] = id.uuidString
         env["STEERIFY_BOARD"] = boardDir
         if let item { env["STEERIFY_ITEM"] = item.ref }
+        let envs = TestEnvs.load(boardDir)
+        if !envs.isEmpty { env["STEERIFY_ENVS"] = TestEnvs.describe(envs) }   // where to point To test links
         env.merge(extraEnv) { _, new in new }
         let shell = env["SHELL"] ?? "/bin/zsh"
         v.startProcess(executable: shell, args: shellCommand.map { ["-l", "-c", $0 + "; s=$?; echo; echo \"[Steerify] exit $s\"; exit $s"] } ?? ["-l"],
@@ -78,9 +80,24 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         if kind == .claude {
             let line = (["claude", "--settings", Self.shellQuote(SessionHooks.settings.path),
                          "--mcp-config", Self.shellQuote(SessionHooks.mcpConfig.path)] + (command ?? []).map { $0.hasPrefix("-") ? $0 : Self.shellQuote($0) }).joined(separator: " ")
-            v.send(txt: (dry ? "echo " + Self.shellQuote(line) + "; pwd; git branch --show-current; env | grep ^STEERIFY_ | sort" : line) + "\r")
+            let full = dry ? "echo " + Self.shellQuote(line) + "; pwd; git branch --show-current; env | grep ^STEERIFY_ | sort" : line
+            v.send(txt: Self.launchLine(full, id: id) + "\r")
         }
         return v
+    }
+
+    /// The text typed into the new shell to run `command`. It is typed before the shell is ready, while the
+    /// terminal is still in line mode, where macOS keeps at most 1024 bytes of a line (MAX_CANON): a long
+    /// prompt was cut ("…the h") and claude never started. Long commands go to a script that removes itself,
+    /// and only a short `. '<script>'` is typed (still in the shell's history, same shell, same cwd).
+    static func launchLine(_ command: String, id: UUID) -> String {
+        guard command.utf8.count > 400 else { return command }
+        let dir = ProjectStore.dir.appendingPathComponent("launch", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("\(id.uuidString).sh")
+        let body = "rm -f \(shellQuote(file.path))\n\(command)\n"
+        guard (try? body.write(to: file, atomically: true, encoding: .utf8)) != nil else { return command }
+        return ". " + shellQuote(file.path)
     }
 
     static func shellQuote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }

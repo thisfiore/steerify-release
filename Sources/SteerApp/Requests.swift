@@ -227,12 +227,13 @@ extension AppModel {
             r["status"] = fileOnly ? "filed" : "working"; r["became"] = became; r["area"] = area
         }
         b.reload()
-        if !fileOnly { startRequestSession(projectId: p.id, id: id) }
+        // Filed for another project (menu bar, ⌃⌥N, the FOR pills): its session starts there, you stay where you are.
+        if !fileOnly { startRequestSession(projectId: p.id, id: id, focus: p.id == selectedProjectId) }
         return id
     }
 
     /// Start (or reopen) the Claude session of a request, briefed with everything Steerify knows.
-    func startRequestSession(projectId: String, id: String) {
+    func startRequestSession(projectId: String, id: String, focus: Bool = true) {
         guard let p = projects.first(where: { $0.id == projectId }),
               let r = RequestLog.load(p.boardDir).first(where: { $0.id == id }) else { return }
         var item = ItemRef(ref: "request:" + id)!
@@ -241,7 +242,7 @@ extension AppModel {
         RequestLog.edit(p.boardDir, id: id) { $0["status"] = ($0["status"] as? String) == "filed" ? "working" : $0["status"] }
         // Test copies (`--dry-sessions`) print the command instead of starting Claude (and the brief to stderr).
         if CommandLine.arguments.contains("--dry-sessions") { FileHandle.standardError.write(("BRIEF\n" + requestBrief(r, in: p) + "\n").data(using: .utf8)!) }
-        start(projectId: p.id, item: item, intent: .intake, dry: CommandLine.arguments.contains("--dry-sessions"), extraBrief: requestBrief(r, in: p))
+        start(projectId: p.id, item: item, intent: .intake, dry: CommandLine.arguments.contains("--dry-sessions"), extraBrief: requestBrief(r, in: p), focus: focus)
     }
 
     /// Everything the session needs so it never asks what the request is.

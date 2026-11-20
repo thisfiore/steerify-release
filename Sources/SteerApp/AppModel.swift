@@ -307,9 +307,9 @@ final class AppModel: ObservableObject {
     /// Start (or focus) a Claude session for a board item, already briefed: "/steerify <intent> <item>".
     @discardableResult
     func start(projectId: String, item ref: ItemRef, intent: Intent, dry: Bool = false,
-               extraBrief: String? = nil, also: [String] = []) -> TerminalSession? {
+               extraBrief: String? = nil, also: [String] = [], focus: Bool = true) -> TerminalSession? {
         guard let p = projects.first(where: { $0.id == projectId }) else { return nil }
-        selectedProjectId = p.id
+        if focus { selectedProjectId = p.id }   // false: the session starts in the background (a request filed for another project)
         if let existing = sessions.first(where: { $0.projectId == p.id && $0.covers(ref.ref) && $0.running }) {
             selectedSession[p.id] = existing.id          // one live session per item: jump to it
             if let extraBrief { existing.view.send(txt: extraBrief.replacingOccurrences(of: "\n", with: " ") + "\r") }
@@ -455,8 +455,10 @@ final class AppModel: ObservableObject {
     struct SavedSession: Codable { var projectId: String; var repo: String; var kind: String; var item: String?; var title: String?; var claudeId: String?; var selected: Bool; var dir: String? = nil }
 
     func persistSessions() {
-        if CommandLine.arguments.contains("--background") { return }      // test instances never touch your sessions
-        let list = sessions.filter { !$0.dry }.map { s in
+        // Test instances never touch your sessions (`--test-persist`: they save to their own test settings, to test a restart).
+        if CommandLine.arguments.contains("--background") && !CommandLine.arguments.contains("--test-persist") { return }
+        // One-shot shells (a deploy: `shellCommand`) did their job; after a restart they would only be empty tabs.
+        let list = sessions.filter { !$0.dry && $0.shellCommand == nil }.map { s in
             SavedSession(projectId: s.projectId, repo: s.repo.name, kind: s.kind.rawValue, item: s.item?.ref, title: s.title,
                          claudeId: s.claudeId, selected: selectedSession[s.projectId] == s.id, dir: s.workdir)
         }
@@ -465,7 +467,7 @@ final class AppModel: ObservableObject {
 
     /// Reopen last time's sessions: Claude conversations resumed (history kept), shells in their repos.
     func restoreSessions() {
-        guard sessions.isEmpty, !CommandLine.arguments.contains("--background"),
+        guard sessions.isEmpty, !CommandLine.arguments.contains("--background") || CommandLine.arguments.contains("--test-persist"),
               let d = Prefs.store.data(forKey: "openSessions"),
               let list = try? JSONDecoder().decode([SavedSession].self, from: d) else { return }
         for saved in list {

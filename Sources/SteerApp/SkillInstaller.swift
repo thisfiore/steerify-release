@@ -12,11 +12,20 @@ enum SkillInstaller {
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills/steerify")
         let dst = dir.appendingPathComponent("SKILL.md")
         let wanted = bundled + "\n" + marker + "\n"
+        // `.installed` records that this installer manages the folder. Copies from before it (or copied by hand) may
+        // have lost the marker and then never updated: sessions ran an old skill. Take those over once, with a backup.
+        let record = dir.appendingPathComponent(".installed")
+        let managed = FileManager.default.fileExists(atPath: record.path)
         if let current = try? String(contentsOf: dst, encoding: .utf8) {
-            if current == wanted || !current.contains(marker) { return }   // up to date, or user-owned
+            if current == wanted { if !managed { try? "1\n".write(to: record, atomically: true, encoding: .utf8) }; return }
+            if !current.contains(marker) {
+                if managed { return }                                       // the user removed the marker: theirs
+                try? current.write(to: dir.appendingPathComponent("SKILL.md.backup"), atomically: true, encoding: .utf8)
+            }
         }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? wanted.write(to: dst, atomically: true, encoding: .utf8)
+        try? "1\n".write(to: record, atomically: true, encoding: .utf8)
     }
 
     /// The prototype kit engine and its how-to (~/.claude/skills/steerify/kit): Steerify's own files, kept current.

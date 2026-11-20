@@ -35,5 +35,18 @@
     d.querySelector('[data-close]').addEventListener('click', close);
     d.addEventListener('click', (e) => { if (e.target === d) close(); });
     d.addEventListener('close', () => v.pause());
+    // A link that opens the teaser on arrival: steerify.dev/?teaser (or #teaser). Sound autoplay may be blocked by
+    // the browser: the video then waits on its poster with the play button. The address is cleaned on close.
+    const q = new URLSearchParams(location.search);
+    if (q.has('teaser') || location.hash === '#teaser') {
+      v.preload = 'auto';
+      d.showModal();
+      v.play().catch(() => {});
+      d.addEventListener('close', () => {
+        q.delete('teaser');
+        const rest = q.toString();
+        history.replaceState(null, '', location.pathname + (rest ? '?' + rest : ''));
+      }, { once: true });
+    }
   }
 })();

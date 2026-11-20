@@ -111,6 +111,7 @@ struct ReleaseScreen: View {
                 } else {
                     header
                     readyCard
+                    envCard
                     gitCard
                 }
             }
@@ -238,6 +239,31 @@ struct ReleaseScreen: View {
         }
     }
 
+    /// Where To test links go. Missing = sessions are told to ask, never to guess a host.
+    private var envCard: some View {
+        Card {
+            HStack {
+                Text("WHERE TO TEST").font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.amber)
+                Spacer()
+                Button(project.environments.isEmpty ? "Add addresses" : "Edit") { editing = true }
+                    .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.cream)
+            }
+            if project.environments.isEmpty {
+                Text("No addresses yet: Claude asks you before putting a link on To test.").italic()
+                    .font(.system(size: S(12))).foregroundStyle(Brand.mute)
+            }
+            ForEach(project.environments, id: \.self) { e in
+                HStack(spacing: 10) {
+                    Image(systemName: "link").font(.system(size: S(10))).foregroundStyle(Brand.mute)
+                    Text(e.name).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(Brand.ink).frame(width: S(110), alignment: .leading)
+                    Text(e.url).font(.system(size: S(11.5), design: .monospaced)).foregroundStyle(Brand.cream).lineLimit(1).textSelection(.enabled)
+                    if let a = e.area { Text(board.areaName(a)).font(.system(size: S(11))).foregroundStyle(Brand.mute) }
+                    Spacer()
+                }
+            }
+        }
+    }
+
     private func stat(_ n: Int, _ label: String, _ c: Color) -> some View {
         Group { if n > 0 { Text("\(n) \(label)").font(.system(size: S(11))).foregroundStyle(c) } }
     }
@@ -268,6 +294,7 @@ struct ReleaseSetup: View {
     @State private var live: [String: String] = [:]
     @State private var notes = ""
     @State private var flow: WorkFlow = WorkFlow.appDefault
+    @State private var envs: [TestEnv] = []
 
     var body: some View {
         Card {
@@ -299,6 +326,7 @@ struct ReleaseSetup: View {
             }
             Text("BRANCHES · HOW SESSIONS USE GIT").font(Brand.label(9)).foregroundStyle(Brand.mute).padding(.top, 4)
             FlowPicker(flow: $flow)
+            EnvironmentsEditor(envs: $envs, areas: Array(Set(project.repos.flatMap(\.areas))).sorted())
             Text("NOTES FOR CLAUDE").font(Brand.label(9)).foregroundStyle(Brand.mute).padding(.top, 4)
             TextField("e.g. deploy the API before the UI; release notes in the platform's Releases; never deploy on Fridays", text: $notes, axis: .vertical)
                 .textFieldStyle(.roundedBorder).lineLimit(2...5).font(.system(size: S(12)))
@@ -317,6 +345,13 @@ struct ReleaseSetup: View {
                     if !notes.isEmpty { cfg["notes"] = notes }
                     cfg["flow"] = flow.rawValue
                     ProjectStore.setManifestKey(project, "release", cfg)
+                    let clean = envs.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty && TestEnvs.host($0.url) != nil }
+                    ProjectStore.setManifestKey(project, "environments", clean.isEmpty ? nil : clean.map { e -> [String: Any] in
+                        var d: [String: Any] = ["name": e.name.trimmingCharacters(in: .whitespaces), "url": e.url.trimmingCharacters(in: .whitespaces)]
+                        if let a = e.area, !a.isEmpty { d["area"] = a }
+                        if let n = e.note, !n.isEmpty { d["note"] = n }
+                        return d
+                    })
                     done()
                 }
                 .disabled(!include.values.contains(true))
@@ -332,6 +367,7 @@ struct ReleaseSetup: View {
             }
             notes = cfg?.notes ?? ""
             flow = WorkFlow.of(project)
+            envs = project.environments
         }
     }
 }
@@ -412,6 +448,7 @@ extension AppModel {
         _ = s.view
         sessions.append(s)
         selectedSession[p.id] = s.id
+        persistSessions()      // the deploy shell itself is never saved (one-shot): only the selection changes
     }
 
     /// Ask each repo's live-check URL which commit is running (no tokens; every 10 min and on the Release tab).
@@ -495,5 +532,32 @@ extension AppModel {
         guard Date().timeIntervalSince(lastShipCheck) > 60 else { return }
         lastShipCheck = Date()
         for p in projects { Task { await checkLive(p) } }
+    }
+}
+
+/// Rows of name · address · area: the only hosts To test links may use (steerify.json → "environments").
+struct EnvironmentsEditor: View {
+    @Binding var envs: [TestEnv]
+    let areas: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("WHERE TO TEST · THE ONLY ADDRESSES IN TO TEST LINKS").font(Brand.label(9)).foregroundStyle(Brand.mute).padding(.top, 4)
+            ForEach(envs.indices, id: \.self) { i in
+                HStack(spacing: 8) {
+                    TextField("name, e.g. platform", text: $envs[i].name).textFieldStyle(.roundedBorder).frame(width: S(130))
+                    TextField("https://…", text: $envs[i].url).textFieldStyle(.roundedBorder)
+                        .foregroundStyle(envs[i].url.isEmpty || TestEnvs.host(envs[i].url) != nil ? Brand.ink : Brand.red)
+                    Picker("", selection: Binding(get: { envs[i].area ?? "" }, set: { envs[i].area = $0.isEmpty ? nil : $0 })) {
+                        Text("any area").tag("")
+                        ForEach(areas, id: \.self) { Text($0).tag($0) }
+                    }.labelsHidden().frame(width: S(120))
+                    Button { envs.remove(at: i) } label: { Image(systemName: "minus.circle") }.buttonStyle(SteerButton()).foregroundStyle(Brand.mute)
+                }
+                .font(.system(size: S(12)))
+            }
+            Button { envs.append(TestEnv(name: "", url: "")) } label: { Label("Add an address", systemImage: "plus") }
+                .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.cream)
+        }
     }
 }

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Steerify vs T3 Code · A T3 Code alternative for steering Claude Code on Mac</title>
+<meta name="description" content="Steerify vs T3 Code, compared honestly. T3 Code is a cross-platform control plane for many coding agents. Steerify is a native Mac steering board for Claude Code: choices with mockups, visual review and a roadmap. When to pick which.">
+<link rel="canonical" href="https://steerify.dev/t3-code-alternative.html">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0d0f12">
+<meta name="author" content="Frenk">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Steerify">
+<meta property="og:url" content="https://steerify.dev/t3-code-alternative.html">
+<meta property="og:title" content="Steerify vs T3 Code · A T3 Code alternative for steering Claude Code on Mac">
+<meta property="og:description" content="T3 Code manages agents. Steerify manages decisions. An honest comparison and when to pick which.">
+<meta property="og:image" content="https://steerify.dev/assets/og-2.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage","@id":"https://steerify.dev/t3-code-alternative.html#page","url":"https://steerify.dev/t3-code-alternative.html","name":"Steerify vs T3 Code","description":"An honest comparison of Steerify and T3 Code, and when to pick which.","inLanguage":"en","dateModified":"2026-11-20","isPartOf":{"@id":"https://steerify.dev/#site"},"about":[{"@id":"https://steerify.dev/#app"},{"@type":"SoftwareApplication","name":"T3 Code","url":"https://t3.codes/","applicationCategory":"DeveloperApplication"}]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Steerify","item":"https://steerify.dev/"},{"@type":"ListItem","position":2,"name":"Steerify vs T3 Code","item":"https://steerify.dev/t3-code-alternative.html"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is Steerify a T3 Code alternative?","acceptedAnswer":{"@type":"Answer","text":"Only for one kind of person. If you work in Claude Code on a Mac and your problem is deciding and reviewing, not managing agents, Steerify is the alternative. If you need several agents, Windows, Linux or a phone app, T3 Code is the right tool."}},{"@type":"Question","name":"What is the main difference between Steerify and T3 Code?","acceptedAnswer":{"@type":"Answer","text":"T3 Code is organised around agent threads, branches and pull requests. Steerify is organised around a board of decisions: choices with mockups, visual review of finished work, requirements and a roadmap. T3 Code manages agents; Steerify manages decisions."}},{"@type":"Question","name":"Can I use Steerify and T3 Code together?","acceptedAnswer":{"@type":"Answer","text":"They do not integrate today, but they do not conflict. Both are free, open source (MIT) and use your own agent logins."}},{"@type":"Question","name":"Is Steerify free like T3 Code?","acceptedAnswer":{"@type":"Answer","text":"Yes. Both are free and open source under the MIT license. With both you bring your own agent subscription."}}]}]}</script>
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/site.css?v=10">
+<script src="assets/brand.js?v=10" defer></script>
+<style>
+.vs h1 { font: 700 clamp(34px, 5vw, 60px)/1.05 var(--f-sans); letter-spacing: -.03em; margin-top: 14px }
+.vs .lead { margin-top: 18px; max-width: 720px }
+.vs h2 { font-size: clamp(24px, 3vw, 34px); margin-top: 56px }
+.vs p, .vs li { color: #c8c2b3; max-width: 760px }
+.vs ul { padding-left: 20px; margin-top: 14px }
+.vs li { margin-top: 6px }
+.vs-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 15.5px }
+.vs-table th, .vs-table td { text-align: left; vertical-align: top; padding: 14px 16px 14px 0; border-top: 1px solid var(--line) }
+.vs-table thead th { font: 12px/1 var(--f-pix); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); border-top: 0 }
+.vs-table tbody th { color: var(--mute); font-weight: 500; width: 22% }
+.vs-table td { color: #c8c2b3; width: 39% }
+.vs-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 40px }
+@media (max-width: 760px) { .vs-two { grid-template-columns: 1fr } .vs-table { font-size: 14px } .vs-table th, .vs-table td { padding-right: 10px } }
+.vs .note { margin-top: 56px; font-size: 13.5px; color: var(--mute) }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span data-wheel="tile"></span><b>STEERIFY</b></a>
+    <nav>
+      <a href="index.html#decide">Deciding</a>
+      <a href="index.html#how">How it works</a>
+      <a href="index.html#real">Screenshots</a>
+      <a href="releases.html">What's new</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a class="btn sm amber" href="index.html#get">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="vs">
+    <div class="wrap">
+      <span class="eyebrow">Compare</span>
+      <h1>Steerify vs T3 Code</h1>
+      <p class="lead">T3 Code manages agents. Steerify manages decisions. They look alike from far away and solve different problems up close.</p>
+      <p class="aside" style="margin-top:12px;font-size:22px">One is a cockpit. The other is the person saying where to fly.</p>
+
+      <h2>The short answer</h2>
+      <p style="margin-top:14px"><b>T3 Code</b> is an open-source control plane for coding agents. It runs Claude Code, Codex, Cursor and others from one app, on desktop, web and phone, and it is organised around threads, branches and pull requests. It is made for developers who use several agents.</p>
+      <p style="margin-top:12px"><b>Steerify</b> is a native Mac app for steering Claude Code. It keeps a board (choices with mockups, visual review of finished work, requirements and a roadmap) next to the sessions doing the work. Claude asks, builds and delivers on the board; you choose, look and approve. It is made for the person who decides what gets built.</p>
+
+      <h2>Side by side</h2>
+      <table class="vs-table">
+        <thead><tr><th></th><th>Steerify</th><th>T3 Code</th></tr></thead>
+        <tbody>
+          <tr><th>Built for</th><td>Founders and developers who decide and review</td><td>Developers who run two or more coding agents</td></tr>
+          <tr><th>You work on</th><td>Board items: a choice, a delivery to review, a roadmap chapter</td><td>Agent threads, each on its own git branch</td></tr>
+          <tr><th>Agents</th><td>Claude Code only</td><td>Claude Code, Codex, Cursor, OpenCode, Grok, Antigravity and more</td></tr>
+          <tr><th>Runs on</th><td>macOS 15 or later</td><td>macOS, Windows, Linux, web, iOS and Android</td></tr>
+          <tr><th>App</th><td>Native Swift, with Apple Intelligence for small jobs</td><td>Electron desktop app, plus a CLI server and phone apps</td></tr>
+          <tr><th>Deciding</th><td>Claude asks choices with a mockup per option; you answer with one click</td><td>You talk to the agent in the thread</td></tr>
+          <tr><th>Review</th><td>Finished work arrives as pictures; pin notes on the picture</td><td>Inline diff review before pushing</td></tr>
+          <tr><th>Git</th><td>On main, a worktree per feature, or branch + pull request, set once per project</td><td>Branch per thread, one-button commit, push and pull request, stacked PRs</td></tr>
+          <tr><th>Planning</th><td>Requirements and roadmap live on the board, in your repo as plain files</td><td>Not part of the product</td></tr>
+          <tr><th>Cost</th><td>Free, open source (MIT), your own Claude Code login</td><td>Free, open source (MIT), your own agent logins</td></tr>
+        </tbody>
+      </table>
+
+      <div class="vs-two">
+        <div>
+          <h2>Pick T3 Code if</h2>
+          <ul>
+            <li>You use more than one agent and want to switch between them.</li>
+            <li>You are on Windows or Linux, or want to check in from your phone.</li>
+            <li>You think in branches and pull requests, and you like reading diffs.</li>
+            <li>You want a tool with a large community behind it.</li>
+          </ul>
+        </div>
+        <div>
+          <h2>Pick Steerify if</h2>
+          <ul>
+            <li>You work in Claude Code on a Mac.</li>
+            <li>Your bottleneck is deciding and checking, not typing.</li>
+            <li>You would rather look at a picture than read a diff.</li>
+            <li>You want the requirements and the roadmap to stay in sync with what was really built.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Questions people ask</h2>
+      <div class="faq">
+        <div><h3>Is Steerify a T3 Code alternative?</h3><p>Only for one kind of person. If you work in Claude Code on a Mac and your problem is deciding and reviewing, yes. If you need several agents, Windows, Linux or a phone app, T3 Code is the right tool.</p></div>
+        <div><h3>Can I use both?</h3><p>They do not integrate today, but they do not conflict. Both are free and use your own logins, so trying both costs you an afternoon.</p></div>
+        <div><h3>Why only Claude Code?</h3><p>Because the board depends on it: Steerify ships a Claude Code skill and an MCP server, so every session follows the same loop and updates the board itself.</p></div>
+        <div><h3>Why only Mac?</h3><p>Steerify is native Swift and uses Apple Intelligence on your Mac for small jobs. One person builds it, so one platform done well comes first.</p></div>
+      </div>
+
+      <div style="margin-top:44px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+        <a class="btn amber" href="index.html#get">Download Steerify</a>
+        <a class="btn" href="index.html#how">See how it works</a>
+      </div>
+
+      <p class="note">T3 Code is a product of T3 Tools, Inc. Steerify is an independent project and is not affiliated with T3 Tools, Anthropic or Apple. T3 Code facts were checked against <a href="https://t3.codes/">t3.codes</a> on 20 November 2026; both products change quickly. Spotted a mistake? <a href="https://github.com/thisfiore/steerify-release/issues">Open an issue</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-meta">
+      <span><span data-wheel></span> <b class="pix" style="color:var(--cream)">STEERIFY</b></span>
+      <span>Independent project · not affiliated with Anthropic or Apple · Claude and Apple Intelligence are their trademarks</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

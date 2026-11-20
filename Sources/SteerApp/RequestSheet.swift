@@ -38,12 +38,20 @@ struct RequestSheet: View {
     @State private var capturing = false
     @State private var clipboardHasImage = false
     @State private var recent: [BoardRequest] = []    // read once per project, not on every keystroke
+    @State private var guess: ProjectGuess?           // ProjectGuess.swift: which project the text is about (menu bar, ⌃⌥N)
+    @State private var handPicked = false             // you clicked a project: no more guessing
+    @State private var guessing: Task<Void, Never>?
+    @State private var shots: [URL] = []              // your latest screenshots (RecentShots.swift)
+    @State private var shotThumbs: [URL: NSImage] = [:]
+    @State private var shotWatch: DispatchSourceFileSystemObject?
     @FocusState private var focused: Bool
 
     private var board: BoardStore { model.board(for: project) }
     private var kind: RequestKind { kindSet ?? triage.kind }
     private var chapter: String? { chapterSet ?? triage.chapter }
     private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// Opened from outside a project (menu bar, ⌃⌥N): the project is a question, so it is guessed and named on the button.
+    private var pickProject: Bool { model.requestPickProject && model.projects.count > 1 }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -57,6 +65,7 @@ struct RequestSheet: View {
                 }
                 if model.requestPickProject && model.projects.count > 1 { projectPills }
                 editor
+                if !shots.isEmpty { RecentShotsStrip(shots: shots, thumbs: shotThumbs, images: $images, onMore: pickOlder) }
                 attachments
                 if let c = context { contextRow(c) }
                 if empty {
@@ -75,8 +84,9 @@ struct RequestSheet: View {
             .onDrop(of: [.fileURL, .image], isTargeted: $dropping) { drop($0) }
         }
         .onAppear(perform: setUp)
+        .onDisappear { shotWatch?.cancel(); shotWatch = nil }
         .onChange(of: project.id) { _, _ in projectChanged() }
-        .onChange(of: text) { _, _ in retriage() }
+        .onChange(of: text) { _, _ in retriage(); guessProject() }
         .onKeyPress(.escape) { close(); return .handled }
         .onExitCommand { close() }
     }
@@ -87,7 +97,7 @@ struct RequestSheet: View {
     private var projectMenu: some View {
         Menu {
             ForEach(model.projects) { p in
-                Button { model.requestProjectId = p.id } label: { if p.id == project.id { Label(p.name, systemImage: "checkmark") } else { Text(p.name) } }
+                Button { handPicked = true; model.requestProjectId = p.id } label: { if p.id == project.id { Label(p.name, systemImage: "checkmark") } else { Text(p.name) } }
             }
         } label: {
             HStack(spacing: 3) {
@@ -105,13 +115,21 @@ struct RequestSheet: View {
             Text("FOR").font(Brand.label(8.5)).tracking(0.8).foregroundStyle(Brand.mute)
             ForEach(model.projects) { p in
                 let on = p.id == project.id
-                Button { model.requestProjectId = p.id } label: {
-                    Text(p.name).font(.system(size: S(12), weight: on ? .semibold : .regular))
+                Button { handPicked = true; model.requestProjectId = p.id } label: {
+                    Text((on && guess?.projectId == p.id && !handPicked ? "✦ " : "") + p.name).font(.system(size: S(12), weight: on ? .semibold : .regular))
                         .foregroundStyle(on ? Color(hex: 0x1a1200) : Brand.ink)
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Capsule().fill(on ? Brand.amber : Brand.panel))
                         .overlay(Capsule().stroke(on ? Color.clear : Brand.line2))
                 }.buttonStyle(SteerButton())
+            }
+            if let g = guess, !handPicked, g.projectId == project.id {
+                HStack(spacing: 4) {
+                    if g.ai { Image(systemName: "apple.intelligence").font(.system(size: S(10))) }
+                    Text("guessed · \(g.why)").lineLimit(1).truncationMode(.tail)
+                }
+                .font(.system(size: S(11))).foregroundStyle(Brand.blue).padding(.leading, 4)
+                .help(g.ai ? "Guessed by Apple Intelligence, on this Mac. Click a project to choose it yourself." : "Guessed from the words. Click a project to choose it yourself.")
             }
             Spacer()
         }
@@ -134,7 +152,7 @@ struct RequestSheet: View {
 
     private var attachments: some View {
         HStack(spacing: 8) {
-            ForEach(images, id: \.self) { u in
+            ForEach(images.filter { !shots.contains($0) }, id: \.self) { u in
                 ZStack(alignment: .topTrailing) {
                     Group {
                         if let img = NSImage(contentsOf: u) { Image(nsImage: img).resizable().aspectRatio(contentMode: .fill) }
@@ -237,7 +255,7 @@ struct RequestSheet: View {
             }
             .buttonStyle(SteerButton()).disabled(empty)
             .help("Saved and filed, no session (start it later from Recent requests)")
-            ClaudeButton(title: "File it + start Claude  ⌘↩", prominent: true) { send(fileOnly: false) }
+            ClaudeButton(title: (pickProject ? "File it in \(project.name)" : "File it + start Claude") + "  ⌘↩", prominent: true) { send(fileOnly: false) }
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(empty).opacity(empty ? 0.5 : 1)
         }
@@ -278,6 +296,8 @@ struct RequestSheet: View {
         let pb = NSPasteboard.general
         clipboardHasImage = pb.string(forType: .string) == nil && [.png, .tiff].contains(where: { pb.data(forType: $0) != nil })
         retriage()
+        loadShots()
+        shotWatch = RecentShots.watch { loadShots() }
         // Test hooks: `--request-img <png>` attaches a picture, `--request-send file|claude` sends after 2 s.
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--request-img"), i + 1 < a.count { images.append(URL(fileURLWithPath: a[i + 1])) }
@@ -311,6 +331,33 @@ struct RequestSheet: View {
         focused = true
     }
 
+    /// Pick A of request-project-guess: the words answer at once, Apple Intelligence after a pause; unsure → the window's project.
+    private func guessProject() {
+        guard pickProject, !handPicked else { return }
+        let ps = ProjectGuesser.profiles(model), asked = text
+        let w = ProjectGuesser.words(asked, ps)
+        apply(w.guess)
+        guessing?.cancel()
+        guard w.named == nil, !w.backed.isEmpty else { return }       // named, or nothing to choose from: no model call
+        guessing = Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled, asked == text else { return }
+            let read = await ProjectGuesser.ai(asked, ps)
+            guard asked == text, !handPicked else { return }
+            let final = ProjectGuesser.decide(w, model: read)
+            if CommandLine.arguments.contains("--dry-sessions") {   // test copies: how the guess was made
+                FileHandle.standardError.write("GUESS words=\(w.scores.prefix(3).map { "\($0.name):\(String(format: "%.1f", $0.score))" }) ai=\(String(describing: read.map { $0?.projectId ?? "unsure" })) final=\(final?.projectId ?? "none")\n".data(using: .utf8)!)
+            }
+            apply(final)
+        }
+    }
+
+    private func apply(_ g: ProjectGuess?) {
+        guess = g
+        let target = g?.projectId ?? model.selectedProjectId ?? project.id
+        if target != project.id { model.requestProjectId = target }
+    }
+
     private func retriage() {
         let chs = board.chapters.filter { !$0.draft }.map { c in (name: c.name, items: board.roadmap.filter { $0.track == c.name }.map(\.text)) }
         let ctx = model.chapter(of: context, in: project)
@@ -324,6 +371,28 @@ struct RequestSheet: View {
             guard !Task.isCancelled, asked == text else { return }
             if let better = await RequestTriage.refine(asked, chapters: chs, context: ctx, words: words), asked == text { triage = better }
         }
+    }
+
+    /// Read the screenshot folder off the main thread; thumbnails are small and made once per file.
+    private func loadShots() {
+        let known = shotThumbs
+        DispatchQueue.global(qos: .userInitiated).async {
+            let list = RecentShots.list()
+            var th: [URL: NSImage] = [:]
+            for u in list { th[u] = known[u] ?? RecentShots.thumb(u) }
+            DispatchQueue.main.async { shots = list; shotThumbs = th }
+        }
+    }
+
+    /// "More…": any older screenshot, from the same folder.
+    private func pickOlder() {
+        let panel = NSOpenPanel()
+        panel.directoryURL = RecentShots.folder
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.message = "Attach screenshots to the request"
+        if panel.runModal() == .OK { images += panel.urls.filter { !images.contains($0) } }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func pasteImage() {
@@ -379,7 +448,8 @@ struct RequestSheet: View {
         close()
         guard id != nil else { model.showToast("Could not file the request"); return }
         let where_ = k == .fix || k == .refine ? "“\(RequestLog.fixesChapter)”" : k == .feature ? "a chapter draft" : "a choice"
-        model.showToast(fileOnly ? "Filed: \(k.label.lowercased()) → \(where_)" : "Filed: \(k.label.lowercased()) → \(where_) · Claude is on it",
+        let away = project.id != model.selectedProjectId ? "\(project.name) · " : ""   // filed elsewhere: say where, you stay here
+        model.showToast(away + (fileOnly ? "Filed: \(k.label.lowercased()) → \(where_)" : "Filed: \(k.label.lowercased()) → \(where_) · Claude is on it"),
                         projectId: project.id)
     }
 

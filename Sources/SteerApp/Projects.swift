@@ -25,6 +25,8 @@ struct Project: Hashable, Identifiable {
     var automation: Automation? = nil
     /// steerify.json → "icon": your icon choice (nil = automatic, from the favicon).
     var icon: IconConfig? = nil
+    /// steerify.json → "environments": where to test (Environments.swift). Empty = not set up yet.
+    var environments: [TestEnv] = []
     var manifest: String { (boardDir as NSString).appendingPathComponent("steerify.json") }
 
     /// A repo by the name an item uses: repo name, folder name or git remote ("steerify" → steer-app).
@@ -55,6 +57,7 @@ struct Manifest: Codable {
     var release: ReleaseConfig?
     var automation: Automation?
     var icon: IconConfig?
+    var environments: [TestEnv]?
 }
 
 /// The app's own memory is only *which* workspaces you opened (workspaces.json in Application Support).
@@ -100,7 +103,7 @@ enum ProjectStore {
                  git: r.git, areas: r.areas ?? [])
         }
         return Project(id: m.id, name: m.name, boardDir: folder, port: m.webBoard?.port ?? 0, repos: repos,
-                       release: m.release, automation: m.automation, icon: m.icon)
+                       release: m.release, automation: m.automation, icon: m.icon, environments: m.environments ?? [])
     }
 
     /// First run: workspaces already on this Mac.

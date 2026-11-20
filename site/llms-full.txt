@@ -70,6 +70,24 @@ Close the laptop, come back, know. Steerify remembers the chapter you were on, w
 - **Board + terminals + projects**: Every project's board next to the Claude Code sessions doing the work.
 - **Start from an item**: Every board item starts or resumes its own Claude session, already briefed.
 - **The steerify skill**: Every session follows the same loop: read, ask, deliver, ship.
+## Steerify vs T3 Code
+
+T3 Code manages agents. Steerify manages decisions.
+
+| | Steerify | T3 Code |
+|---|---|---|
+| Built for | Founders and developers who decide and review | Developers who run two or more coding agents |
+| You work on | Board items: a choice, a delivery to review, a roadmap chapter | Agent threads, each on its own git branch |
+| Agents | Claude Code only | Claude Code, Codex, Cursor, OpenCode, Grok, Antigravity and more |
+| Runs on | macOS 15 or later | macOS, Windows, Linux, web, iOS and Android |
+| App | Native Swift, with Apple Intelligence for small jobs | Electron desktop app, plus a CLI server and phone apps |
+| Deciding | Choices with a mockup per option, answered with one click | You talk to the agent in the thread |
+| Review | Finished work arrives as pictures, with notes pinned on the picture | Inline diff review before pushing |
+| Planning | Requirements and roadmap on the board, as plain files in your repo | Not part of the product |
+| Cost | Free, open source (MIT), your own Claude Code login | Free, open source (MIT), your own agent logins |
+
+Pick T3 Code if you use more than one agent, are on Windows or Linux, want a phone app, or think in branches and pull requests. Pick Steerify if you work in Claude Code on a Mac and your bottleneck is deciding and checking, not typing. They do not integrate today and do not conflict. T3 Code facts checked against t3.codes on 20 November 2026. Page: https://steerify.dev/t3-code-alternative.html
+
 ## Credits
 
 Made by a human, Frenk. Typed mostly by Claude. Steerify was steered in Steerify: the app, this site and its tutorial were planned, reviewed and released on Steerify's own board.

@@ -70,6 +70,9 @@ enum SteerifyMCP {
         ["name": "set_release_config",
          "description": "Write this project's release setup into steerify.json: {repos:{<repo>:{branch, deploy?, liveCheck?}}, notes?}. The Release tab updates at once.",
          "inputSchema": schema(["release": ["type": "object"]], ["release"])],
+        ["name": "set_environments",
+         "description": "Save where this project is tested into steerify.json: environments = [{name, url, area?, note?}] (e.g. {name:\"platform\", url:\"https://platform.example.com\", area:\"platform\"}, {name:\"local\", url:\"http://localhost:5173\"}). To test links must start with one of these; deliver refuses a project host that is not listed. Only save addresses you found in the code / deploy config or the user gave you.",
+         "inputSchema": schema(["environments": ["type": "array", "items": ["type": "object"]]], ["environments"])],
         ["name": "add_roadmap_item",
          "description": "Add a key result to a roadmap chapter: {chapter (exact name), text, status? (todo), area?, request? (request id it comes from), for? (the feature chapter a fix belongs to), create? (true: create the chapter if missing)}. Fixes and small refinements go to the rolling chapter \"Fixes & refinements\".",
          "inputSchema": schema(["chapter": str, "text": str, "status": str, "area": str, "request": str, "for": str, "create": ["type": "boolean"]], ["chapter", "text"])],
@@ -96,7 +99,20 @@ enum SteerifyMCP {
             return getItem(ref, board)
         case "deliver":
             guard let item = a["item"] as? [String: Any] else { return ("item is required", true) }
-            let r = node(board, "deliver.mjs", [jsonString(item)])
+            // Test links go to the project's own environments only (steerify.json), never a guessed host.
+            let envs = TestEnvs.load(board), testList = item["tests"] as? [[String: Any]] ?? []
+            let wrong = TestEnvs.problems(tests: testList, area: item["area"] as? String, envs: envs)
+            if !wrong.isEmpty {
+                return ("Not delivered: wrong test link\(wrong.count == 1 ? "" : "s"). Fix the url and deliver again with the same id:\n"
+                        + wrong.map { "- " + $0 }.joined(separator: "\n")
+                        + "\nThis project's environments: " + TestEnvs.describe(envs), true)
+            }
+            var r = node(board, "deliver.mjs", [jsonString(item)])
+            let unchecked = envs.isEmpty ? TestEnvs.unchecked(tests: testList) : []
+            if !r.1, !unchecked.isEmpty {
+                r.0 += "\n\nThis project has no environments in steerify.json, so the links (\(unchecked.joined(separator: ", "))) were not checked. "
+                    + "If you are not sure they are the right addresses, ask the user (ask_choice); then save them with set_environments."
+            }
             // Picture check (local, no tokens): tell Claude now, not the user after a wasted test.
             let tests = (item["tests"] as? [[String: Any]] ?? []).map { (label: $0["label"] as? String ?? "", img: $0["img"] as? String) }
             let shots = (item["shots"] as? [[String: Any]] ?? []).compactMap { $0["img"] as? String }
@@ -112,6 +128,7 @@ enum SteerifyMCP {
                 return ("decision needs id, title and 2–4 options", true)
             }
             guard opts.filter({ $0["rec"] as? Bool == true }).count == 1 else { return ("exactly one option needs rec: true", true) }
+            if let problems = ChoiceVisuals.problems(d, board: board) { return (problems, true) }
             let r = editBoard(board, """
                 const d = \(jsonString(d)); d.added = d.added || new Date().toISOString().slice(0,10);
                 const from = \(jsonString(ProcessInfo.processInfo.environment["STEERIFY_ITEM"] ?? ""));
@@ -154,6 +171,15 @@ enum SteerifyMCP {
             if r.1 { return r }
             ui(["action": "refresh", "message": "Release setup updated", "board": board])
             return ("release setup saved in steerify.json", false)
+        case "set_environments":
+            guard let envs = a["environments"] as? [[String: Any]],
+                  envs.allSatisfy({ ($0["name"] as? String ?? "").isEmpty == false && TestEnvs.host($0["url"] as? String ?? "") != nil }) else {
+                return ("environments = [{name, url (http/https), area?, note?}]", true)
+            }
+            let r = JSONFile.edit((board as NSString).appendingPathComponent("steerify.json"), key: "environments", value: envs)
+            if r.1 { return r }
+            ui(["action": "refresh", "message": "Test environments updated", "board": board])
+            return ("environments saved in steerify.json: " + TestEnvs.describe(TestEnvs.load(board)), false)
         case "add_roadmap_item":
             guard let ch = a["chapter"] as? String, let text = a["text"] as? String, !text.isEmpty else { return ("chapter and text are required", true) }
             var meta: [String: Any] = [:]

@@ -19,6 +19,7 @@ Steerify sets these in the session's environment (read them with `echo $STEERIFY
 | `STEERIFY_BOARD` | the board folder |
 | `STEERIFY_ITEM` | the item this session was started from, if any (`test:<id>`, `choice:<id>`, `road:<slug>`, `req:<id>`) |
 | `STEERIFY_SESSION` | this session's id |
+| `STEERIFY_ENVS` | where this project is tested (`steerify.json → environments`): the only hosts for To test links |
 
 Board folder files (plain JSON, never reformat them; keep their indentation; stage only your own changes):
 
@@ -39,7 +40,7 @@ Board folder files (plain JSON, never reformat them; keep their indentation; sta
 
 Sessions started by Steerify have an MCP server named **steerify**. Prefer its tools over editing board files:
 `board_summary`, `get_item` (verdict, notes, pinned picture notes), `deliver` (To test), `ask_choice`,
-`set_roadmap_status`, `set_release_config`, `add_roadmap_item`, `add_chapter`, `update_request`, and `notify` (a toast in the user's Steerify window, with a jump to the
+`set_roadmap_status`, `set_release_config`, `set_environments`, `add_roadmap_item`, `add_chapter`, `update_request`, and `notify` (a toast in the user's Steerify window, with a jump to the
 item). The app updates at once. After delivering or adding a choice, `notify` the user in one short line.
 Without the MCP (a plain terminal), edit the files as described below.
 
@@ -62,11 +63,11 @@ go straight to it. The item's conversation is resumed on later starts (Steerify 
 | `look` | any | Read only: summarise the item and its state in the chat, change nothing. |
 | `ship` | release | Release everything ready in the project: To test items with verdict `ok` not yet `live` (+ branches ahead). Follow `release` in `steerify.json` (per repo: branch, deploy, notes) and the README. Per repo: land approved feature branches / PRs first (flow below), commit only your own hunks, push, deploy, check it is live; then re-deliver each item with `"status":"live","keepVerdict":true` and write release notes where the project keeps them. Stop and ask on the board if something is not clean. |
 | `plan` | release | No release setup yet: read each repo (deploy scripts, CI, README, package.json) and write `release` into `steerify.json` (`{"repos":{"<repo>":{"branch":"main","deploy":"…"}},"notes":"…"}`), then tell the user to check it in the Release tab. |
-| `choose` | req (question) | Turn the question into a choice: read the code and context, then `ask_choice` with 2–4 concrete options, one suggested, a visual mock each. Link it in the choice's `why` ("from requirement <id>"). Mark the requirement `proposed` only after the user picks (they answer on the Choices tab). |
+| `choose` | req (question) | Turn the question into a choice: read the code and context, then `ask_choice` with 2–4 concrete options, one suggested, each showing its result (prototype or example pictures, see the loop). Link it in the choice's `why` ("from requirement <id>"). Mark the requirement `proposed` only after the user picks (they answer on the Choices tab). |
 | `consolidate` | reqs | For each open requirement of the chapter: check the code. Built and verified → `set_requirement_status built` with one line of evidence (file / commit). Not built but agreed in spirit → add a roadmap item. Questions → a choice (`ask_choice`). Never record the user's verdict for them. Report a table. |
 | `consolidate` | track | Bring a chapter's statuses up to date, nothing else. For every key result not `done`: look for evidence (To test verdicts, commits in the chapter's repos — `git log --since=<chapter start> --oneline`, the code itself, deploys.json / live versions). Mark `done` only with evidence, `review` if delivered but not approved, `wip` if partly there, leave it otherwise. Use `set_roadmap_status` (MCP). Report a short table: item · old → new · evidence. Don't build anything. |
 | `resume` | track / reqs | A whole chapter (`track:<slug>` = a roadmap track, `reqs:<slug>` = a requirements group). **State of the art:** read every item of the chapter, its linked choices, To test items and requirements, then check the code to see what really exists (not what the board claims). Report done / partly done / missing in a few lines, fix wrong statuses on the board, name the **next step** and start it (mark it `wip`), unless it needs a choice from the user: then add the choice and do what is ready. |
-| `intake` | request | A new request the user filed with **+ Request** (⌘N). The brief has the text, screenshots, kind, chapter. Never ask what it is; open every screenshot. **Fix / refinement:** it is already a key result in "Fixes & refinements" (linked to its chapter): mark it `wip`, check the code, fix it, test, deliver (`road` = that key result), mark it `review`. **Feature:** read the code, then `add_chapter` (a draft: objective, 3–7 key results, requirements; the user approves it in Steerify) and put open questions on the board with `ask_choice`; build nothing until it is approved. **Question:** answer it from the code as a choice (`ask_choice`, 2–4 options with mocks). The kind is wrong? Say so and treat it as the right one. Always finish with `update_request` (status, became[], one-line note). |
+| `intake` | request | A new request the user filed with **+ Request** (⌘N). The brief has the text, screenshots, kind, chapter. Never ask what it is; open every screenshot. **Fix / refinement:** it is already a key result in "Fixes & refinements" (linked to its chapter): mark it `wip`, check the code, fix it, test, deliver (`road` = that key result), mark it `review`. **Feature:** read the code, then `add_chapter` (a draft: objective, 3–7 key results, requirements; the user approves it in Steerify) and put open questions on the board with `ask_choice`; build nothing until it is approved. **Question:** answer it from the code as a choice (`ask_choice`, 2–4 options, each showing its result). The kind is wrong? Say so and treat it as the right one. Always finish with `update_request` (status, became[], one-line note). |
 | `init` | setup | A new project (`setup:<project>`), started from its welcome screen: the board is empty. Follow **First setup** below: read and run the project, show what you understood, ask with choices (never a wall of questions in the chat), then draft the first chapter. Write only in the board folder; everything is a draft for the user to approve. |
 
 ## Branches and releases (the project's flow)
@@ -98,6 +99,9 @@ normal chat. Short chat lines; questions and proposals are choices with pictures
    deploy, never touch production data). Take 1–3 full-size screenshots into `img/setup/` in the board folder.
    Can't run it (needs secrets, devices, long builds)? Say why in one line and use what exists (README images, store
    pictures) or none.
+   **Where it is tested:** find each part's real addresses (deploy config, env files, README: live URL, local dev
+   port) and put them in the snapshot (`<b>Test at</b> …`). An address you could not find for sure is an option
+   "Tell me in the note". Save them with `set_environments` once confirmed.
 3. **Snapshot = choice `setup-understood`** ("Did I get <project> right?"), via `ask_choice`:
    `gallery` = the screenshots (caption: what it shows, "running in the simulator"); `why` = the snapshot, one fact
    per line (`<b>Product</b> …<br><b>Areas</b> …<br><b>State</b> …<br><b>Dates</b> …<br><b>Ships</b> …`);
@@ -106,7 +110,7 @@ normal chat. Short chat lines; questions and proposals are choices with pictures
 4. **Questions = choices** (1–3 at a time, the ones that change the first chapter most): what chapter 1 is for, who
    uses it today, what to leave out. 2–4 options each from what you found (real names, real dates), one `rec`, and a
    `mock` per option showing **what the roadmap would look like** with it (chapter name + 3–4 key results as rows).
-   Facts you can't guess (a number, a URL) go in the same choice as an option "Tell me in the note".
+   These roadmap choices set `simple: true`. Facts you can't guess (a number, a URL) go in the same choice as an option "Tell me in the note".
 5. **Chat:** at most 4 lines: what you read, that it runs (or why not), "N to answer on the board". `notify` once.
    If the user answers in the chat instead, that is fine: record nothing in `decisions.json` for them, just go on.
 6. When the answers are in (read them with `get_item`; check again whenever the user comes back to the session):
@@ -129,9 +133,21 @@ normal chat. Short chat lines; questions and proposals are choices with pictures
 1. **Read** the item, its notes, its pinned picture notes and linked requirements before touching code.
 2. **Need a decision?** Add a choice to `board.json → decisions` (2–4 options, exactly one `rec: true`, a visual
    mockup per option, short labels) and keep building what does not depend on it.
-   **UI choices get a live prototype** in the project's design system: `protos/<choice id>.html` with a section per
-   option (+ `today`), each option's `"proto": "protos/<choice id>.html?v=A"`. It uses the board's `kit/`
-   (tokens, components, sample data); no kit yet → build it first (`~/.claude/skills/steerify/kit/README.md`).
+   **Show the result, never a diagram.** Each option shows what the user would *see* after picking it, so they can
+   compare by looking, not by reading. A box with words in it (`<div class="dia"><div class="box">…`) is not a mockup.
+   - **Screens, panels, flows** → a live prototype in the project's design system: `protos/<choice id>.html` with a
+     section per option (+ `today`), each option's `"proto": "protos/<choice id>.html?v=A"`. It uses the board's
+     `kit/` (tokens, components, sample data); no kit yet → build it first (`~/.claude/skills/steerify/kit/README.md`).
+   - **What a tool does to an output** (an image, a video, a PDF, an export, a message) → a real example per option:
+     the same input (`today`) and what each option makes of it, as pictures (`"shot": "img/choices/<id>-A.png"`, or a
+     `proto` section with the images in the tool's real screen). Use the project's test data; produce the result for
+     real when it is cheap, otherwise composite it faithfully (PIL / canvas) and say so in the caption.
+   - **How something works** (a flow, a pipeline, who does what, where data goes) → a logical scheme: the parts as
+     boxes joined by arrows, short labels. For a screen when a full prototype is too much, a high-level mockup (a
+     laid-out wireframe in `mock`: the regions, the controls, short labels) is fine.
+   - **Only scope, naming, order or yes/no** has nothing to look at: then `simple: true` on the choice and a small
+     `mock` (rows, a ✓). If you hesitate, it is visual.
+   `ask_choice` refuses a mock that is only words in a box on a choice that is not `simple`.
 3. **Build and test it yourself** (the project's real tests, the real UI for anything visible).
 4. **Deliver** with `deliver.mjs`: honest `tested[]`, one direct link per test, screenshots taken after testing,
    known `issues[]`. Same id = new version of the same item. **Every picture full size** (≥1400 px wide, shots and
@@ -146,6 +162,9 @@ normal chat. Short chat lines; questions and proposals are choices with pictures
    `choices: ["<decision id>"]` too, so the choice shows "Built" instead of "Build my pick".
    Meets requirements? Set `reqs: ["<requirement id>", …]`: the user's OK marks them built (with the delivery as
    evidence). Requirements of an approved chapter are already agreed; never ask the user to confirm them again.
+   **Links only to the project's environments** (`STEERIFY_ENVS`, `steerify.json → environments`): never guess a
+   host from the product name. `deliver` refuses a link to one of the project's hosts that is not listed. No
+   environments yet → find them in the deploy config, or ask the user (`ask_choice`), then `set_environments`.
    **Tests are visual and schematic:** every test has a picture of exactly what to look at; `label` ≤ 6 words
    (what to do), `check` ≤ 12 words (what you should see), no explanations; details go in `tested[]`.
 5. **Mark** the roadmap item (`wip` → `review` → `done` after the user's ok).

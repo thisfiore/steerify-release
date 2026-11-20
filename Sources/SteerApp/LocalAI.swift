@@ -32,12 +32,12 @@ enum LocalAI {
     private static let saver = Debouncer(delay: 2)
 
     /// Ask the on-device model (serialised; nil when it is off, busy too long, or refuses). Cached under `key`.
-    static func ask(key: String, instructions: String, prompt: String) async -> String? {
+    static func ask(key: String, instructions: String, prompt: String, temperature: Double = 0.2) async -> String? {
         if let c = cached(key) { return c }
         guard ready, #available(macOS 26, *) else { return nil }
         guard let out = await Gate.shared.run({
             let s = LanguageModelSession(instructions: instructions)
-            return try? await s.respond(to: String(prompt.prefix(9000)), options: GenerationOptions(temperature: 0.2)).content
+            return try? await s.respond(to: String(prompt.prefix(9000)), options: GenerationOptions(temperature: temperature)).content
         }) else { return nil }
         let clean = out.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return nil }

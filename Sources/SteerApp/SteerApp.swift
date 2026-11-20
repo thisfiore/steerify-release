@@ -148,6 +148,8 @@ struct SteerApp: App {
         // Test hook: `open Steerify.app --args --open-shells N` opens N shell sessions (perf measuring).
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--project"), i + 1 < a.count, m.projects.contains(where: { $0.id == a[i + 1] }) { m.selectedProjectId = a[i + 1] }
+        // `--test-persist`: sessions saved / restored in the test settings, as a real restart does (test windows skip the main window's onAppear).
+        if a.contains("--test-persist") { m.restoreSessions() }
         // Test hook: `--add-folder <path>` adds any folder as a project, as Add project… does after the panel.
         if let i = a.firstIndex(of: "--add-folder"), i + 1 < a.count { m.addWorkspace(folder: a[i + 1]) }
         // Test hook: `--projects-do "move:3:0,rename:<id>:<name>,hide:<id>,show:<id>,remove:<id>,icon:<id>:auto|initials|<picture>,iconcolors:<id>:#a;#b|none"` runs those Projects
@@ -225,6 +227,30 @@ struct SteerApp: App {
         if let i = a.firstIndex(of: "--flow-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SessionFlowDemo.run(m, a[i + 1]) } }
         if let i = a.firstIndex(of: "--open-shells"), i + 1 < a.count, let n = Int(a[i + 1]) {
             for k in 0..<n { m.newSession(.shell, repo: m.project?.repos[k % max(1, m.project?.repos.count ?? 1)]) }
+        }
+        // Test hook: `--cmdk-check [out.png]` opens ⌘K 4 s in (a terminal holds the keyboard by then), logs who has the
+        // keyboard 0.4 s later, types "abc" as keys would, logs the palette's field text and quits.
+        if a.contains("--cmdk-check") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.windows.first { $0.isVisible && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                NSLog("cmdk-check: before = \(String(describing: NSApp.keyWindow?.firstResponder.map { type(of: $0) }))")
+                m.paletteOpen.toggle()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    let r = NSApp.keyWindow?.firstResponder
+                    NSLog("cmdk-check: after = \(String(describing: r.map { type(of: $0) }))")
+                    (r as? NSTextView)?.insertText("abc", replacementRange: NSRange(location: NSNotFound, length: 0))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NSLog("cmdk-check: field = '\((NSApp.keyWindow?.firstResponder as? NSTextView)?.string ?? "<none>")'")
+                        if let i = a.firstIndex(of: "--cmdk-check"), i + 1 < a.count, a[i + 1].hasSuffix(".png"),
+                           let v = NSApp.keyWindow?.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                            v.cacheDisplay(in: v.bounds, to: rep)
+                            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: a[i + 1]))
+                        }
+                        NSApp.terminate(nil)
+                    }
+                }
+            }
         }
     }
 

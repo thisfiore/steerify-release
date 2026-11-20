@@ -356,7 +356,7 @@ struct PaletteView: View {
             query = model.paletteSeed; model.paletteSeed = ""
             if let i = CommandLine.arguments.firstIndex(of: "--palette-scope"), i + 1 < CommandLine.arguments.count,
                let s = PaletteScope(rawValue: CommandLine.arguments[i + 1]) { scope = s }      // test hook
-            refresh(); focused = true
+            refresh(); grabFocus()
         }
         .onChange(of: query) { _, _ in refresh() }
         .onChange(of: scope) { _, _ in refresh() }
@@ -696,6 +696,21 @@ struct PaletteView: View {
     }
 
     private func close() { model.paletteOpen = false }
+
+    /// The terminal (an AppKit view) usually holds the keyboard when ⌘K is pressed, and SwiftUI won't take focus
+    /// from it while the palette is still being laid out. Release it, then focus the field on the next turns.
+    private func grabFocus() {
+        let win = { NSApp.keyWindow ?? NSApp.mainWindow }
+        win()?.makeFirstResponder(nil)
+        focused = true
+        for delay in [0.0, 0.05, 0.15] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard model.paletteOpen else { return }
+                if !(win()?.firstResponder is NSTextView) { win()?.makeFirstResponder(nil) }
+                focused = true
+            }
+        }
+    }
 }
 
 extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil } }
