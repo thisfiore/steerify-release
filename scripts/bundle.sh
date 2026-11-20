@@ -1,20 +1,25 @@
 #!/bin/zsh
 # Builds Steerify.app (release) into ./build.
-#   scripts/bundle.sh            app only, signed with Developer ID if the cert is in the keychain (else ad-hoc)
+#   scripts/bundle.sh            app only, ad-hoc signed: test builds never touch the keychain (no codesign prompt)
 #   scripts/bundle.sh --open     same, then open it
-#   scripts/bundle.sh --dmg      app + build/Steerify-<version>.dmg (notarized + stapled when signed with Developer ID)
+#   scripts/bundle.sh --sign     app signed with Developer ID (if the cert is in the keychain)
+#   scripts/bundle.sh --dmg      Developer ID app + build/Steerify-<version>.dmg (notarized + stapled)
+# Developer ID asks for the key's password on every codesign unless the key lets codesign in:
+#   scripts/keychain-allow-codesign.sh   (once, with your login password)
 # Version: VERSION file (e.g. 0.5.0). Build number: commits on HEAD.
 # Signing: STEERIFY_SIGN_ID overrides the auto-detected "Developer ID Application" identity.
 # Notarizing: keychain profile $NOTARY_PROFILE (default "steerify"), made once with
 #   xcrun notarytool store-credentials steerify --apple-id <id> --team-id <team> --password <app-specific password>
 set -e
 cd "$(dirname "$0")/.."
-OPEN=0; DMG=0
-for a in "$@"; do case $a in --open) OPEN=1;; --dmg) DMG=1;; esac; done
+OPEN=0; DMG=0; SIGN=0
+for a in "$@"; do case $a in --open) OPEN=1;; --dmg) DMG=1; SIGN=1;; --sign) SIGN=1;; esac; done
+[ -n "$STEERIFY_SIGN_ID" ] && SIGN=1
 
 VERSION=$(tr -d ' \n' < VERSION)
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
-SIGN_ID=${STEERIFY_SIGN_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}
+SIGN_ID=""
+[ $SIGN = 1 ] && SIGN_ID=${STEERIFY_SIGN_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}
 PROFILE=${NOTARY_PROFILE:-steerify}
 # Updates: the appcast is an asset of the public repo's latest release (written by release.sh).
 # The private half of this key is in the login keychain (generate_keys --account steerify); back it up.
@@ -35,6 +40,8 @@ if [ ! -f build/AppIcon.icns ]; then
 fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/skills" && cp -R skills/steerify "$APP/Contents/Resources/skills/"
+# The demo project (Tiny Todo, frozen by scripts/demo-freeze.mjs): "Try the demo project" copies it out.
+[ -d demo/tiny-todo ] && mkdir -p "$APP/Contents/Resources/demo" && cp -R demo/tiny-todo "$APP/Contents/Resources/demo/"
 # What's new (the version badge's panel): this version's notes, when release.sh wrote them before bundling.
 [ -f build/release-notes-$VERSION.md ] && cp build/release-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -73,7 +80,7 @@ if [ -n "$SIGN_ID" ]; then
   echo "built $APP $VERSION ($BUILD), signed: $SIGN_ID"
 else
   codesign --force --deep --sign - "$APP" >/dev/null 2>&1
-  echo "built $APP $VERSION ($BUILD), ad-hoc signed (no Developer ID Application cert in the keychain)"
+  echo "built $APP $VERSION ($BUILD), ad-hoc signed$([ $SIGN = 1 ] && echo ' (no Developer ID Application cert in the keychain)' || echo ' (test build; --sign or --dmg for Developer ID)')"
 fi
 
 if [ $DMG = 1 ]; then

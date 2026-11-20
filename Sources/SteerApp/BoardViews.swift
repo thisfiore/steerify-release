@@ -381,9 +381,9 @@ struct SessionChip: View {
             }.buttonStyle(SteerButton()).help("Reopen this item's Claude conversation (\(link.intent), \(link.repo))")
         }
     }
+    private static let agoFormat: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }()
     static func ago(_ iso: String) -> String {
-        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = f.date(from: iso) else { return "earlier" }
+        guard let d = agoFormat.date(from: iso) else { return "earlier" }
         let m = Int(-d.timeIntervalSinceNow / 60)
         return m < 60 ? "\(max(m, 1)) min ago" : m < 1440 ? "\(m / 60) h ago" : "\(m / 1440) d ago"
     }

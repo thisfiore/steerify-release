@@ -14,6 +14,8 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
     weak var model: AppModel?
     /// The version waiting to be installed ("0.5.2"), once it is downloaded.
     private(set) var readyVersion: String?
+    /// Its feature titles, from the appcast (shown when you hover "Restart to update").
+    private(set) var readyTitles: [String] = []
 
     var enabled: Bool { controller != nil }
 
@@ -39,6 +41,7 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     func fake(_ version: String, _ model: AppModel) {
         readyVersion = version
+        readyTitles = WhatsNew.titles
         DispatchQueue.main.async { model.updateReady = true }
     }
 
@@ -50,10 +53,11 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     nonisolated func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
                              immediateInstallationBlock: @escaping () -> Void) -> Bool {
-        let v = item.displayVersionString
+        let v = item.displayVersionString, titles = WhatsNew.titles(fromHTML: item.itemDescription)
         MainActor.assumeIsolated {
             installNow = immediateInstallationBlock
             readyVersion = v
+            readyTitles = titles
             model?.updateReady = true
         }
         // Test hook: install as soon as it is downloaded (the same path as clicking "Restart to update").

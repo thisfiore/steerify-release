@@ -37,6 +37,7 @@ struct RequestSheet: View {
     @State private var dropping = false
     @State private var capturing = false
     @State private var clipboardHasImage = false
+    @State private var recent: [BoardRequest] = []    // read once per project, not on every keystroke
     @FocusState private var focused: Bool
 
     private var board: BoardStore { model.board(for: project) }
@@ -243,7 +244,6 @@ struct RequestSheet: View {
     }
 
     @ViewBuilder private var history: some View {
-        let recent = Array(RequestLog.load(project.boardDir).prefix(5))
         if !recent.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Divider().overlay(Brand.line).padding(.bottom, 4)
@@ -274,6 +274,7 @@ struct RequestSheet: View {
         text = model.requestSeed; model.requestSeed = ""
         focused = true
         lookContext()
+        recent = Array(RequestLog.load(project.boardDir).prefix(5))
         let pb = NSPasteboard.general
         clipboardHasImage = pb.string(forType: .string) == nil && [.png, .tiff].contains(where: { pb.data(forType: $0) != nil })
         retriage()
@@ -305,6 +306,7 @@ struct RequestSheet: View {
     /// Another project picked: keep the text and pictures, redo context, chapter and kind for it.
     private func projectChanged() {
         lookContext(); chapterSet = nil
+        recent = Array(RequestLog.load(project.boardDir).prefix(5))
         retriage()
         focused = true
     }

@@ -152,7 +152,7 @@ final class BoardStore: ObservableObject {
         if let hit = memo[key] { return hit as! T }
         let v = make(); memo[key] = v as Any; return v
     }
-    @Published private(set) var links: [SessionLink] = []
+    @Published private(set) var links: [SessionLink] = [] { didSet { memo = [:] } }
     /// Local AI: roadmap proposals read from recent commits (LocalAI.swift), never applied by themselves.
     @Published var commitProposals: [RoadProposal] = []
     var commitCheckedAt = Date.distantPast

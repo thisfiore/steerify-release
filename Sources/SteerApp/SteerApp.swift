@@ -20,11 +20,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `--fake-update <version>`: the top bar as it looks when a downloaded update waits (screenshots).
         if let i = a0.firstIndex(of: "--fake-update"), i + 1 < a0.count { AppUpdater.shared.fake(a0[i + 1], m) }
         let panelOnly = a0.contains("--menubar")
-        let whatsNew = a0.contains("--whats-new")   // the version badge's panel alone
+        let whatsNew = a0.contains("--whats-new")   // the version badge's panel alone (with --fake-update: the update's)
 
         let manager = a0.contains("--projects")     // the Projects window (⇧⌘P) alone
         let host = whatsNew
-            ? NSHostingController(rootView: AnyView(WhatsNewPanel(close: {}).background(Brand.bg).preferredColorScheme(.dark)))
+            ? NSHostingController(rootView: AnyView((AppUpdater.shared.readyVersion.map { WhatsNewPanel(version: $0, titles: AppUpdater.shared.readyTitles, restart: {}, close: {}) } ?? WhatsNewPanel(close: {})).background(Brand.bg).preferredColorScheme(.dark)))
             : panelOnly
             ? NSHostingController(rootView: AnyView(MenuBarPanel().environmentObject(m)))
             : manager ? NSHostingController(rootView: AnyView(ProjectManagerView().environmentObject(m).preferredColorScheme(.dark).tint(Brand.amber)))
@@ -176,6 +176,8 @@ struct SteerApp: App {
                 }
             }
         }
+        // Test hook: `--demo` presses "Try the demo project" 1 s in.
+        if a.contains("--demo") { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { m.openDemo() } }
         if let i = a.firstIndex(of: "--palette"), i + 1 < a.count { m.paletteSeed = a[i + 1]; m.paletteOpen = true }
         // Test hook: `--toast "<text>"` shows that toast 2 s in (with Open + Undo), to check where it sits.
         if let i = a.firstIndex(of: "--toast"), i + 1 < a.count {
@@ -271,6 +273,7 @@ struct SteerApp: App {
                 Button("Reload board") { model.reloadBoard() }.keyboardShortcut("r", modifiers: .command)
                 Button("Restart to Update") { model.restartForUpdate() }.keyboardShortcut("r", modifiers: [.command, .option])
                 Button("Add project…") { model.addWorkspace() }.keyboardShortcut("o", modifiers: [.command, .shift])
+                Button("Try the Demo Project") { model.openDemo() }
                 Button("Show steerify.json") { if let p = model.project { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p.manifest)]) } }
             }
             CommandGroup(after: .sidebar) {

@@ -10,7 +10,8 @@ import Foundation
 
 extension BoardStore {
     /// The road refs ("road:<slug>") an item belongs to.
-    func roads(of ref: String) -> Set<String> {
+    func roads(of ref: String) -> Set<String> { memoized("roads:" + ref) { computeRoads(of: ref) } }
+    private func computeRoads(of ref: String) -> Set<String> {
         let parts = ref.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return [] }
         let (kind, id) = (parts[0], parts[1])

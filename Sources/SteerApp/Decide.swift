@@ -42,6 +42,8 @@ struct DecisionCard: View {
     private var savedNote: String { board.verdict(d.id).note }
     private var changed: Bool { (d.multi ? draftPicks != savedPicks : (draftPick != savedPick || draftMix != savedMix)) || draftNote != savedNote }
     private var canSave: Bool { (d.multi ? !draftPicks.isEmpty : draftPick != nil) || !draftNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// First setup's choices (`setup-…`): the why is Claude's snapshot of the project, one fact per line: show it whole.
+    private var whole: Bool { d.id.hasPrefix("setup-") }
     private var stage: BoardOption? { d.options.first { $0.id == focus } ?? d.options.first { $0.rec } ?? d.options.first }
 
     var body: some View {
@@ -130,8 +132,8 @@ struct DecisionCard: View {
             if !d.why.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(BoardText.attributed(d.why)).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.85))
-                        .lineLimit(showWhy ? nil : 3).fixedSize(horizontal: false, vertical: true)
-                    if BoardText.plain(d.why).count > 240 {
+                        .lineLimit(showWhy || whole ? nil : 3).fixedSize(horizontal: false, vertical: true)
+                    if !whole, BoardText.plain(d.why).count > 240 {
                         Button(showWhy ? "less" : "more") { showWhy.toggle() }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11)))
                     }
                 }

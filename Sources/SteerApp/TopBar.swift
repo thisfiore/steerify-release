@@ -206,7 +206,19 @@ struct Wordmark: View {
 enum WhatsNew {
     static let full = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1"
     static let allNotes = URL(string: "https://github.com/thisfiore/steerify-release/releases")!
-    static var thisRelease: URL { URL(string: "https://github.com/thisfiore/steerify-release/releases/tag/v\(full)")! }
+    static func notes(_ version: String) -> URL { URL(string: "https://github.com/thisfiore/steerify-release/releases/tag/v\(version)")! }
+
+    /// Titles from an appcast item's description (<li>…</li>, written by release.sh).
+    static func titles(fromHTML html: String?) -> [String] {
+        guard let html else { return [] }
+        let re = try! NSRegularExpression(pattern: "<li>(.*?)</li>", options: [.dotMatchesLineSeparators])
+        return re.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { m in
+            Range(m.range(at: 1), in: html).map {
+                String(html[$0]).replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
+                    .replacingOccurrences(of: "&quot;", with: "\"").replacingOccurrences(of: "&amp;", with: "&")
+            }
+        }
+    }
 
     /// Feature titles: the bold part of each "- **Title** — what" line.
     static let titles: [String] = {
@@ -228,18 +240,24 @@ enum WhatsNew {
     }
 }
 
+/// What's new in a version: this one (the version badge) or the one waiting to be installed ("Restart to update").
 struct WhatsNewPanel: View {
+    var version = WhatsNew.full
+    var titles = WhatsNew.titles
+    /// Set for a downloaded update: the panel offers to restart into it.
+    var restart: (() -> Void)? = nil
     let close: () -> Void
     @State private var all = false
     var body: some View {
-        let list = WhatsNew.titles
+        let list = titles
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 PixelWheel(size: 18)
-                Text("What's new in v\(WhatsNew.full)").font(.system(size: S(14), weight: .semibold)).foregroundStyle(Brand.cream)
+                Text(restart == nil ? "What's new in v\(version)" : "Ready to install: v\(version)")
+                    .font(.system(size: S(14), weight: .semibold)).foregroundStyle(Brand.cream)
             }
             if list.isEmpty {
-                Text(AppUpdater.isDevBuild ? "Dev build: notes come with a release." : "Small fixes and polish.")
+                Text(restart != nil ? "The notes are on GitHub." : AppUpdater.isDevBuild ? "Dev build: notes come with a release." : "Small fixes and polish.")
                     .font(.system(size: S(12))).foregroundStyle(Brand.mute)
             } else {
                 let rows = VStack(alignment: .leading, spacing: 7) {
@@ -258,10 +276,15 @@ struct WhatsNewPanel: View {
             }
             Divider()
             HStack(spacing: 14) {
-                Button("Release notes ↗") { NSWorkspace.shared.open(WhatsNew.thisRelease); close() }
+                Button("Release notes ↗") { NSWorkspace.shared.open(WhatsNew.notes(version)); close() }
                 Button("All versions ↗") { NSWorkspace.shared.open(WhatsNew.allNotes); close() }
                 Spacer()
-                if AppUpdater.shared.enabled {
+                if let restart {
+                    Button { close(); restart() } label: {
+                        Text("Restart now").foregroundStyle(Color(hex: 0x1a1200)).font(.system(size: S(11.5), weight: .semibold))
+                            .padding(.horizontal, 9).padding(.vertical, 3).background(Capsule().fill(Brand.amber))
+                    }
+                } else if AppUpdater.shared.enabled {
                     Button("Check for updates") { close(); AppUpdater.shared.checkForUpdates() }
                 }
             }

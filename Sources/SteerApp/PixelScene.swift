@@ -70,6 +70,9 @@ struct NoProjectsView: View {
                 ActionButton(title: "Add project…", icon: "ship", primary: true) { model.addWorkspace() }
                 Text("⇧⌘O").font(.system(size: S(10.5), design: .monospaced)).foregroundStyle(Brand.mute)
             }.padding(.top, 4)
+            Button("or try the demo project (a tiny todo app) →") { model.openDemo() }
+                .buttonStyle(.plain).font(.system(size: S(12), weight: .semibold)).foregroundStyle(Brand.amber)
+                .help("Opens Tiny Todo: a small todo app with a real board, to look around before using your own project")
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

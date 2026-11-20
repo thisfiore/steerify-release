@@ -32,6 +32,14 @@ enum BoardFiles {
     }
 
     static func slug(_ s: String) -> String {
+        // Roadmap ids are slugs of the item text and are compared in loops all over the app: each text is slugged once.
+        if let hit = slugs.object(forKey: s as NSString) { return hit as String }
+        let out = makeSlug(s)
+        slugs.setObject(out as NSString, forKey: s as NSString)
+        return out
+    }
+    private static let slugs: NSCache<NSString, NSString> = { let c = NSCache<NSString, NSString>(); c.countLimit = 20_000; return c }()
+    private static func makeSlug(_ s: String) -> String {
         let folded = s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
         let kept = folded.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "-" }
         return String(String(kept).split(separator: "-").joined(separator: "-").prefix(48))

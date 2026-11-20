@@ -250,6 +250,7 @@ enum PaletteIndex {
             },
             cmd("reload", "Reload board", "Read the board files again", "⌘R", "refresh") { $0.reloadBoard() },
             cmd("add", "Add project…", "Open another steered workspace", "⇧⌘O", "workspace folder") { $0.addWorkspace() },
+            cmd("demo", "Try the demo project", "Tiny Todo: a small todo app with a real board", nil, "example sample tutorial") { $0.openDemo() },
             cmd("settings", "Settings…", "Text size, sessions, shortcuts", "⌘,", "preferences") { _ in NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) },
         ] + BoardTab.allCases.enumerated().map { tab($1, $0 + 1) }
     }

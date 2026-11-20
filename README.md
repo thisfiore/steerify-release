@@ -58,6 +58,8 @@ And this is the real thing, on Steerify's own board:
 1. [Download the latest build](https://github.com/thisfiore/steerify-release/releases), open the DMG and drag Steerify to Applications.
 2. Open it and add a project: pick any folder. Steerify creates a `.steerify/` board inside it.
 3. Start an item. It opens a Claude Code session in the right repo, already briefed.
+4. That's it for updates: Steerify downloads new versions by itself. Click **Restart to update** in the top bar, or just quit.
+   Click the version badge to see what's new.
 
 Or with Homebrew:
 

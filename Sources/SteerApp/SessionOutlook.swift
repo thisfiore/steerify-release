@@ -134,7 +134,8 @@ enum SessionOutlookReader {
 
 extension BoardStore {
     /// Chapter slugs an item belongs to: the chapter itself, or the chapters of its key results.
-    func chapters(of ref: String) -> Set<String> {
+    func chapters(of ref: String) -> Set<String> { memoized("chapters:" + ref) { computeChapters(of: ref) } }
+    private func computeChapters(of ref: String) -> Set<String> {
         if ref.hasPrefix("track:") || ref.hasPrefix("reqs:") { return [String(ref.split(separator: ":", maxSplits: 1)[1])] }
         let roadIds = Set(roads(of: ref).map { String($0.dropFirst("road:".count)) })
         return Set(roadmap.filter { roadIds.contains($0.id) }.map { BoardFiles.slug($0.track) })
@@ -142,6 +143,10 @@ extension BoardStore {
 
     /// A newer conversation started on the same feature or chapter (not this one).
     func takenOver(item: String, claudeId: String?) -> SessionLink? {
+        // Asked for every session chip on every redraw (40% of the main thread on 20 Nov).
+        memoized("takenOver:" + item + "|" + (claudeId ?? "")) { computeTakenOver(item: item, claudeId: claudeId) }
+    }
+    private func computeTakenOver(item: String, claudeId: String?) -> SessionLink? {
         let mine = links.filter { $0.claudeSession == claudeId }.map(\.started).max()
             ?? links.filter { $0.item == item }.map(\.started).min()
         guard let since = mine else { return nil }

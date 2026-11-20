@@ -67,7 +67,7 @@ go straight to it. The item's conversation is resumed on later starts (Steerify 
 | `consolidate` | track | Bring a chapter's statuses up to date, nothing else. For every key result not `done`: look for evidence (To test verdicts, commits in the chapter's repos — `git log --since=<chapter start> --oneline`, the code itself, deploys.json / live versions). Mark `done` only with evidence, `review` if delivered but not approved, `wip` if partly there, leave it otherwise. Use `set_roadmap_status` (MCP). Report a short table: item · old → new · evidence. Don't build anything. |
 | `resume` | track / reqs | A whole chapter (`track:<slug>` = a roadmap track, `reqs:<slug>` = a requirements group). **State of the art:** read every item of the chapter, its linked choices, To test items and requirements, then check the code to see what really exists (not what the board claims). Report done / partly done / missing in a few lines, fix wrong statuses on the board, name the **next step** and start it (mark it `wip`), unless it needs a choice from the user: then add the choice and do what is ready. |
 | `intake` | request | A new request the user filed with **+ Request** (⌘N). The brief has the text, screenshots, kind, chapter. Never ask what it is; open every screenshot. **Fix / refinement:** it is already a key result in "Fixes & refinements" (linked to its chapter): mark it `wip`, check the code, fix it, test, deliver (`road` = that key result), mark it `review`. **Feature:** read the code, then `add_chapter` (a draft: objective, 3–7 key results, requirements; the user approves it in Steerify) and put open questions on the board with `ask_choice`; build nothing until it is approved. **Question:** answer it from the code as a choice (`ask_choice`, 2–4 options with mocks). The kind is wrong? Say so and treat it as the right one. Always finish with `update_request` (status, became[], one-line note). |
-| `init` | setup | A new project (`setup:<project>`), started from its welcome screen: the board is empty. **1. Read** the project (README, code layout, package files, `git log --oneline -30`); an empty folder skips this. **2. Interview** the user in the chat, one or two short questions at a time (who it is for, the goal, what is next, how it ships), until you have enough context; say what you learned from the code first so they only fill the gaps. **3. Draft**: `goal` and `areas` in `board.json` (one area per part, mapped to its repo), then `add_chapter` for the first chapter (objective, 3–7 key results, requirements) and `ask_choice` for open questions. Everything lands as a draft for the user to approve; never mark anything agreed or done. Write only in the board folder. The welcome screen goes away as soon as the board has content. |
+| `init` | setup | A new project (`setup:<project>`), started from its welcome screen: the board is empty. Follow **First setup** below: read and run the project, show what you understood, ask with choices (never a wall of questions in the chat), then draft the first chapter. Write only in the board folder; everything is a draft for the user to approve. |
 
 ## Branches and releases (the project's flow)
 
@@ -86,6 +86,33 @@ Release tab; projects that don't say use the Settings default (`main`).
 - Conflicts on rebase / merge you can't resolve with certainty: stop and ask on the board (`ask_choice`).
 - `ship` lands every approved branch / PR first, oldest first, then releases as usual. If the project versions its
   builds (README / release notes), bump the version and tag `vX.Y` when shipping.
+
+## First setup (`init`)
+
+The user's first contact with Steerify: show you understood the project and ask **with the board**, not like a
+normal chat. Short chat lines; questions and proposals are choices with pictures.
+
+1. **Read** the project: README, code layout, package files, `git log --oneline -30`, briefs / docs / backlog.
+   Find what it is, its parts (→ areas), how it ships, what is in flight, dates and deadlines. Empty folder: skip to 3.
+2. **Run it** when you can do it safely in a few minutes (dev server, simulator, `swift run`, the built app; never
+   deploy, never touch production data). Take 1–3 full-size screenshots into `img/setup/` in the board folder.
+   Can't run it (needs secrets, devices, long builds)? Say why in one line and use what exists (README images, store
+   pictures) or none.
+3. **Snapshot = choice `setup-understood`** ("Did I get <project> right?"), via `ask_choice`:
+   `gallery` = the screenshots (caption: what it shows, "running in the simulator"); `why` = the snapshot, one fact
+   per line (`<b>Product</b> …<br><b>Areas</b> …<br><b>State</b> …<br><b>Dates</b> …<br><b>Ships</b> …`);
+   options `right` "Yes, that's it" (`rec`) and `fix` "Fix something" (point: "say what in the note"), each with
+   `simple: true` and a tiny `mock` (a big ✓ / ✎ and one line); the snapshot itself is already above them.
+4. **Questions = choices** (1–3 at a time, the ones that change the first chapter most): what chapter 1 is for, who
+   uses it today, what to leave out. 2–4 options each from what you found (real names, real dates), one `rec`, and a
+   `mock` per option showing **what the roadmap would look like** with it (chapter name + 3–4 key results as rows).
+   Facts you can't guess (a number, a URL) go in the same choice as an option "Tell me in the note".
+5. **Chat:** at most 4 lines: what you read, that it runs (or why not), "N to answer on the board". `notify` once.
+   If the user answers in the chat instead, that is fine: record nothing in `decisions.json` for them, just go on.
+6. When the answers are in (read them with `get_item`; check again whenever the user comes back to the session):
+   `goal` and `areas` in `board.json` (one area per part, mapped to its repo), `add_chapter` for the first chapter
+   (objective, 3–7 key results, requirements), a follow-up choice only if something is still open. Never mark
+   anything agreed or done. The welcome screen goes away as soon as the first choice lands; the board takes over.
 
 ## Guided start (no item)
 

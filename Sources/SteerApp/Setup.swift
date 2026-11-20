@@ -74,13 +74,13 @@ struct NewProjectWelcome: View {
                 }
                 Text(running ? "\(p.name) is being set up" : "\(p.name) is ready to steer")
                     .font(.system(size: S(22), weight: .bold)).foregroundStyle(.white)
-                Text(running ? "Answer Claude's questions in the session on the right. Its drafts show up here for you to approve."
-                             : "Claude will read the project and ask you a few questions. Then it drafts the board for you to approve.")
+                Text(running ? "Claude is reading and running the project. What it understood and its questions land on the board as choices."
+                             : "Claude reads and runs the project, shows you what it understood, and asks with choices. Then it drafts the board.")
                     .font(.system(size: S(13))).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: S(14)) {
-                    step(1, "Reads the project", "Code, README, git history. Empty folder? It skips this.")
-                    step(2, "Interviews you", "Goal, users, what's next. Until it has enough context.")
+                    step(1, "Reads and runs the project", "Code, README, git history, a screenshot of it running.")
+                    step(2, "Shows what it understood, asks you", "On the board: choices with pictures. Pick, or fix it in a note.")
                     step(3, "Drafts goal, requirements, roadmap", "As drafts. Nothing is agreed until you say so.")
                 }
 
@@ -104,7 +104,7 @@ struct NewProjectWelcome: View {
 
                 Rectangle().fill(Brand.line).frame(height: 1)
                 Grid(alignment: .leading, horizontalSpacing: S(28), verticalSpacing: S(6)) {
-                    GridRow { trust("Writes", "only in \(boardFolder)"); trust("Runs", "Claude Code on this Mac") }
+                    GridRow { trust("Writes", "only in \(boardFolder)"); trust("Runs", "Claude Code and your project, on this Mac") }
                     GridRow { trust("Sends", "what Claude reads to Anthropic"); trust("Never", "pushes or deploys") }
                 }
             }

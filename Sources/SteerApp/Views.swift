@@ -64,16 +64,7 @@ struct ContentView: View {
             ToolbarItem(placement: .principal) { Wordmark() }
             ToolbarItem(placement: .primaryAction) { HStack(spacing: 8) { NextUp(); NewRequestButton() }.fixedSize() }
             ToolbarItemGroup(placement: .primaryAction) {
-                if model.updateReady {
-                    Button { model.restartForUpdate() } label: {
-                        Label("Restart to update", systemImage: "arrow.triangle.2.circlepath").labelStyle(.titleAndIcon)
-                            .foregroundStyle(Color(hex: 0x1a1200)).font(.system(size: S(11.5), weight: .semibold))
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Capsule().fill(Brand.amber))
-                    }
-                    .buttonStyle(SteerButton())
-                    .help("\(AppUpdater.shared.readyVersion.map { "Steerify \($0)" } ?? "A new build of Steerify") is ready (⌥⌘R). Your sessions come back: Claude conversations resume with their history.")
-                }
+                if model.updateReady { RestartToUpdate() }
                 Button { model.reloadBoard() } label: { Image(systemName: "arrow.clockwise") }.help("Reload board (⌘R)")
                 if (model.project?.port ?? 0) > 0 {
                     Button { model.openWebBoard() } label: { Image(systemName: "safari") }.help("Open the web board in the browser")
@@ -615,6 +606,7 @@ struct ProjectSwitcher: View {
                         Divider().overlay(Brand.line)
                         HStack {
                             Button("Add project…") { open = false; model.addWorkspace() }
+                            Button("Demo") { open = false; model.openDemo() }.help("Try the demo project (Tiny Todo)")
                             Spacer()
                             Button("Manage projects…") { open = false; model.openProjectsWindow() }
                         }.buttonStyle(SteerButton()).font(.system(size: S(12))).foregroundStyle(Brand.mute)
@@ -624,6 +616,32 @@ struct ProjectSwitcher: View {
                     .preferredColorScheme(.dark)
                 }
             }
+        }
+    }
+}
+
+/// "Restart to update" in the top bar. For a downloaded release, hovering it shows what's new in that version.
+struct RestartToUpdate: View {
+    @EnvironmentObject var model: AppModel
+    @State private var open = false
+    @State private var hovering = false
+    var body: some View {
+        let up = AppUpdater.shared
+        Button { model.restartForUpdate() } label: {
+            Label("Restart to update", systemImage: "arrow.triangle.2.circlepath").labelStyle(.titleAndIcon)
+                .foregroundStyle(Color(hex: 0x1a1200)).font(.system(size: S(11.5), weight: .semibold))
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(Brand.amber))
+        }
+        .buttonStyle(SteerButton())
+        .help(up.readyVersion == nil ? "A new build of Steerify is ready (⌥⌘R). Your sessions come back: Claude conversations resume with their history." : "")
+        .onHover { h in
+            hovering = h
+            guard h, up.readyVersion != nil else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if hovering { open = true } }
+        }
+        .popover(isPresented: $open, arrowEdge: .bottom) {
+            WhatsNewPanel(version: up.readyVersion ?? "", titles: up.readyTitles, restart: { model.restartForUpdate() }, close: { open = false })
         }
     }
 }
