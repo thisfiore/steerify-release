@@ -171,7 +171,7 @@ def s6(f, t, T):  # logo
     f.text(140, 56, typed('STEERIFY', t, 18), C['cream'], F24)
     if t > 0.9: f.text(141, 88, 'YOU DECIDE. CLAUDE BUILDS.', C['amber'], F8)
     if t > 1.6: f.text(160, 128, 'STEERIFY.DEV', C['cream'], F16, 'ms')
-    if t > 2.2: f.text(160, 146, 'PRIVATE BETA', C['mute'], F8, 'ms')
+    if t > 2.2: f.text(160, 146, 'FREE AND OPEN SOURCE', C['mute'], F8, 'ms')
     for i, pal in enumerate([None, {'c': C['amber'], 'k': (58, 37, 8)}, {'c': (74, 78, 88), 'k': C['amber']}]):
         if t > 2.0: f.spr('cat', 252 + i * 14, 160, 1, pal)
 

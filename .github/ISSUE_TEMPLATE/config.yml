@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How Steerify works
+    url: https://steerify.dev/#how
+    about: The whole loop in nine short animations.
+  - name: What's new
+    url: https://github.com/thisfiore/steerify-release/releases
+    about: Every release, with notes.

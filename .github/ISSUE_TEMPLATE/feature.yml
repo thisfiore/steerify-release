@@ -1,0 +1,25 @@
+name: Feature request
+description: Something Steerify should do
+title: "Idea: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to do?
+      description: The situation, not the solution. "I had six sessions and could not tell which had finished."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: Optional. A sketch or a screenshot of another app is welcome.
+  - type: dropdown
+    id: who
+    attributes:
+      label: How do you use Steerify?
+      options:
+        - I write code every day
+        - I build products but I am not a developer
+        - Just trying it

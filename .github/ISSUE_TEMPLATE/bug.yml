@@ -1,0 +1,41 @@
+name: Bug report
+description: Something broke or looks wrong
+title: "Bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got. A screenshot helps a lot.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Steerify version
+      description: Steerify menu → About Steerify
+      placeholder: "0.5.1"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac
+      placeholder: "macOS 15.6, MacBook Air M3"
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where in the app?
+      options:
+        - Board (To test, Choices, Requirements, Roadmap)
+        - Sessions and terminals
+        - Release
+        - Starting a project
+        - Menu bar
+        - Somewhere else
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Please leave out private code, keys and client names.

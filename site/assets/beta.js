@@ -10,19 +10,19 @@
       e.preventDefault();
       const v = email.value.trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { say('That email looks off. Try again?', 'err'); email.focus(); return; }
-      if (f.elements._gotcha.value) { say("You're in line. We'll write once.", 'ok'); return; }
+      if (f.elements._gotcha.value) { say("Done. We'll write when a new version is out.", 'ok'); return; }
       const id = (f.dataset.formspree || '').trim();
       const url = !id ? '' : /^https?:/.test(id) ? id : 'https://formspree.io/f/' + id;
       if (!url) { say('Sign-ups open very soon. Come back tomorrow?', 'err'); return; }
       btn.disabled = true; say('Sending…');
       try {
-        const r = await fetch(url, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ email: v, source: 'steerify.dev', _subject: 'Steerify beta: ' + v }) });
+        const r = await fetch(url, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ email: v, source: 'steerify.dev', _subject: 'Steerify updates: ' + v }) });
         if (!r.ok) {
           const j = await r.json().catch(() => ({}));
           if (r.status === 422 && j.errors && j.errors.some((x) => x.field === 'email')) { say('That email looks off. Try again?', 'err'); email.focus(); btn.disabled = false; return; }
           throw new Error(r.status);
         }
-        f.reset(); say("You're in line. We'll write once.", 'ok');
+        f.reset(); say("Done. We'll write when a new version is out.", 'ok');
       } catch (_) { say("Couldn't send it. Try again in a minute?", 'err'); }
       btn.disabled = false;
     });

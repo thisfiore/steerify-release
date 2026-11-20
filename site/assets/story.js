@@ -533,6 +533,6 @@
     document.querySelectorAll('[data-story]').forEach((el) => { if (!el._story) mount(el); });
     document.querySelectorAll('[data-scene]').forEach((el) => { if (!el._scene) mountScene(el); });
   }
-  window.SteerifyStory = { init, scenes: SCENES };
+  window.SteerifyStory = { init, scenes: SCENES, named: NAMED, paint }; // named + paint: used by scripts/readme-art.mjs
   if (document.readyState !== 'loading') init(); else document.addEventListener('DOMContentLoaded', init);
 })();

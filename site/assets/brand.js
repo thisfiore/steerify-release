@@ -108,6 +108,7 @@ boat: [
     '......aa......',
     'm.m.m.m.m.m.m.',
   ],
+    star: ['....a....', '....a....', '...aaa...', 'aaaaaaaaa', '.aaaaaaa.', '..aaaaa..', '..aaaaa..', '.aa...aa.', '.a.....a.'],
     laptop: ['.cccccccccccccc.', '.ckkkkkkkkkkkkc.', '.ckakkkkkkkkkkc.', '.ckkakcccccckkc.', '.ckakkkkkkkkkkc.', '.ckkkkkkkkkkkkc.', '.cccccccccccccc.', 'cccccccccccccccc', '.mmmmmmmmmmmmmm.'],
     cat: ['c.....c...', 'cc...cc...', 'ccccccc...', 'ckccckc...', 'ccccncc..c', '.ccccc...c', '.ccccc..c.', '.ccccc.c..', '.ccccccc..', '.cc.cc....'],
   };

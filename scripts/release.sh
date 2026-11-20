@@ -59,6 +59,7 @@ if [ $DRY = 1 ]; then
   exit 0
 fi
 scripts/publish-public.sh --push
-gh release create "v$VERSION" $DMG -R $PUBLIC_SLUG --target main --title "Steerify $VERSION" --notes-file $NOTES $PRE
+cp $DMG build/Steerify.dmg   # same file under a fixed name: /releases/latest/download/Steerify.dmg always works
+gh release create "v$VERSION" $DMG build/Steerify.dmg -R $PUBLIC_SLUG --target main --title "Steerify $VERSION" --notes-file $NOTES $PRE
 git tag -f "v$VERSION" && git push -q -f origin "v$VERSION"
 say "released: https://github.com/$PUBLIC_SLUG/releases/tag/v$VERSION"

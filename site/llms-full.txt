@@ -34,9 +34,9 @@ Close the laptop, come back, know. Steerify remembers the chapter you were on, w
 - **Is Steerify an AI?** No. Claude Code does the building, with your own login. Steerify is where you steer it.
 - **Do I need Claude Code?** Yes. Sessions run in a real terminal on your Mac. Steerify never sees your keys.
 - **Is it made by Anthropic?** No. Independent project. Claude is a trademark of Anthropic.
-- **What does it cost?** Nothing during the private beta.
+- **What does it cost?** Nothing. Steerify is free and open source (MIT).
 - **Where does my board live?** In a folder of plain files in your own repo. Delete Steerify and it's all still yours.
-- **How do I get it?** Private beta, friends first: leave your email on steerify.dev ("Ask for the build") and you're next in line.
+- **How do I get it?** Download the Mac app from steerify.dev or from the GitHub releases (https://github.com/thisfiore/steerify-release/releases). Bugs and feature requests go to GitHub issues.
 
 ## Release notes
 
