@@ -28,6 +28,18 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     /// Other board items this session works on (a combined session for one topic).
     var alsoRefs: [String] = []
     func covers(_ ref: String) -> Bool { item?.ref == ref || alsoRefs.contains(ref) }
+
+    /// Type a prompt into the running Claude Code and press Enter. Text and Enter in one write arrive as a paste,
+    /// where the "\r" is just a newline: the line sat in the prompt, never sent (request r261121-203129).
+    /// So the text goes first (newlines flattened), Enter follows as its own keystroke.
+    func submit(_ text: String) {
+        let line = text.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: " ")
+        view.send(txt: line)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.running else { return }
+            self.view.send(txt: "\r")
+        }
+    }
     /// From Claude Code hooks (Status.swift).
     @Published var status: SessionStatus = .starting
     /// A shell session that runs one command and exits (deploys), and what to do with its exit code.
@@ -78,8 +90,11 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
                        execName: "-" + (shell as NSString).lastPathComponent,
                        currentDirectory: workdir ?? repo.path)
         if kind == .claude {
+            // Remote Control: the session can be continued in the Claude app; its link is read off the screen below.
+            let rc = Prefs.remoteControlOn && !dry ? ["--remote-control", Self.shellQuote(String(title.prefix(60)))] : []
             let line = (["claude", "--settings", Self.shellQuote(SessionHooks.settings.path),
-                         "--mcp-config", Self.shellQuote(SessionHooks.mcpConfig.path)] + (command ?? []).map { $0.hasPrefix("-") ? $0 : Self.shellQuote($0) }).joined(separator: " ")
+                         "--mcp-config", Self.shellQuote(SessionHooks.mcpConfig.path)] + rc + (command ?? []).map { $0.hasPrefix("-") ? $0 : Self.shellQuote($0) }).joined(separator: " ")
+            if !rc.isEmpty { watchRemoteLink(v) }
             let full = dry ? "echo " + Self.shellQuote(line) + "; pwd; git branch --show-current; env | grep ^STEERIFY_ | sort" : line
             v.send(txt: Self.launchLine(full, id: id) + "\r")
         }
@@ -104,6 +119,39 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
 
     func terminate() {
         if running { view.terminate() }
+    }
+
+    // MARK: Remote Control link (claude.ai/code/session_…), printed by Claude Code when the session starts
+
+    @Published var remoteURL: String?
+    private var remoteScanPending = false
+    private var remoteScans = 0
+
+    /// Reads the screen after new output until the link shows up (then stops looking), at most every 0.8 s, ~2 minutes.
+    private func watchRemoteLink(_ v: LocalProcessTerminalView) {
+        v.setProcessOutputHandler { [weak self] in
+            DispatchQueue.main.async { self?.scheduleRemoteScan(v) }
+        }
+        if BoardStore.debug { FileHandle.standardError.write("remote watch on\n".data(using: .utf8)!) }
+    }
+    private func scheduleRemoteScan(_ v: LocalProcessTerminalView) {
+        guard remoteURL == nil, !remoteScanPending else { return }
+        remoteScanPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak v] in
+            guard let self, let v else { return }
+            self.remoteScanPending = false
+            self.remoteScans += 1
+            let snap = v.terminalContentSnapshot(region: .history(maximumScrollbackRows: 300))
+            let text = (snap?.rows.map(\.text) ?? []).joined()   // wrapped rows joined: the link may span two
+            if BoardStore.debug { FileHandle.standardError.write("remote scan \(self.remoteScans): snap \(snap == nil ? "nil" : "\(snap!.rows.count) rows") · \(text.suffix(160))\n".data(using: .utf8)!) }
+            if let r = text.range(of: #"https://claude\.ai/code/session_[A-Za-z0-9]{24}"#, options: .regularExpression) {
+                self.remoteURL = String(text[r])
+                v.setProcessOutputHandler(nil)
+                NotificationCenter.default.post(name: .steerifySessionRemote, object: self)
+            } else if self.remoteScans > 150 {
+                v.setProcessOutputHandler(nil)          // no Remote Control here (not logged in to claude.ai, or turned off)
+            }
+        }
     }
 
     // MARK: LocalProcessTerminalViewDelegate

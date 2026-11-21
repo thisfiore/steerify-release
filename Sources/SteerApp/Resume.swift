@@ -60,6 +60,13 @@ extension AppModel {
         return b.roadChapter(for: clean.components(separatedBy: ":").first ?? clean)?.name ?? b.roadChapter(for: clean)?.name
     }
 
+    /// What Resume types into a conversation it reopens (request r261121-122352): never just an open session.
+    /// Specific when we know where it stopped (the next step it named, the question it left, the chapter's next
+    /// key result); otherwise the generic "state of the art, then the next step".
+    func resumeNudge(claudeId: String?, ref: String, in p: Project) -> String {
+        ResumeNudge.text(claudeId: claudeId, ref: ref, board: board(for: p))
+    }
+
     func resumeChapter(_ c: ChapterResume, in p: Project) {
         var x = ItemRef(ref: "track:" + BoardFiles.slug(c.track))!; x.title = "Chapter: " + c.track; x.area = c.area
         start(projectId: p.id, item: x, intent: .resume)
@@ -133,5 +140,43 @@ struct ResumeChapters: View {
         .padding(hero ? 16 : 12)
         .background(RoundedRectangle(cornerRadius: 12).fill(hero ? Brand.panel2 : Brand.panel))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(hero ? Brand.amber.opacity(0.4) : Brand.line))
+    }
+}
+
+/// Resume's message (request r261121-122352), from the transcript's last reply and the board only (no tokens spent).
+enum ResumeNudge {
+    @MainActor static func text(claudeId: String?, ref: String, board: BoardStore) -> String {
+        let check = "First check what changed since (my verdicts, notes and answers on the board: get_item \(ref)) and what the code really has."
+        let ask = "If it needs my decision, put it on the board as a choice; otherwise go on without asking."
+        switch claudeId.flatMap({ SessionOutlookReader.outlook(claudeId: $0) }) {
+        case .next(let n)?:
+            return "Let's move on: take the next step you named (\(n)). \(check) \(ask)"
+        case .ask(let q)?:
+            return "Picking this up again. You asked: \"\(q)\". If my answer is not on the board, take the option you would recommend, say which in one line, and go on. \(ask)"
+        default:
+            var next = ""
+            if ref.hasPrefix("track:") {
+                let slug = String(ref.dropFirst("track:".count))
+                let order = ["wip": 0, "you": 1, "review": 2, "todo": 3]
+                if let k = board.roadmap.filter({ BoardFiles.slug($0.track) == slug && $0.status != "done" })
+                    .sorted(by: { (order[$0.status] ?? 9) < (order[$1.status] ?? 9) }).first {
+                    next = " The board's next key result is \"\(SessionOutlookReader.short(k.text, max: 120))\" (\(k.status)): confirm it or name a better one."
+                }
+            }
+            return "Picking this up again: where are we? \(check) Give me the state of the art in a few lines, then start the next step.\(next) \(ask)"
+        }
+    }
+}
+
+// MARK: - Test hook: `Steerify --resume-nudge-check <workspace folder>` prints what Resume would send to each linked conversation.
+enum ResumeNudgeCheck {
+    @MainActor static func run(_ folder: String) {
+        guard let p = ProjectStore.read(folder) else { print("no steerify.json in \(folder)"); return }
+        let b = BoardStore(project: Project(id: p.id, name: p.name, boardDir: p.boardDir, port: 0, repos: p.repos))
+        var seen = Set<String>()
+        for l in b.links.reversed().prefix(40) where seen.insert(l.claudeSession).inserted {
+            print("\(l.started.prefix(16))  \(SessionName.short(l.title ?? l.item, intent: l.intent))\n  /steerify \(l.intent) \(l.item) — \(ResumeNudge.text(claudeId: l.claudeSession, ref: l.item, board: b))\n")
+        }
+        fflush(stdout)
     }
 }

@@ -91,13 +91,30 @@ enum SteerifyMCP {
          "inputSchema": schema(["id": str, "title": str, "outcome": str, "checks": ["type": "array", "items": ["type": "string"]], "sop": str, "brief": str,
                                 "every": str, "maxMinutes": ["type": "integer"], "area": str, "request": str, "runNow": ["type": "boolean"]], ["title", "outcome"])],
         ["name": "finish_task",
-         "description": "Hand in the result of a task run (the only way a run ends well). {run? (run id from the brief) or task (task id: closes its running run), summary (1–2 lines: what you produced), files: [paths relative to the board, absolute paths or URLs to open the result], counts?: {name: number} (records, pages, …), checks: [{text, ok}] (every check of the task, honestly), failed? (true: you could not reach the outcome; say why in summary)}. The run goes to To check on the Tasks tab; the user says OK or Redo.",
+         "description": "Hand in the result of a task run (the only way a run ends well). {run? (run id from the brief) or task (task id: closes its running run), summary (1–2 lines: what you produced), files: [paths relative to the board, absolute paths or URLs to open the result], counts?: {name: number} (records, pages, …), checks: [{text, ok}] (every check of the task, honestly), failed? (true: you could not reach the outcome; say why in summary), report (the standard report Steerify draws, keep text minimal: {headline (≤ 10 words: what you got), kpis: [{value, label}] 2–4 big numbers, steps: [{text (2–3 words), n (a count: \"244 · 60 d\"), done (false = still pending)}] 3–6 = what was done, rows?: {title (what the bars measure), ref? (what the reference mark is, e.g. \"competitor avg\"), items: [{name, value (number), ref? (number), show? (\"56 · 0.6×\"), tag (2–3 words)}]} one per item, points: [≤ 3 bullets, ≤ 8 words each], details? (the full file, shown folded; default files[0])})}. The run goes to To check on the Tasks tab; the user says OK or Redo.",
          "inputSchema": schema(["run": str, "task": str, "summary": str, "files": ["type": "array", "items": ["type": "string"]], "counts": ["type": "object"],
-                                "checks": ["type": "array", "items": ["type": "object"]], "failed": ["type": "boolean"]], ["summary"])],
+                                "checks": ["type": "array", "items": ["type": "object"]], "failed": ["type": "boolean"], "report": ["type": "object"]], ["summary"])],
         ["name": "notify",
          "description": "Tell the user in the Steerify window (a toast), optionally jumping to an item. Use after delivering, when a choice is waiting, or when you need them.",
          "inputSchema": schema(["message": str, "ref": str], ["message"])],
     ]
+
+    /// Soft checks on a task report: Steerify draws it either way, but tells Claude what breaks the standard.
+    static func reportTips(_ r: Any?, failed: Bool) -> [String] {
+        guard !failed else { return [] }
+        guard let r = r as? [String: Any] else { return ["no report: add report {headline, kpis, steps, rows, points} so the result reads at a glance"] }
+        var t: [String] = []
+        let words = { (s: String) in s.split(whereSeparator: { $0 == " " }).count }
+        if let h = r["headline"] as? String { if words(h) > 12 { t.append("headline has \(words(h)) words: keep it ≤ 10") } } else { t.append("headline is missing") }
+        let k = (r["kpis"] as? [Any])?.count ?? 0
+        if k < 2 || k > 4 { t.append("kpis: \(k), use 2–4") }
+        let st = (r["steps"] as? [Any])?.count ?? 0
+        if st < 2 || st > 6 { t.append("steps: \(st), use 3–6") }
+        let p = r["points"] as? [String] ?? []
+        if p.count > 3 { t.append("points: \(p.count), max 3 (only the first 3 are shown)") }
+        for x in p where words(x) > 10 { t.append("point too long (\(words(x)) words): \"\(x.prefix(40))…\"") }
+        return t
+    }
 
     static func call(_ name: String, _ a: [String: Any], board: String) -> (String, Bool) {
         guard !board.isEmpty, FileManager.default.fileExists(atPath: board) else {
@@ -358,7 +375,7 @@ enum SteerifyMCP {
                 return ("no such run; pass run (from your brief) or task", true)
             }
             var result: [String: Any] = ["summary": summary]
-            for k in ["files", "counts", "checks"] { if let v = a[k] { result[k] = v } }
+            for k in ["files", "counts", "checks", "report"] { if let v = a[k] { result[k] = v } }
             let failed = a["failed"] as? Bool == true
             TaskStore.setRun(board, id: rid) { r in
                 r["status"] = failed ? "noresult" : "done"; r["finished"] = TaskStore.now(); r["result"] = result
@@ -368,7 +385,10 @@ enum SteerifyMCP {
             let task = TaskStore.load(board).runs.first { $0.id == rid }?.task ?? ""
             ui(["action": "notify", "board": board, "ref": "task:" + task,
                 "message": failed ? "Task result: couldn't reach the outcome" : "Task result to check" + (bad > 0 ? " · \(bad) check\(bad == 1 ? "" : "s") failed" : "")])
-            return ("run \(rid) handed in: it is on the Tasks tab, To check. Say in the chat what you produced and where.", false)
+            var msg = "run \(rid) handed in: it is on the Tasks tab, To check. Say in the chat what you produced and where."
+            let tips = reportTips(a["report"], failed: failed)
+            if !tips.isEmpty { msg += "\n\nReport standard (fix with finish_task again, same run):\n" + tips.map { "- " + $0 }.joined(separator: "\n") }
+            return (msg, false)
         case "notify":
             guard let m = a["message"] as? String else { return ("message is required", true) }
             var info: [String: String] = ["action": "notify", "message": m, "board": board]

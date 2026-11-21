@@ -1,0 +1,10 @@
+{
+  "_": "Speed budgets checked before every release (scripts/perf-check.sh). limit = the release stops above it (today's level + a margin, so nothing gets slower); target = where the Performance chapter takes it. Lower a limit whenever a change beats it, never raise one without saying why in the commit.",
+  "checks": [
+    { "id": "roadmap-scroll",  "name": "Roadmap: scroll",        "args": ["--tab", "road", "--show", "all", "--scroll-bench"],   "metric": "p95Ms",     "limit": 30,  "target": 16 },
+    { "id": "totest-scroll",   "name": "To test: scroll",        "args": ["--tab", "test", "--show", "all", "--scroll-bench"],   "metric": "p95Ms",     "limit": 22,  "target": 16 },
+    { "id": "choices-scroll",  "name": "Choices: scroll",        "args": ["--tab", "choice", "--show", "all", "--scroll-bench"], "metric": "p95Ms",     "limit": 35,  "target": 16 },
+    { "id": "reqs-scroll",     "name": "Requirements: scroll",   "args": ["--tab", "req", "--show", "all", "--scroll-bench"],    "metric": "p95Ms",     "limit": 16,  "target": 16 },
+    { "id": "project-switch",  "name": "Switch project",         "args": ["--tab", "road", "--switch-bench"], "other": "tiny-todo", "metric": "warmAvgMs", "limit": 400, "target": 50 }
+  ]
+}

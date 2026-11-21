@@ -86,6 +86,13 @@ final class AppModel: ObservableObject {
     /// Deploys to tell sessions that waited on them (DeployWake.swift), by session id.
     var deployWakes: [UUID: PendingWake] = [:]
     var notified = Set<String>()
+    /// Projects whose waiting answers go out now, without the change-your-mind delay ("Send now" on the setup view).
+    var rushNudges = Set<String>()
+    /// When the next delayed ping is due (one re-check scheduled at a time).
+    var nudgeRecheckAt: Date?
+    /// iPhones connected to each project's relay channel right now (Relay.swift): the tab bar's phone icon turns green.
+    @Published var phones: [String: Int] = [:]
+    @Published var pairingProjectId: String?          // the "Connect your iPhone" window is open for this project
     private var statusWatcher: StatusWatcher?
     private var nudgeTimer: Timer?
     private var nudgePending = false
@@ -121,10 +128,15 @@ final class AppModel: ObservableObject {
         statusWatcher?.refresh()
         evaluateNudges()
         startTaskClock()
+        startStartQueue()
+        startPhoneInbox()
+        startRelay()
+        startBoardPublish()
     }
 
     func sessionsChanged() {
         objectWillChange.send()
+        publishStatus()
         if sessions.contains(where: { $0.kind == .claude && $0.status == .idle }) { checkShippedSoon() }
         scheduleNudges()
     }
@@ -318,7 +330,13 @@ final class AppModel: ObservableObject {
         if focus { selectedProjectId = p.id }   // false: the session starts in the background (a request filed for another project)
         if !fresh, let existing = sessions.first(where: { $0.projectId == p.id && $0.covers(ref.ref) && $0.running }) {
             selectedSession[p.id] = existing.id          // one live session per item: jump to it
-            if let extraBrief { existing.view.send(txt: extraBrief.replacingOccurrences(of: "\n", with: " ") + "\r") }
+            if let extraBrief { existing.submit(extraBrief) }
+            else if existing.kind == .claude, existing.status == .idle {
+                // Resume on an idle session: say something, never just show it (request r261121-122352).
+                // Working: it is already on it. Needs you: typing would answer its prompt, so leave it.
+                let r = BoardFiles.resolve(ref, in: p).ref
+                existing.submit("/steerify \(intent.rawValue) \(r) — " + resumeNudge(claudeId: existing.claudeId, ref: r, in: p))
+            }
             existing.alsoRefs += also.filter { !existing.covers($0) }
             return existing
         }
@@ -328,7 +346,7 @@ final class AppModel: ObservableObject {
         if !fresh, let live = liveThreadSession(projectId: p.id, ref: item.ref) {
             selectedSession[p.id] = live.id
             let extra = extraBrief.map { " — " + $0.replacingOccurrences(of: "\n", with: " ") } ?? ""
-            live.view.send(txt: prompt + extra + "\r")
+            live.submit(prompt + extra)
             live.alsoRefs += ([item.ref] + also).filter { !live.covers($0) }
             if !dry, let cid = live.claudeId {
                 SessionLinks.append(SessionLink(item: item.ref, claudeSession: cid, intent: intent.rawValue, repo: live.repo.name,
@@ -346,6 +364,7 @@ final class AppModel: ObservableObject {
            let repo = p.repos.first(where: { $0.name == prev.repo && $0.exists }) ?? BoardFiles.repo(for: item.area, in: p) {
             var cmd = ["--resume", prev.claudeSession, prompt]
             if let extraBrief, prevThread != nil { cmd[2] = prompt + " — " + extraBrief.replacingOccurrences(of: "\n", with: " ") }
+            else if extraBrief == nil { cmd[2] = prompt + " — " + resumeNudge(claudeId: prev.claudeSession, ref: item.ref, in: p) }
             let s = TerminalSession(project: p, repo: repo, kind: .claude, item: item, command: cmd, dry: dry, claudeId: prev.claudeSession)
             s.title = SessionName.short(item.title ?? item.ref, intent: intent.rawValue)
             // A conversation resumes only in the folder it was started in (its feature worktree, if any).
@@ -386,7 +405,7 @@ final class AppModel: ObservableObject {
         return open(s)
     }
 
-    /// Reopen an item's last conversation without a new instruction.
+    /// Reopen an item's last conversation and tell it to go on (what it named next, else state of the art + next step).
     func resume(_ link: SessionLink, projectId: String) {
         guard let p = projects.first(where: { $0.id == projectId }) else { return }
         if let live = sessions.first(where: { $0.projectId == p.id && $0.item?.ref == link.item && $0.running }) {
@@ -395,7 +414,8 @@ final class AppModel: ObservableObject {
         guard var item = ItemRef(ref: link.item) else { return }
         item.title = link.title
         let repo = p.repos.first { $0.name == link.repo } ?? p.repos.first!
-        let s = TerminalSession(project: p, repo: repo, kind: .claude, item: item, command: ["--resume", link.claudeSession], claudeId: link.claudeSession)
+        let go = "/steerify \(link.intent) \(link.item) — " + resumeNudge(claudeId: link.claudeSession, ref: link.item, in: p)
+        let s = TerminalSession(project: p, repo: repo, kind: .claude, item: item, command: ["--resume", link.claudeSession, go], claudeId: link.claudeSession)
         if let d = link.dir, FileManager.default.fileExists(atPath: d) { s.workdir = d }
         s.title = SessionName.short(link.title ?? link.item, intent: link.intent)
         open(s)

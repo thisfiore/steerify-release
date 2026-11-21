@@ -160,9 +160,6 @@ def gs_folder(d, im, k):
     tree(d, k, 'THE BOARD LIVES IN YOUR FOLDER', [('my-project/', 'cream', '', 0), ('├─ index.html', 'mute', '', 0), ('├─ app.js', 'mute', '', 0), ('└─ .steerify/', 'amber', 'the board', 2),
          ('   ├─ board.json', 'cream', 'choices, requirements, roadmap', 2), ('   ├─ decisions.json', 'cream', 'your picks and verdicts', 2), ('   └─ delivered.json', 'cream', 'the To test tab', 2)],
          'DELETE STEERIFY AND IT IS ALL STILL YOURS.', 3)
-def gs_tasks(d, im, k):
-    rows(d, 'TASKS, THE NEWEST TAB', [(1, 'THINGS CLAUDE DOES THAT ARE NOT CODE', 'A REPORT. A WEEKLY CHECK.'), (4, 'IT HANDS IN A RESULT', 'YOU SAY OK, OR REDO')], k,
-         'ADDED AFTER THE SCREENSHOTS IN THIS VIDEO WERE TAKEN.')
 def gs_loop(d, im, k):
     title(d, 'THAT IS THE WHOLE LOOP')
     for j, (t, col) in enumerate([('YOU SAY IT', 'cream'), ('YOU PICK', 'cream'), ('CLAUDE BUILDS', 'amber'), ('YOU LOOK', 'cream'), ('IT SHIPS', 'green')]):
@@ -213,8 +210,6 @@ def ws_ok(d, im, k):
         for j in range(6): d.rectangle([560 + j * 40, 412, 584 + j * 40, 428], fill=C['green'])
         d.rectangle([820, 320, 1420, 520], fill=C['bg2'], outline=C['green'], width=4); d.text((1120, 420), 'IT IS LIVE', font=PB(64), fill=C['green'], anchor='mm')
         d.text((110, 580), 'ONE BUTTON.', font=PR(30), fill=C['mute'])
-def ws_tasks(d, im, k):
-    rows(d, 'NOT ONLY BUILDING', [(1, 'EVERY MONDAY: A REPORT', 'YOU ASK ONCE'), (1, 'HE HANDS IT IN', 'FOR YOU TO CHECK: OK, OR REDO'), (2, 'LIKE HOMEWORK', 'HIS HOMEWORK')], k)
 def ws_never(d, im, k):
     title(d, 'WHAT YOU NEVER DO')
     for j, (t, at) in enumerate([('READ CODE', 0), ('SCROLL A THOUSAND LINES OF CHAT', 1)]):
@@ -241,9 +236,6 @@ def wp_board(d, im, k):
     tree(d, k, 'ONE BOARD, AS JSON, IN YOUR REPO', [('my-repo/.steerify/', 'amber', 'the board', 1), ('├─ board.json', 'cream', 'choices, requirements, roadmap', 2), ('├─ decisions.json', 'cream', 'your picks, notes, verdicts', 2),
          ('├─ delivered.json', 'cream', 'the To test tab', 2), ('├─ requests.json', 'cream', 'what you asked, where it went', 2), ('├─ tasks.json', 'cream', 'tasks and their runs', 2),
          ('└─ steerify.json', 'cream', 'repos, release, environments', 2)], 'SESSIONS READ AND WRITE IT: A CLAUDE CODE SKILL + AN MCP SERVER.', 3)
-def wp_sessions(d, im, k):
-    rows(d, 'SESSIONS ON THE ROADMAP', [(0, 'ONE ITEM, ONE SESSION, ALREADY BRIEFED', 'IN THE RIGHT REPO'), (2, 'ROWING', 'CLAUDE IS WORKING'), (3, 'YOUR TURN', 'IT WAITS ON YOU: TEST, ANSWER, RELEASE'),
-                                        (4, 'DONE', 'NOTHING LEFT THAT LIVES ONLY IN ITS CHAT')], k, cols=['amber', 'blue', 'violet', 'grey'])
 def wp_git(d, im, k):
     title(d, 'GIT, YOUR WAY, PER PROJECT')
     tiles(d, [(1, ['ON MAIN'], ['ONE FOLDER, ONE BRANCH', 'SIMPLE PROJECTS'], 'cream'), (2, ['WORKTREE', 'PER FEATURE'], ['OWN FOLDER, OWN BRANCH', 'MERGED AFTER YOUR OK'], 'blue'),
@@ -251,38 +243,38 @@ def wp_git(d, im, k):
 def wp_release(d, im, k):
     rows(d, 'RELEASE', [(0, 'WHAT YOU APPROVED WAITS HERE', 'NOTHING SHIPS WITHOUT YOUR OK'), (1, 'ONE CLICK: COMMIT, PUSH, DEPLOY', 'YOUR DEPLOY COMMAND, IN A VISIBLE TERMINAL TAB'),
                         (2, 'A LIVE CHECK URL', 'ITEMS TURN LIVE WHEN THE DEPLOYED COMMIT CATCHES UP')], k)
-def wp_tasks(d, im, k):
-    rows(d, 'TASKS: OUTCOMES, NOT CODE', [(2, 'A REPORT. A DATA PULL. A TUTORIAL.', 'WITH YOUR TOOLS. ONCE, OR ON A SCHEDULE'), (6, 'A RUN COUNTS WHEN A RESULT IS HANDED IN', 'SUMMARY, FILES, EACH CHECK MET OR NOT'),
-                                          (6, 'YOU SAY OK, OR REDO', 'TASKS NEVER GO ON THE ROADMAP'), (7, 'NO RESULT BY THE DEADLINE?', 'STEERIFY TELLS YOU, WITH A RETRY')], k)
-def wp_next(d, im, k):
-    rows(d, 'WHAT NOW?', [(0, 'THE NEXT STRIP', 'AT MOST TWO THINGS TO DO NOW, ONE BUTTON EACH'), (1, 'A PING IN THE APP', 'WHEN A SESSION DELIVERS, OR NEEDS YOU')], k)
 def wp_end(d, im, k):
     say(d, k, [(1, '99 SESSIONS IS FINE.', 60, 'mute'), (2, '99 SESSIONS AND ONE BOARD IS BETTER.', 60, 'cream')], 200)
     if k >= 3: ic = ICON.resize((120, 120), Image.LANCZOS); im.paste(ic, (110, 560), ic); d.text((260, 620), 'STEERIFY.DEV', font=PB(80), fill=C['amber'], anchor='lm')
     if k >= 4: d.text((114, 730), 'FREE. OPEN SOURCE. FOR MAC.', font=PR(32), fill=C['cream'])
 
-TAB = dict(ready=(30, 88, 150, 56), test=(204, 88, 240, 56), choices=(468, 88, 240, 56), reqs=(732, 88, 276, 56), road=(1026, 88, 198, 56), release=(1242, 88, 198, 56))
+TAB = dict(ready=(19, 88, 176, 56), test=(221, 88, 214, 56), choices=(484, 88, 214, 56), reqs=(750, 88, 244, 56), road=(1044, 88, 165, 56), task=(1260, 88, 184, 56), release=(1494, 88, 162, 56))   # v0.5.6: TASKS sits between ROADMAP and RELEASE
 LEFT, RIGHT = (0, 150, 1636, 1806), (1650, 150, 1350, 1806)
 BOTH = [(LEFT, 'THE BOARD', 'blue'), (RIGHT, 'CLAUDE CODE', 'amber')]
-BAR = [((24, 82, 1424, 68), '', 'amber')]
+BAR = [((14, 82, 1650, 68), '', 'amber')]
+# Boxes on the v0.5.6 demo shots (3000 px): the Next strip, the Tasks cards, the Ready cards, the session column.
+NEXT = (24, 184, 1592, 222)
+TK = dict(run=(24, 562, 1592, 150), check=(24, 784, 1592, 390), none=(24, 1188, 1592, 150), sched=(24, 1410, 1592, 150))
+LEFTOFF, WAITING = (14, 386, 1612, 480), (14, 880, 1612, 400)   # each with its heading inside
+SES = dict(all=(2625, 160, 365, 540), you=(2625, 240, 365, 160), row=(2625, 400, 365, 160), idle=(2625, 556, 365, 138))
 T = lambda name: [(TAB[name], '', 'amber')]
 # A screen is (shot, highlights per sentence, tag): shot may be a list of (from sentence, shot); '*' = every sentence.
 VIEWS = {
  'getting-started': {
     'l01': gs_title, 'l02': gs_three, 'l03': gs_terminal, 'l04': gs_install, 'l05': ('choices', {}, 'TINY TODO, THE DEMO PROJECT'), 'l06': gs_own,
-    'l07': ('roadmap', {2: [(RIGHT, 'CLAUDE CODE, A REAL TERMINAL', 'amber')], 3: [(LEFT, 'THE BOARD', 'blue')], 4: BOTH, 5: BOTH}, None), 'l08': gs_folder,
+    'l07': ('sessions', {2: [(RIGHT, 'CLAUDE CODE, A REAL TERMINAL', 'amber')], 3: [(LEFT, 'THE BOARD', 'blue')], 4: BOTH, 5: BOTH}, None), 'l08': gs_folder,
     'l09': ('ready', {1: BAR, 2: BAR}, None), 'l10': ('choices', {'*': T('choices')}, None), 'l11': ('requirements', {'*': T('reqs')}, None),
-    'l12': ('roadmap', {'*': T('road')}, None), 'l13': ('test', {'*': T('test')}, None), 'l14': ('release', {'*': T('release')}, None), 'l14b': gs_tasks,
-    'l15': ('ready', {'*': T('ready')}, None), 'l16': ('new-request', {}, None), 'l17': gs_loop },
+    'l12': ('roadmap', {'*': T('road')}, None), 'l13': ('test', {'*': T('test')}, None), 'l14': ('release', {'*': T('release')}, None), 'l14b': ('tasks', {0: T('task'), 1: T('task'), 2: [(TK['check'], 'A REPORT', 'amber')], 3: [(TK['sched'], 'EVERY MONDAY', 'amber')], 4: [(TK['check'], 'OK, OR REDO', 'amber')]}, None),
+    'l15': ('ready', {'*': T('ready')}, None), 'l16': ('request-mark', {}, None), 'l17': gs_loop },
  'why-simple': {
     'a01': ws_builder, 'a02': ws_castle, 'a03': ws_wall, 'a04': ws_clipboard, 'a05': ws_type, 'a06': ('choice-making', {}, 'LIKE THIS, THIS, OR THIS?'), 'a07': ws_coffee,
-    'a08': ('test-preview', {}, 'DOES THIS LOOK RIGHT?'), 'a09': ws_ok, 'a10': ws_tasks, 'a11': ws_never,
+    'a08': ('test-preview', {}, 'DOES THIS LOOK RIGHT?'), 'a09': ws_ok, 'a10': ('tasks', {0: T('task'), 1: [(TK['sched'], 'EVERY MONDAY', 'amber')], 2: [(TK['check'], 'HANDED IN, FOR YOU TO CHECK', 'amber')], 3: [(TK['check'], 'HIS HOMEWORK', 'amber')]}, None), 'a11': ws_never,
     'a12': end_card([(1, 'YOU DECIDE.', 70, 'cream'), (2, 'CLAUDE BUILDS.', 70, 'amber'), (3, 'FREE. FOR MAC. STEERIFY.DEV', 40, 'green')]) },
  'why-pro': {
-    'b01': wp_hook, 'b02': wp_state, 'b03': wp_board, 'b04': ('new-request', {}, 'FIX / REFINEMENT / FEATURE / QUESTION'), 'b05': ([(0, 'choices'), (1, 'choice-making')], {0: T('choices')}, 'SUGGESTED. BLEND. NOTE.'),
-    'b06': ('requirements', {'*': T('reqs')}, 'YOUR OK ON A DELIVERY MARKS THEM BUILT'), 'b07': wp_sessions, 'b08': wp_git,
-    'b09': ([(0, 'test'), (4, 'test-preview')], {0: T('test')}, 'THE LINK MUST OPEN THE FEATURE ITSELF'), 'b10': wp_release, 'b11': wp_tasks, 'b12': wp_next,
-    'b13': ('ready', {1: [((180, 610, 1290, 400), 'WHERE YOU LEFT OFF', 'amber')], 2: [((180, 610, 1290, 400), 'WHERE YOU LEFT OFF', 'amber')], 3: [((180, 610, 1290, 400), 'COMMAND J: THE NEXT THING', 'amber')]}, None),
+    'b01': wp_hook, 'b02': wp_state, 'b03': wp_board, 'b04': ('request-mark', {}, 'FIX / REFINEMENT / FEATURE / TASK / QUESTION'), 'b05': ([(0, 'choices'), (1, 'choice-making')], {0: T('choices')}, 'SUGGESTED. BLEND. NOTE.'),
+    'b06': ('requirements', {'*': T('reqs')}, 'YOUR OK ON A DELIVERY MARKS THEM BUILT'), 'b07': ('sessions', {1: [(SES['all'], 'SESSIONS', 'amber')], 2: [(SES['row'], 'ROWING', 'blue')], 3: [(SES['you'], 'YOUR TURN', 'violet')], 4: [(SES['idle'], 'IDLE, OR DONE', 'grey')]}, 'ONE ITEM, ONE SESSION, ALREADY BRIEFED'), 'b08': wp_git,
+    'b09': ([(0, 'test'), (4, 'test-preview')], {0: T('test')}, 'THE LINK MUST OPEN THE FEATURE ITSELF'), 'b10': wp_release, 'b11': ('tasks', {0: T('task'), 1: T('task'), 2: [(TK['check'], 'A REPORT', 'amber')], 3: [(TK['sched'], 'A WEEKLY DATA PULL', 'amber')], 4: [(TK['run'], 'A TUTORIAL', 'amber')], 5: [(TK['sched'], 'ONCE, OR ON A SCHEDULE', 'amber')], 6: [(TK['check'], 'A RESULT WITH ITS CHECKS: OK, OR REDO', 'amber')], 7: [(TK['none'], 'NO RESULT? STEERIFY TELLS YOU', 'red')]}, None), 'b12': ('roadmap', {'*': [(NEXT, '', 'amber')]}, 'THE NEXT STRIP: AT MOST TWO THINGS, ONE BUTTON EACH'),
+    'b13': ('ready', {1: [(LEFTOFF, '', 'amber')], 2: [(LEFTOFF, '', 'amber')], 3: [(WAITING, 'COMMAND J: THE NEXT THING', 'amber')]}, None),
     'b14': wp_end },
 }
 VIEW = VIEWS[NAME]
@@ -336,8 +328,10 @@ def frame(i, k, pulse, who=(0, 0)):
         for (rx, ry, rw, rh), label, col in hl.get(k, hl.get('*', [])):
             a = [px + rx * sc, py + ry * sc, px + (rx + rw) * sc, py + (ry + rh) * sc]
             d.rectangle(a, outline=C[col], width=7 if pulse else 4)
-            if label:
-                tw = d.textlength(label, font=PB(30)); d.rectangle([a[0] + 16, a[1] + 16, a[0] + 44 + tw, a[1] + 72], fill=C[col]); d.text((a[0] + 30, a[1] + 26), label, font=PB(30), fill=C['ink'])
+            if label:   # inside the box's top-left corner, in the largest size that fits; left of a box too narrow for any
+                f = next((PB(z) for z in (30, 24, 20) if d.textlength(label, font=PB(z)) + 60 <= a[2] - a[0]), None); inside = f is not None; f = f or PB(30)
+                tw = d.textlength(label, font=f); lx, ly = (a[0] + 16, a[1] + 16) if inside else (a[0] - tw - 40, a[1])
+                d.rectangle([lx, ly, lx + 28 + tw, ly + 56], fill=C[col]); d.text((lx + 14, ly + 28), label, font=f, fill=C['ink'], anchor='lm')
         if tag:
             tw = d.textlength(tag, font=PB(30)); d.rectangle([px + 24, py + pic.height - 84, px + 56 + tw, py + pic.height - 24], fill=C['amber'])
             d.text((px + 40, py + pic.height - 72), tag, font=PB(30), fill=C['ink'])

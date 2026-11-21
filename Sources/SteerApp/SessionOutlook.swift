@@ -86,7 +86,7 @@ enum SessionOutlookReader {
     /// A question or a request for you.
     static let askWords = #"\?|\b(let me know|tell me|your call|please (confirm|check|choose|decide)|i need (you|your))\b"#
     /// An offer or a step Claude would take next.
-    static let nextWords = #"\b(want me to|shall i|should i|would you like( me)? to|i can (also |now |then )?(do|start|build|fix|add|move|go)|next step:|next step would be|the next step is to|next up|next:|next,|then i('ll| will))\b"#
+    static let nextWords = #"\b(want me to|shall i|should i|would you like( me)? to|i can (also |now |then )?(do|start|build|fix|add|move|go)|next step:|next step would be|the next step is to|next up|next:|next,|then i('ll| will))(?!\w)"#
 
     /// Sentences, without code, links or markdown.
     static func sentences(_ text: String) -> [String] {
@@ -116,7 +116,9 @@ enum SessionOutlookReader {
         let tail = Array(ss.suffix(6))
         let open = tail.filter { has($0, askWords) || has($0, nextWords) }
         let loose = open.filter { !has($0, boardWords) }
-        if let n = loose.first(where: { has($0, nextWords) }) { return .next(short(n)) }
+        if let n = loose.first(where: { has($0, nextWords) }) {
+            return .next(short(n.replacingOccurrences(of: #"^(next step|next)\s*:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])))
+        }
         if let a = loose.first { return .ask(short(a)) }
         if let b = (open + tail.reversed()).first(where: { has($0, boardWords) }) { return .onBoard(boardPlace(b)) }
         return .nothing
@@ -179,7 +181,7 @@ extension AppModel {
     /// Go on: tell an idle session to take the next step it named.
     func goOn(_ s: TerminalSession) {
         guard s.status == .idle, case .next(let n)? = outlook(s) else { return }
-        s.view.send(txt: "Go ahead with the next step you named (\(n)). If it needs my decision, put it on the board as a choice.\r")
+        s.submit("Go ahead with the next step you named (\(n)). If it needs my decision, put it on the board as a choice.")
     }
 }
 

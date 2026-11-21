@@ -93,6 +93,10 @@ struct RecentShotsStrip: View {
                                     .padding(3)
                             }
                         }
+                        // A filled thumbnail overflows its 104×64 box; .clipped() hides that but still takes clicks,
+                        // so the next (older) shot, drawn on top, used to steal clicks on the newest one.
+                        .frame(width: 104, height: 64)
+                        .contentShape(RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.plain).pointerStyle(.link)
                     .help(on ? "Attached · click to remove" : "Attach \(u.lastPathComponent)")

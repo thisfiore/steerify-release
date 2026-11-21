@@ -319,7 +319,8 @@ struct RequestSheet: View {
         clipboardHasImage = pb.string(forType: .string) == nil && [.png, .tiff].contains(where: { pb.data(forType: $0) != nil })
         retriage()
         loadShots()
-        shotWatch = RecentShots.watch { loadShots() }
+        // macOS can finish writing a new screenshot (pixels, "screen capture" tag) just after the folder changes: look again.
+        shotWatch = RecentShots.watch { loadShots(); DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { loadShots() } }
         // Test hooks: `--request-img <png>` attaches a picture, `--request-send file|claude` sends after 2 s.
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--request-img"), i + 1 < a.count { images.append(URL(fileURLWithPath: a[i + 1])) }

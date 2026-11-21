@@ -28,6 +28,28 @@ struct PixelWheel: View {
     }
 }
 
+/// How much the top bar shows. Narrow windows (or a long project name) first drop the centre to the wheel alone
+/// and the progress bar, then the "Next for you" title: the project name always stays whole.
+enum TopBarDensity: Int, Comparable {
+    case full, compact, minimal
+    static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
+
+    /// `width`: the window's width. `right`: extra right-side items (Restart to update, the web board button).
+    static func of(width: CGFloat, name: String, updateReady: Bool, webBoard: Bool) -> TopBarDensity {
+        let nameW = (name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: S(13), weight: .semibold)]).width
+        // Left: traffic lights + switcher (avatar, name, progress, %, chevron). Right: Next for you, + Request, icons.
+        let lights: CGFloat = 86
+        let left = { (d: TopBarDensity) in lights + nameW + S(d == .full ? 172 : 100) }
+        let right = { (d: TopBarDensity) in
+            S(d == .minimal ? 120 : 290) + S(100) + S(webBoard ? 116 : 80) + (updateReady ? S(160) : 0) + 24
+        }
+        let centre = { (d: TopBarDensity) in d == .full ? S(176) : S(30) }
+        // The centre item stays centred, so each side gets half of what it leaves.
+        func fits(_ d: TopBarDensity) -> Bool { width >= centre(d) + 2 * max(left(d), right(d)) + 16 }
+        return fits(.full) ? .full : fits(.compact) ? .compact : .minimal
+    }
+}
+
 /// One thing worth your attention now, with why.
 struct NextStep: Identifiable {
     var id: String { ref + "|" + reason }
@@ -123,6 +145,7 @@ extension AppModel {
 /// Top bar, right: "Next for you", compact like a session name (⌘J walks the list; the full title is in the tooltip).
 struct NextUp: View {
     @EnvironmentObject var model: AppModel
+    var density: TopBarDensity = .full
     /// "new to test" → "TEST", "session needs your answer" → "ANSWER"…: one short word for the pill.
     static func tag(_ reason: String) -> String {
         let r = reason.lowercased()
@@ -145,13 +168,15 @@ struct NextUp: View {
                     PixelIcon(name: "play", size: 8).foregroundStyle(n == nil ? Brand.mute : Brand.amber)
                     if let n {
                         Text(Self.tag(n.reason)).font(Brand.label(8.5)).tracking(0.5).foregroundStyle(Brand.amber).lineLimit(1)
+                        if density < .minimal {
                         Text(SessionName.short(n.title.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "“", with: "").replacingOccurrences(of: "”", with: ""), intent: nil)).lineLimit(1).truncationMode(.tail)
                             .foregroundStyle(Brand.ink).frame(maxWidth: S(150), alignment: .leading)
+                        }
                         if list.count > 1 {
                             Text("\(list.count)").font(.system(size: S(9.5), weight: .bold)).foregroundStyle(Color(hex: 0x1a1200))
                                 .padding(.horizontal, 4).background(Capsule().fill(Brand.amber))
                         }
-                    } else {
+                    } else if density < .minimal {
                         Text("All quiet").foregroundStyle(Brand.mute)
                     }
                     Text("⌘J").font(.system(size: S(9.5), design: .monospaced)).foregroundStyle(Brand.mute)
@@ -172,6 +197,8 @@ struct NextUp: View {
 /// Top bar, center: our mark, "Steerify", and a small "beta v0.x". Click the version: what's new in it.
 /// After an update the same panel opens once by itself.
 struct Wordmark: View {
+    /// Compact: the wheel alone (it opens the same What's new panel; the name and version are in its tooltip).
+    var compact = false
     static let version: String = {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1"
         let parts = v.split(separator: ".")
@@ -181,6 +208,12 @@ struct Wordmark: View {
     @State private var hover = false
     var body: some View {
         HStack(spacing: 7) {
+            if compact {
+                Button { open.toggle() } label: { PixelWheel(size: 16).padding(3).contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .help("Steerify beta v\(Self.version) · what's new")
+                    .popover(isPresented: $open, arrowEdge: .bottom) { WhatsNewPanel(close: { open = false }) }
+            } else {
             PixelWheel(size: 16)
             Text("Steerify").font(.system(size: S(13), weight: .semibold)).foregroundStyle(Brand.cream)
             Button { open.toggle() } label: {
@@ -194,6 +227,7 @@ struct Wordmark: View {
             .onHover { hover = $0; if $0 { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
             .help("What's new in v\(Self.version)")
             .popover(isPresented: $open, arrowEdge: .bottom) { WhatsNewPanel(close: { open = false }) }
+            }
         }
         .fixedSize()
         .onAppear {

@@ -139,12 +139,34 @@ extension AppModel {
         for (_, box) in outbox {
             let (s, p, items) = box
             // Wait the delay after your last answer (time to change your mind), then one line for all of them.
-            guard let newest = items.map(\.at).max(), -(iso.date(from: newest)?.timeIntervalSinceNow ?? -999) >= pingDelay(p) else { continue }
+            guard let newest = items.map(\.at).max() else { continue }
+            let waited = -(iso.date(from: newest)?.timeIntervalSinceNow ?? -999)
+            if waited < pingDelay(p) && !rushNudges.contains(p.id) {
+                // Look again the moment the delay is up, not at the next minute tick (request r261121-203027).
+                let due = Date().addingTimeInterval(pingDelay(p) - waited + 0.5)
+                if nudgeRecheckAt.map({ $0 > due || $0 < Date() }) ?? true {
+                    nudgeRecheckAt = due
+                    DispatchQueue.main.asyncAfter(deadline: .now() + due.timeIntervalSinceNow) { [weak self] in
+                        self?.nudgeRecheckAt = nil; self?.evaluateNudges()
+                    }
+                }
+                continue
+            }
+            rushNudges.remove(p.id)
             let first = items[0]
             let rest = items.dropFirst().map { "\($0.intent.rawValue) \($0.ref)" }
-            let line = "/steerify \(first.intent.rawValue) \(first.ref)" + (rest.isEmpty ? "" : " (also: " + rest.joined(separator: ", ") + ")")
+            let b = board(for: p)
+            let setupKey = "setup:" + p.id
+            let line: String
+            if items.allSatisfy({ b.originKey(of: $0.ref) == setupKey }) {
+                // Setup questions: the answers continue the init (step 6), they are not choices to build.
+                line = "/steerify init \(setupKey) — I answered on the board: " + items.map(\.title).joined(separator: " · ")
+                    + ". Read my answers (get_item) and go on: goal, areas, then draft the first chapter."
+            } else {
+                line = "/steerify \(first.intent.rawValue) \(first.ref)" + (rest.isEmpty ? "" : " (also: " + rest.joined(separator: ", ") + ")")
+            }
             NSLog("steerify ping → \(s.title): \(line)")
-            s.view.send(txt: line + "\r")
+            s.submit(line)
             for a in items {
                 done[p.id + "|" + a.ref] = a.at
                 if !s.covers(a.ref) {   // the session now owns it (status, later notes, resume from the item)
@@ -170,7 +192,7 @@ extension AppModel {
         item = BoardFiles.resolve(item, in: p)
         if case .waiting = n.kind, let s = liveSession(for: n.ref, in: p) {
             selectedProjectId = p.id; selectedSession[p.id] = s.id
-            if s.status == .idle { s.view.send(txt: "/steerify \(n.intent.rawValue) \(n.ref)\r"); markHandled(n) }
+            if s.status == .idle { s.submit("/steerify \(n.intent.rawValue) \(n.ref)"); markHandled(n) }
             return
         }
         start(projectId: p.id, item: item, intent: n.intent)

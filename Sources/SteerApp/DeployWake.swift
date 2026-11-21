@@ -42,7 +42,7 @@ enum DeployWait {
         let what = deploys.map { "\($0.repo) (\($0.commit.prefix(7)))" }.joined(separator: " and ")
         return "Steerify just deployed \(what) from the Release tab. Pick up what waited on this deploy: check it is live "
             + "and run the checks you named, then update the board (To test items, roadmap status, the request) as the "
-            + "steerify skill says. Items the user has not approved yet stay as they are.\r"
+            + "steerify skill says. Items the user has not approved yet stay as they are."
     }
 }
 
@@ -73,7 +73,7 @@ extension AppModel {
         for (id, w) in deployWakes {
             guard let s = sessions.first(where: { $0.id == id }), s.running else { deployWakes[id] = nil; continue }
             guard s.status == .idle, Date().timeIntervalSince(w.at) >= 20 else { continue }
-            s.view.send(txt: DeployWait.message(w.deploys))
+            s.submit(DeployWait.message(w.deploys))
             deployWakes[id] = nil
             showToast("Deploy done → told \(s.title)", projectId: s.projectId)
         }

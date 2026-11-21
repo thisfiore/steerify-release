@@ -155,6 +155,7 @@ enum PastConversations {
 struct SetupModal: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var board: BoardStore
+    @State private var sailFrom: Date?
 
     private var p: Project { board.project }
     private var started: Bool { board.lastLink("setup:" + p.id) != nil }
@@ -173,6 +174,11 @@ struct SetupModal: View {
             .padding(S(24)).opacity(0.35).blur(radius: 1.5)
             Color.black.opacity(0.55)
 
+            VStack(spacing: 0) {
+            // The harbour at dawn (choice welcome-pixel-art A): the boat sets sail when you press Set up.
+            HarbourDawn(sailFrom: sailFrom)
+                .frame(height: S(176))
+                .overlay(alignment: .bottom) { Rectangle().fill(Brand.line2).frame(height: 1) }
             VStack(spacing: S(16)) {
                 Text(started ? "Finish setting up \(p.name)" : "Set up \(p.name) with Claude")
                     .font(.system(size: S(24), weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.center)
@@ -181,7 +187,7 @@ struct SetupModal: View {
                     .font(.system(size: S(13.5))).foregroundStyle(Brand.mute).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Button(action: setUp) {
+                Button(action: setSail) {
                     HStack(spacing: S(8)) {
                         ClaudeSpark(size: S(15), color: .white)
                         Text(started ? "Resume setup with Claude" : "Set up with Claude").font(.system(size: S(16), weight: .semibold))
@@ -214,9 +220,11 @@ struct SetupModal: View {
                 .buttonStyle(.plain).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).underline()
                 .help("The empty board, to fill yourself")
             }
-            .padding(.horizontal, S(32)).padding(.vertical, S(30))
+            .padding(.horizontal, S(32)).padding(.top, S(22)).padding(.bottom, S(26))
+            }
             .frame(width: S(560))
-            .background(RoundedRectangle(cornerRadius: 16).fill(Brand.panel))
+            .background(Brand.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.line2))
             .shadow(color: .black.opacity(0.7), radius: 40, y: 20)
         }
@@ -224,9 +232,16 @@ struct SetupModal: View {
         .background(Brand.bg)
         .onAppear {   // test hook: `--setup-start` presses "Set up with Claude" after 1.5 s
             if CommandLine.arguments.contains("--background"), CommandLine.arguments.contains("--setup-start") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { setUp() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { setSail() }
             }
         }
+    }
+
+    /// The boat sails out of the harbour first (~0.9 s), then setup starts.
+    private func setSail() {
+        guard sailFrom == nil else { return }
+        sailFrom = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { setUp() }
     }
 
     private func setUp() {
@@ -258,11 +273,8 @@ struct SetupLive: View {
     private var answered: [BoardDecision] { board.decisions.filter { board.isDecided($0) } }
     private var drafts: [Chapter] { board.chapters.filter(\.draft) }
 
-    private var status: String {
-        if !drafts.isEmpty { return "Roadmap drafted: approve it when it looks right" }
-        if !open.isEmpty { return "Waiting on your answers: Claude drafts the roadmap from them" }
-        if !answered.isEmpty { return "Drafting from your answers…" }
-        return "Reading and running the project…"
+    private var session: TerminalSession? {
+        model.sessions.first { $0.projectId == p.id && $0.covers("setup:" + p.id) && $0.running }
     }
 
     var body: some View {
@@ -277,9 +289,8 @@ struct SetupLive: View {
                     }
                     .buttonStyle(.plain).font(.system(size: S(11))).foregroundStyle(Brand.mute).underline()
                 }
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small).opacity(drafts.isEmpty ? 1 : 0)
-                    Text(status).font(.system(size: S(13), weight: .semibold)).foregroundStyle(Brand.ink)
+                if let session {
+                    SetupVoyage(board: board, session: session, open: open.count, answered: answered, drafted: !drafts.isEmpty)
                 }
 
                 if !past.isEmpty {
@@ -337,6 +348,103 @@ struct SetupLive: View {
         Text(t).font(.system(size: S(12))).foregroundStyle(Brand.mute)
             .padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: S(44), alignment: .leading)
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Brand.line2, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+    }
+}
+
+/// The setup as a voyage (request r261121-203027): the harbour at dawn, the boat sailing from the pier to the
+/// lighthouse as Claude reads, asks, drafts; four pixel steps; one honest line from the session's real state, and when
+/// your answers are in but Claude is idle, a button that sends them now (instead of a spinner that never moves).
+struct SetupVoyage: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var board: BoardStore
+    @ObservedObject var session: TerminalSession
+    let open: Int
+    let answered: [BoardDecision]
+    let drafted: Bool
+    @State private var sentAt: Date?
+
+    private enum Stage: Int { case read, ask, draft, approve }
+
+    private var stage: Stage {
+        if drafted { return .approve }
+        if open > 0 { return .ask }
+        if !answered.isEmpty { return .draft }
+        return board.decisions.isEmpty ? .read : .ask
+    }
+    private var working: Bool { session.status == .working || session.status == .starting }
+    /// Answers in, nothing open, Claude idle and not drafted yet: it has not taken them (yet).
+    private var stalled: Bool { stage == .draft && session.status == .idle }
+
+    private var voyage: Double {
+        switch stage {
+        case .read: return working ? 0.18 : 0.1
+        case .ask: return 0.38
+        case .draft: return working ? 0.68 : 0.55
+        case .approve: return 1
+        }
+    }
+
+    private var line: (String, String) {
+        if session.status == .waiting { return ("Claude needs you", "It asked something in the session on the right.") }
+        switch stage {
+        case .read: return ("Claude is reading the project", "Code, README, history, your past chats. A few minutes.")
+        case .ask: return ("Your turn: \(open) question\(open == 1 ? "" : "s") below", "Pick an option or write a note. Claude goes on when all are answered.")
+        case .draft:
+            if working { return ("Claude is drafting from your answers", "Goal, areas, then the first chapter.") }
+            if let sentAt, Date().timeIntervalSince(sentAt) < 20 { return ("Sent to Claude", "It should start in a moment.") }
+            return ("Your answers are in", "Steerify passes them to Claude in a few seconds. Or now:")
+        case .approve: return ("Roadmap drafted", "Review it and approve it when it looks right.")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HarbourDawn(voyage: voyage, moving: working)
+                .frame(height: S(118))
+                .animation(.easeInOut(duration: 1.2), value: voyage)
+            VStack(alignment: .leading, spacing: S(10)) {
+                HStack(spacing: S(6)) {
+                    ForEach([Stage.read, .ask, .draft, .approve], id: \.rawValue) { s in
+                        let done = s.rawValue < stage.rawValue, now = s == stage
+                        HStack(spacing: S(5)) {
+                            Rectangle().fill(done ? Brand.green : now ? Brand.claude : Brand.line2).frame(width: S(7), height: S(7))
+                            Text(["READ", "ASK", "DRAFT", "APPROVE"][s.rawValue]).font(Brand.label(9)).tracking(0.8)
+                                .foregroundStyle(done ? Brand.green : now ? Brand.ink : Brand.mute)
+                        }
+                        if s != .approve { Rectangle().fill(done ? Brand.green.opacity(0.6) : Brand.line2).frame(height: 1).frame(maxWidth: .infinity) }
+                    }
+                }
+                HStack(alignment: .center, spacing: S(10)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(line.0).font(.system(size: S(14), weight: .semibold)).foregroundStyle(Brand.ink)
+                        Text(line.1).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    if stalled {
+                        ActionButton(title: "Send now", icon: "ship", primary: true) { sendNow() }
+                            .help("Tell the setup session your answers are on the board")
+                    }
+                }
+            }
+            .padding(S(12))
+        }
+        .background(Brand.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(stalled ? Brand.claude.opacity(0.7) : Brand.line))
+    }
+
+    /// The waiting ping goes out at once; if it already went (and Claude stopped anyway), say it again directly.
+    private func sendNow() {
+        let before = model.recentPings.first
+        model.rushNudges.insert(board.project.id)
+        model.evaluateNudges()
+        if model.recentPings.first == before, session.status == .idle {
+            model.rushNudges.remove(board.project.id)
+            session.submit("/steerify init setup:\(board.project.id) — I answered on the board: "
+                           + answered.map(\.title).joined(separator: " · ")
+                           + ". Read my answers (get_item) and go on: goal, areas, then draft the first chapter.")
+        }
+        sentAt = Date()
     }
 }
 

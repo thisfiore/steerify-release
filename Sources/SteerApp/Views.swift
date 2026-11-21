@@ -14,6 +14,12 @@ struct ContentView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject private var since = SinceYouLeft.shared
     @AppStorage(Prefs.boardTab, store: Prefs.store) private var boardTab: BoardTab = .test
+    @State private var windowWidth: CGFloat = 1500
+
+    private var density: TopBarDensity {
+        guard let p = model.project else { return .full }
+        return .of(width: windowWidth, name: p.name, updateReady: model.updateReady, webBoard: p.port > 0)
+    }
 
     var body: some View {
         Group {
@@ -39,6 +45,17 @@ struct ContentView: View {
                     }
                 }
                 .overlay { if model.paletteOpen { PaletteView() } }
+                .overlay {   // "Connect your iPhone" (the phone icon at the end of the tab bar)
+                    if let pid = model.pairingProjectId, let pp = model.projects.first(where: { $0.id == pid }) {
+                        ZStack {
+                            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { model.pairingProjectId = nil }
+                            PairingModal(project: pp)
+                                .background(RoundedRectangle(cornerRadius: 14).fill(Brand.bg))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Brand.line2))
+                                .onExitCommand { model.pairingProjectId = nil }
+                        }
+                    }
+                }
                 .overlay {
                     if let rp = model.requestProjectId.flatMap({ id in model.projects.first { $0.id == id } }) {
                         RequestSheet(project: rp)   // same sheet when you switch its project: the text stays
@@ -49,6 +66,7 @@ struct ContentView: View {
                 NoProjectsView()
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }   // top bar density
         .folderDropTarget()       // folders dropped on the window become projects (FolderDrop.swift)
         // "Since you left": on open, when you come back to the app, and when you switch to a project you left a while ago.
         .onAppear {
@@ -64,9 +82,9 @@ struct ContentView: View {
             DispatchQueue.main.async { since.check(model) }
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) { ProjectSwitcher() }
-            ToolbarItem(placement: .principal) { Wordmark() }
-            ToolbarItem(placement: .primaryAction) { HStack(spacing: 8) { NextUp(); NewRequestButton() }.fixedSize() }
+            ToolbarItem(placement: .navigation) { ProjectSwitcher(density: density) }
+            ToolbarItem(placement: .principal) { Wordmark(compact: density > .full) }
+            ToolbarItem(placement: .primaryAction) { HStack(spacing: 8) { NextUp(density: density); NewRequestButton() }.fixedSize() }
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.updateReady { RestartToUpdate() }
                 Button { model.reloadBoard() } label: { Image(systemName: "arrow.clockwise") }.help("Reload board (⌘R)")
@@ -562,6 +580,8 @@ struct ToastView: View {
 /// Top-left: wheel + the current project (pixel avatar, name ▾). Opens the project card and the switcher.
 struct ProjectSwitcher: View {
     @EnvironmentObject var model: AppModel
+    /// Compact and minimal drop the progress bar (the % stays): the name always fits.
+    var density: TopBarDensity = .full
     @State private var open = false
     var body: some View {
         HStack(spacing: 10) {
@@ -576,8 +596,10 @@ struct ProjectSwitcher: View {
                         } else {
                         let road = model.board(for: p).roadmap.filter(\.isCore)   // core only
                         let frac = road.isEmpty ? 0 : Double(road.filter { $0.status == "done" }.count) / Double(road.count)
-                        PixelProgress(fraction: frac, blocks: 10, working: road.contains { $0.status == "wip" })
-                            .frame(width: S(64)).scaleEffect(y: 0.8)
+                        if density == .full {
+                            PixelProgress(fraction: frac, blocks: 10, working: road.contains { $0.status == "wip" })
+                                .frame(width: S(64)).scaleEffect(y: 0.8)
+                        }
                         Text("\(Int(frac * 100))%").font(.system(size: S(11), weight: .bold).monospacedDigit()).foregroundStyle(Brand.green)
                         }
                         Image(systemName: "chevron.down").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute)

@@ -67,7 +67,9 @@ extension BoardStore {
     func media(chapter name: String, snaps: Int) -> FeatureMedia {
         memoized("media:track:\(name)#\(snaps)", durable: true) {
             let items = roadmap.filter { $0.track == name }
-            let linked = ships.filter { s in s.roads.contains { rd in items.contains { $0.text == rd || $0.id == BoardFiles.slug(rd) } } }
+            // Same deliveries as before, through the per-board road index (was a slug of every delivery's text × every item).
+            let hit = Set(items.flatMap { ships(forRoad: $0).map(\.id) })
+            let linked = ships.filter { hit.contains($0.id) }
             let origins = Set(chapters.filter { $0.name == name }.compactMap { $0.request.map { "request:" + $0 } } + ["track:" + BoardFiles.slug(name)])
             let ids = Set(decisions.filter { origins.contains($0.origin ?? "") }.map(\.id))
             var m = build(linked, ids)

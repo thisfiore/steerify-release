@@ -13,6 +13,8 @@ enum Prefs {
     static let lastProject = "lastProject"
     static let boardTab = "boardTab"
     static let testLayout = "testLayout"      // list | grid (To test tab)
+    static let remoteControl = "remoteControl" // Claude sessions start with Claude Code Remote Control (open them in the Claude app)
+    static var remoteControlOn: Bool { store.object(forKey: remoteControl) as? Bool ?? true }
 
     static let defaultTerminal = 0.30
     static let terminalRange = 0.18...0.55
@@ -39,6 +41,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.terminalFraction, store: Prefs.store) private var frac: Double = Prefs.defaultTerminal
     @AppStorage(Prefs.sessionsFollowTab, store: Prefs.store) private var followTab = true
     @AppStorage(Prefs.defaultFlow, store: Prefs.store) private var defaultFlow = WorkFlow.main.rawValue
+    @AppStorage(Prefs.remoteControl, store: Prefs.store) private var remoteControl = true
 
     var body: some View {
         ScrollView {
@@ -67,10 +70,14 @@ struct SettingsView: View {
                 section("PERSONALISATION", "How Steerify behaves for you. New options land here.") {
                     VStack(alignment: .leading, spacing: 10) {
                         pref("Session list follows the tab", "Sessions on the open tab first, the others folded. The one you're in and the ones that need you always show.", $followTab)
+                        pref("Open sessions on your phone", "New Claude sessions start with Remote Control: tap one in Steerify for iPhone to continue it in the Claude app. Needs a claude.ai login (Pro, Max, Team, Enterprise).", $remoteControl)
                     }
                 }
                 section("BRANCHES · DEFAULT FOR NEW PROJECTS", "How sessions use git when a project doesn't say. Each project can change it in its Release setup.") {
                     FlowPicker(flow: Binding(get: { WorkFlow(rawValue: defaultFlow) ?? .main }, set: { defaultFlow = $0.rawValue }))
+                }
+                section("IPHONE", "Steerify for iPhone: the phone icon at the end of the tab bar opens the pairing code (green while the phone is connected).") {
+                    PhonePairingView()
                 }
                 section("SHORTCUTS", nil) { shortcuts }
             }

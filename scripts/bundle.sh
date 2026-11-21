@@ -27,7 +27,7 @@ FEED_URL=${STEERIFY_FEED_URL:-https://github.com/thisfiore/steerify-release/rele
 SPARKLE_PUBLIC_KEY=EU+btwrNxFG3oDaH2s+owVBTN4GXeMtwyDEoodK+3YU=
 
 swift build -c release
-APP=build/Steerify.app
+APP=${STEERIFY_APP_OUT:-build/Steerify.app}   # STEERIFY_APP_OUT=build/test/Steerify.app: a test build that never replaces the app you run
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/SteerApp "$APP/Contents/MacOS/Steerify"
 # Sparkle (in-app updates): the framework goes in Contents/Frameworks, found through this rpath.
@@ -40,6 +40,8 @@ if [ ! -f build/AppIcon.icns ]; then
 fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/skills" && cp -R skills/steerify "$APP/Contents/Resources/skills/"
+# The pixel font for labels (Silkscreen, SIL OFL 1.1: the licence travels with it).
+mkdir -p "$APP/Contents/Resources/fonts" && cp fonts/Silkscreen-*.ttf fonts/Silkscreen-OFL.txt "$APP/Contents/Resources/fonts/"
 # The demo project (Tiny Todo, frozen by scripts/demo-freeze.mjs): "Try the demo project" copies it out.
 [ -d demo/tiny-todo ] && mkdir -p "$APP/Contents/Resources/demo" && cp -R demo/tiny-todo "$APP/Contents/Resources/demo/"
 # What's new (the version badge's panel): this version's notes, when release.sh wrote them before bundling.

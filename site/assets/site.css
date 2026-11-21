@@ -333,6 +333,16 @@ video.teaser { width: 100%; margin-top: 18px; border-radius: 12px; border: 1px s
 
 /* v5 landing (19 Nov): promise as headline, four moves with real screens, never lost, real beta action. */
 .hero2 { padding-block: clamp(40px, 6vw, 80px) 30px }
+/* hero background: the onboarding's pixel harbour at dawn (harbour.js); dimmed under the text, clear on the right */
+.hero2 { position: relative; isolation: isolate }
+.hero2 > .wrap { position: relative; z-index: 1 }
+.hero2 .herovid { margin-top: 128px }
+.harbour { position: absolute; inset: 0 0 auto; z-index: 0; overflow: hidden; pointer-events: none }
+.harbour canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; opacity: .9 }
+.harbour::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(7, 8, 10, .88) 0%, rgba(7, 8, 10, .72) 40%, rgba(7, 8, 10, .2) 62%, rgba(7, 8, 10, 0) 78%),
+              linear-gradient(180deg, rgba(7, 8, 10, .5) 0%, rgba(7, 8, 10, 0) 30%, rgba(7, 8, 10, 0) 88%, var(--bg) 100%) }
+@media (max-width: 720px) { .harbour::after { background: linear-gradient(180deg, rgba(7, 8, 10, .55) 0%, rgba(7, 8, 10, .82) 30%, rgba(7, 8, 10, .8) 70%, rgba(7, 8, 10, .1) 86%, var(--bg) 100%) } }
 .hero2 .kicker { display: flex; align-items: center; gap: 10px; font: 700 12px var(--f-pix); color: var(--mute); letter-spacing: .06em }
 .hero2 .kicker [data-wheel] { width: 22px; height: 22px; display: block }
 .hero2 h1 { font: 700 clamp(38px, 6.4vw, 88px)/1 var(--f-pix); color: var(--cream); letter-spacing: .005em; margin-top: 18px }
@@ -373,6 +383,19 @@ dialog.teaser { padding: 0; border: 1px solid var(--line2); border-radius: 12px;
 dialog.teaser::backdrop { background: rgba(0, 0, 0, .78) }
 dialog.teaser video { display: block; width: 100%; height: auto }
 dialog.teaser button { position: absolute; top: 8px; right: 8px; font: 700 12px var(--f-pix); background: #000c; color: var(--ink); border: 1px solid var(--line2); border-radius: 6px; padding: 7px 10px; cursor: pointer }
+.beta.iphone { margin-top: 22px; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: clamp(28px, 5vw, 64px) }
+.beta.iphone .phone { margin: 0; border: 1px solid #2c3038; border-radius: 34px; overflow: hidden; background: #000; box-shadow: 0 40px 90px -40px #000; max-width: 260px }
+.beta.iphone .phone img { display: block; width: 100%; height: auto }
+.beta.iphone h2 { margin-top: 0; min-height: 2.2em }
+.ip-head { display: flex; align-items: flex-start; gap: 16px; margin-top: 14px }
+.me-laugh { width: 56px; height: 56px; margin-top: 4px; background-image: url(frenk-laugh.png); background-size: 200% 100% }
+.me-laugh.on { background-position: 100% 0 }
+.ip-rot { transition: opacity .25s }
+.ip-rot.out { opacity: 0 }
+@media (max-width: 560px) { .beta.iphone h2 { min-height: 3.3em } .me-laugh { width: 44px; height: 44px } }
+.ip-pts { list-style: none; padding: 0; margin: 18px 0 22px; display: grid; gap: 8px; font: 13px var(--f-mono); color: #c8c2b3 }
+.ip-pts li::before { content: "▸ "; color: var(--amber) }
+@media (max-width: 860px) { .beta.iphone { grid-template-columns: 1fr } .beta.iphone .phone { max-width: 220px; margin: 0 auto } }
 @media (max-width: 860px) { .mv, .mv.flip, .course, .beta { grid-template-columns: 1fr } .mv.flip > div:first-child { order: 0 } }
 @media (max-width: 560px) {
   .hero2 h1 { font-size: clamp(24px, 7.4vw, 40px); line-height: 1.12 }

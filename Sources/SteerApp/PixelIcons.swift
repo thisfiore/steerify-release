@@ -104,7 +104,9 @@ enum PixelArt {
     static func cached(_ title: String) -> String? { cache["ai|" + title] ?? cache[title] }
     /// Titles Apple Intelligence was already asked about without a usable answer (this run): not asked again on every appear.
     private static var refused = Set<String>()
-    static func refine(_ title: String) async -> String? {
+    /// On the main actor: `cache` and `refused` are plain statics, and a non-isolated async function runs on the shared
+    /// pool, so many icons appearing at once wrote the same Set from several threads (crash in Set.insert, 21 Nov 13:29).
+    @MainActor static func refine(_ title: String) async -> String? {
         if let c = cache["ai|" + title] { return c }
         if refused.contains(title) { return nil }
         refused.insert(title)
@@ -115,7 +117,7 @@ enum PixelArt {
         guard let r = try? await session.respond(to: "Icons:\n\(list)\n\nTask: \(title)\nIcon:") else { return nil }
         let answer = r.content.lowercased()
         guard let hit = names.first(where: { answer.contains($0) }) else { return nil }
-        await MainActor.run { cache["ai|" + title] = hit; save() }
+        cache["ai|" + title] = hit; save()
         return hit
     }
 

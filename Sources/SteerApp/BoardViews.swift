@@ -13,8 +13,34 @@ enum Brand {
     static let green = Color(hex: 0x4ade80), red = Color(hex: 0xf87171), blue = Color(hex: 0x8fb0ff)
     /// Your turn on the board (a test, a choice, a release waits on you).
     static let violet = Color(hex: 0xc4a7ff)
-    /// Label face: monospaced caps, the in-app stand-in for the pixel font.
-    static func label(_ size: CGFloat = 10) -> Font { .system(size: S(size), weight: .bold, design: .monospaced) }
+    /// Label face: Silkscreen, the pixel font of the site (bundled, OFL). Its pixels sit on an 8-unit grid, so the
+    /// size snaps to 8 / 12 / 16 pt (whole pixels on Retina); monospaced caps if the font could not be loaded.
+    static func label(_ size: CGFloat = 10) -> Font {
+        guard LabelFont.ready else { return .system(size: S(size), weight: .bold, design: .monospaced) }
+        return .custom(LabelFont.name, fixedSize: LabelFont.snap(S(size)))
+    }
+}
+
+/// The bundled pixel font (fonts/Silkscreen-*.ttf → Contents/Resources/fonts), registered for this process only.
+enum LabelFont {
+    static let name = "Silkscreen"
+    static let ready: Bool = {
+        let files = ["Silkscreen-Regular", "Silkscreen-Bold"]
+        // The app bundle; `swift run` / test builds read the repo's fonts/ folder next to Sources/.
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("fonts")
+        var ok = false
+        for f in files {
+            let dev = repo.appendingPathComponent(f + ".ttf")
+            guard let url = Bundle.main.url(forResource: f, withExtension: "ttf", subdirectory: "fonts")
+                ?? (FileManager.default.fileExists(atPath: dev.path) ? dev : nil) else { continue }
+            var err: Unmanaged<CFError>?
+            if CTFontManagerRegisterFontsForURL(url as CFURL, .process, &err) { ok = true }
+            else if let e = err?.takeRetainedValue(), CFErrorGetCode(e) == CTFontManagerError.alreadyRegistered.rawValue { ok = true }
+        }
+        return ok && NSFont(name: name, size: 8) != nil
+    }()
+    /// Whole font pixels: 8 pt (labels up to ~11 pt before), 12 pt, then 16 pt.
+    static func snap(_ pt: CGFloat) -> CGFloat { pt < 11.5 ? 8 : pt < 15.5 ? 12 : 16 }
 }
 
 extension Color {
@@ -36,6 +62,7 @@ struct PixelIcon: View {
         "ship": ["....#....", "...###...", "..#####..", "....#....", "....#....", "#########", ".#######.", "..#####..", "........."],
         "rocket": ["......###", ".....####", "....#..#.", "...#####.", ".######..", "..####...", ".#.##....", "#.#......", "#........"],
         "boat": ["....#....", "....##...", "....###..", "....####.", "....#####", "....#....", "#########", ".#######.", "..#####.."],
+        "phone": ["..#####..", "..#...#..", "..#...#..", "..#...#..", "..#...#..", "..#...#..", "..#...#..", "..#.#.#..", "..#####.."],
     ]
     var body: some View {
         Canvas { ctx, sz in
@@ -62,7 +89,10 @@ struct BoardScreen: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var board: BoardStore
     @AppStorage(Prefs.boardTab, store: Prefs.store) private var tab: BoardTab = .test
-    @State private var area: String? = nil
+    @State private var area: String? = {     // test hook: `--area <key>` opens the tab with that area filter
+        let a = CommandLine.arguments
+        return a.firstIndex(of: "--area").flatMap { $0 + 1 < a.count ? a[$0 + 1] : nil }
+    }()
     @State private var state: String = {   // test hook: `--show decided` opens that filter
         let a = CommandLine.arguments
         return a.firstIndex(of: "--show").flatMap { $0 + 1 < a.count ? a[$0 + 1] : nil } ?? "open"
@@ -99,8 +129,12 @@ struct BoardScreen: View {
                       regroup: LocalAI.ready && tab == .road ? { Task { await smart.refresh(board, force: true) } } : nil)
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 10) { list }
-                        .padding(12)
+                    // The roadmap is not lazy: a chapter card is taller than the window, and the lazy list got stuck
+                    // re-placing it for ever (21 Nov 13:17: main thread 100%, +15 MB a second, app frozen).
+                    Group {
+                        if tab == .road { VStack(spacing: 10) { list } } else { LazyVStack(spacing: 10) { list } }
+                    }
+                    .padding(12)
                 }
                 // The list may only just have appeared (jump from Ready / Tasks / Release): scroll once it is there.
                 .onAppear { scroll(proxy) }
@@ -283,8 +317,10 @@ struct TabBar: View {
                 ToastView(toast: t, compact: true).frame(maxWidth: S(520), alignment: .trailing).layoutPriority(-1)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+            PhoneStatusButton(project: board.project)   // green while the iPhone is connected; opens the pairing window
         }
         .padding(.horizontal, 8)
+
         .animation(.easeOut(duration: 0.2), value: model.toast)
         .overlay(alignment: .bottom) { Rectangle().fill(Brand.line).frame(height: 1) }
     }
@@ -782,7 +818,7 @@ struct ShipCard: View {
                 }
                 ClaudeButton(title: "Open with Claude") { model.start(projectId: board.project.id, item: ref, intent: .look) }
             }
-            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(item)) { board.setShip(item, pick: pick ?? "refine", note: $0) }
+            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(item)) { board.setShip(item, pick: pick, note: $0) }
         }
     }
 

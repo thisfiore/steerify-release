@@ -3,7 +3,7 @@
 # Deploy button and Claude's /steerify ship both run it.
 #   scripts/release.sh             release
 #   scripts/release.sh --dry-run   everything local (version, DMG, notes, public copy), nothing pushed or published
-# Steps: checks → version (bumps the patch if this one is already released) → push private main (site deploys)
+# Steps: checks → performance check (scripts/perf-check.sh) → version (bumps the patch if this one is already released) → push private main (site deploys)
 #        → notes (bundled as "What's new") → DMG (notarized when the Developer ID cert + notary profile exist) + appcast.xml (Sparkle in-app updates)
 #        → public repo sync → GitHub Release with the DMG on the public repo → tag v<version> in both repos.
 set -e
@@ -20,6 +20,11 @@ gh auth status >/dev/null 2>&1 || die "gh not logged in (gh auth login)"
 DIRTY=$(git status --porcelain --untracked-files=no -- . ':!.steerify')
 if [ -n "$DIRTY" ]; then [ $DRY = 1 ] && say "(dry run) would stop: uncommitted changes outside .steerify" || die "uncommitted changes outside .steerify — commit or stash them first:\n$DIRTY"; fi
 git pull -q --rebase --autostash origin main
+
+# 1b. Performance check: the key areas (scroll each tab, switch project) against scripts/perf-budgets.json.
+#     A release never makes the app slower. STEERIFY_SKIP_PERF=1 skips it (say why in the release notes).
+if [ "$STEERIFY_SKIP_PERF" = 1 ]; then say "%F{red}performance check SKIPPED (STEERIFY_SKIP_PERF=1)%f"
+else scripts/perf-check.sh || die "performance check failed: an area got slower; fix it before releasing (budgets: scripts/perf-budgets.json)"; fi
 
 # 2. Version: VERSION, bumped once if that release already exists.
 VERSION=$(tr -d ' \n' < VERSION)

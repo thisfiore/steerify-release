@@ -1,0 +1,143 @@
+<title>Steerify for iPhone</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: the Mac app's dark board as the page; real simulator screens laid in a row like cards on the board. */
+:root{
+  color-scheme:dark;
+  --bg:#07080a; --panel:#111318; --panel2:#171a20; --line:#23262e; --line2:#343944;
+  --ink:#ece8dc; --mute:#8f8a7d; --cream:#f2e8cf;
+  --amber:#ffb020; --amber-dim:#2a2110; --amber-ink:#1a1200;
+  --green:#4ade80; --red:#f87171; --blue:#8fb0ff; --violet:#c4a7ff; --claude:#d97757;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+.lbl{font:700 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+header{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center}
+@media (max-width:640px){header{grid-template-columns:1fr}}
+canvas.pix{image-rendering:pixelated;display:block}
+h1{font:800 clamp(26px,4.5vw,40px)/1.1 var(--mono);letter-spacing:.06em;text-transform:uppercase;margin:6px 0 10px;color:var(--cream);text-wrap:balance}
+.lede{color:var(--mute);font-size:16px;line-height:1.55;margin:0;max-width:68ch}
+.lede b{color:var(--ink)}
+.status{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:5px 9px;border-radius:4px;border:1px solid var(--line2);color:var(--mute)}
+.chip.g{color:var(--green);border-color:#1e5233} .chip.a{color:var(--amber);border-color:#5a4416} .chip.b{color:var(--blue);border-color:#2a3a66}
+h2{font:800 15px var(--mono);letter-spacing:.14em;text-transform:uppercase;margin:0;color:var(--cream)}
+.sec{display:flex;flex-direction:column;gap:16px}
+.sec>p{color:var(--mute);margin:0;max-width:72ch;line-height:1.5}
+.rail{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:34px 26px}
+figure{margin:0;display:flex;flex-direction:column;gap:12px}
+.dev{border-radius:42px;padding:9px;background:#000;box-shadow:0 0 0 1.5px #2b2e35,0 28px 50px -24px rgba(0,0,0,.9);max-width:330px;width:100%;margin:0 auto}
+.dev img{display:block;width:100%;height:auto;border-radius:34px}
+figcaption{display:flex;flex-direction:column;gap:5px;max-width:330px;margin:0 auto;width:100%}
+.n{font:700 11px var(--mono);letter-spacing:.12em;color:var(--amber)}
+.t{font-weight:700;font-size:15.5px;color:var(--cream)}
+.d{font-size:13.5px;color:var(--mute);line-height:1.45}
+.off .n{color:var(--amber)} .off .dev{box-shadow:0 0 0 1.5px #5a4416,0 28px 50px -24px rgba(0,0,0,.9)}
+.scheme{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:20px}
+.scheme svg{display:block;min-width:860px;width:100%;height:auto}
+.scheme text{font-family:var(--font)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.box{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--panel);display:flex;flex-direction:column;gap:6px}
+.box .k{font:700 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.box .h{font-weight:600;color:var(--cream)}
+.box p{margin:0;font-size:13.5px;color:var(--mute);line-height:1.5}
+.k.done{color:var(--green)} .k.next{color:var(--amber)} .k.later{color:var(--violet)}
+</style>
+
+<div class="wrap">
+<header>
+  <canvas class="pix" id="wheel" width="120" height="120" aria-label="Steerify pixel wheel"></canvas>
+  <div>
+    <div class="lbl">Steerify · mobile chapter · 21 Nov</div>
+    <h1>Steerify for iPhone</h1>
+    <p class="lede">The board in your pocket, <b>built for real</b>: native SwiftUI, the Mac app's colours, labels and pixel art. Everything below is a screenshot of the app running in the iOS simulator on the demo project. <b>No connection? Keep going</b>: requests, notes, verdicts and picks wait on the iPhone and sync when you're back.</p>
+    <div class="status"><span class="chip g">Native Xcode · picked</span><span class="chip g">Offline mode · working</span><span class="chip a">GitHub + our server · next</span><span class="chip b">Cloud start · if feasible</span></div>
+  </div>
+</header>
+
+<section class="sec">
+<h2>The app today</h2>
+<p>iPhone 18 Pro simulator, iOS 27. Same tokens as the Mac app, monospace caps labels, pixel icons drawn from the same 10×10 art, and the hard-shadow amber buttons.</p>
+<div class="rail">
+  <figure><div class="dev"><img src="web/ready.jpg" alt="Ready tab online: pixel boat banner, chapter card with pixel progress and Resume chapter button, one item to test"></div>
+    <figcaption><span class="n">1 · READY</span><span class="t">What waits on you</span><span class="d">Where you left off, the next step, Resume chapter. Then everything only you can move, with ▶ Go.</span></figcaption></figure>
+  <figure class="off"><div class="dev"><img src="web/ready-offline.jpg" alt="Ready tab offline: amber Offline bar with 3 to sync, grey boat, Resume says it is queued"></div>
+    <figcaption><span class="n">2 · OFFLINE</span><span class="t">Sailing offline, nothing stops</span><span class="d">The bar turns amber and counts what waits to sync. Resume chapter is queued for the Mac instead of started.</span></figcaption></figure>
+  <figure class="off"><div class="dev"><img src="web/test-detail.jpg" alt="One test per screen: the focused picture, the check line, Looks right, What is off, OK Refine Broken"></div>
+    <figcaption><span class="n">3 · REVIEW</span><span class="t">One test per screen, picture first</span><span class="d">The picture cropped to the feature, the check, Looks right or a note (type or hold to talk). Swipe to the next test, then OK / Refine / Broken.</span></figcaption></figure>
+  <figure class="off"><div class="dev"><img src="web/choices.jpg" alt="Choice card: option A with its picture, Suggested label, picked A waiting to sync"></div>
+    <figcaption><span class="n">4 · CHOOSE</span><span class="t">Swipe the options, pick one</span><span class="d">Each option is its own page with its picture. Pick with or without a note; offline it shows "waiting to sync".</span></figcaption></figure>
+  <figure class="off"><div class="dev"><img src="web/request.jpg" alt="New request sheet: big pixel mic, You said, Steerify wrote, kind chips, offline notice"></div>
+    <figcaption><span class="n">5 · REQUEST</span><span class="t">Hold the mic, Steerify writes it</span><span class="d">Transcribed on the iPhone (works offline), fillers removed, Apple's on-device model when the phone has it. Kind in one tap.</span></figcaption></figure>
+  <figure class="off"><div class="dev"><img src="web/outbox.jpg" alt="Outbox sheet: three waiting items (request, pick, test note) and the Work offline switch"></div>
+    <figcaption><span class="n">6 · OUTBOX</span><span class="t">What waits to sync</span><span class="d">Kept on disk: safe if the app closes. A newer answer replaces the waiting one, so nothing lands twice.</span></figcaption></figure>
+  <figure><div class="dev"><img src="web/roadmap.jpg" alt="Roadmap: chapters with pixel icons, pixel progress, key results with status and play buttons"></div>
+    <figcaption><span class="n">7 · ROADMAP</span><span class="t">Chapters and ▶ start</span><span class="d">Core progress as on the Mac. ▶ on a key result starts it on the Mac, queues it, or (later) runs it in the cloud.</span></figcaption></figure>
+</div>
+</section>
+
+<section class="sec">
+<h2>How it syncs (your picks)</h2>
+<p>GitHub stays the board's store: no second copy to keep in step. Our server adds what GitHub can't do: realtime. The phone always writes to its own outbox first, so it never needs a connection to work.</p>
+<div class="scheme">
+<svg viewBox="0 0 940 300" role="img" aria-label="iPhone writes to its outbox, which syncs to GitHub; the Steerify server sends realtime events between iPhone and Mac; the Mac runs sessions; a cloud session is optional">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8f8a7d"/></marker></defs>
+  <rect x="10" y="90" width="190" height="120" rx="10" fill="#171a20" stroke="#ffb020"/>
+  <text x="105" y="125" text-anchor="middle" fill="#f2e8cf" font-size="16" font-weight="700">iPhone</text>
+  <text x="105" y="148" text-anchor="middle" fill="#8f8a7d" font-size="12">verdicts · picks · requests</text>
+  <rect x="35" y="164" width="140" height="30" rx="5" fill="#2a2110" stroke="#5a4416"/>
+  <text x="105" y="184" text-anchor="middle" fill="#ffb020" font-size="12" font-weight="600">outbox (offline)</text>
+  <rect x="330" y="20" width="220" height="100" rx="10" fill="#171a20" stroke="#8fb0ff"/>
+  <text x="440" y="56" text-anchor="middle" fill="#f2e8cf" font-size="16" font-weight="700">GitHub</text>
+  <text x="440" y="80" text-anchor="middle" fill="#8f8a7d" font-size="12">.steerify/ board files + pictures</text>
+  <text x="440" y="100" text-anchor="middle" fill="#8fb0ff" font-size="11">the store · free</text>
+  <rect x="330" y="180" width="220" height="100" rx="10" fill="#171a20" stroke="#d97757"/>
+  <text x="440" y="216" text-anchor="middle" fill="#f2e8cf" font-size="16" font-weight="700">Steerify server</text>
+  <text x="440" y="240" text-anchor="middle" fill="#8f8a7d" font-size="12">push · live sessions · start on Mac</text>
+  <text x="440" y="260" text-anchor="middle" fill="#d97757" font-size="11">realtime · never the only copy</text>
+  <rect x="690" y="40" width="230" height="110" rx="10" fill="#171a20" stroke="#343944"/>
+  <text x="805" y="76" text-anchor="middle" fill="#f2e8cf" font-size="16" font-weight="700">Mac · Steerify</text>
+  <text x="805" y="100" text-anchor="middle" fill="#8f8a7d" font-size="12">pulls the board, runs the queue</text>
+  <text x="805" y="122" text-anchor="middle" fill="#d97757" font-size="12">Claude Code sessions</text>
+  <rect x="690" y="190" width="230" height="90" rx="10" fill="#111318" stroke="#343944" stroke-dasharray="5 4"/>
+  <text x="805" y="226" text-anchor="middle" fill="#ece8dc" font-size="15" font-weight="600">Cloud session</text>
+  <text x="805" y="250" text-anchor="middle" fill="#8f8a7d" font-size="12">option, if feasible: Mac asleep</text>
+  <line x1="202" y1="125" x2="326" y2="80" stroke="#8f8a7d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <text x="262" y="92" text-anchor="middle" fill="#8f8a7d" font-size="11">sync when online</text>
+  <line x1="202" y1="185" x2="326" y2="225" stroke="#8f8a7d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="326" y1="240" x2="202" y2="200" stroke="#8f8a7d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <text x="262" y="246" text-anchor="middle" fill="#8f8a7d" font-size="11">live events</text>
+  <line x1="552" y1="70" x2="686" y2="85" stroke="#8f8a7d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="686" y1="110" x2="552" y2="95" stroke="#8f8a7d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="552" y1="215" x2="686" y2="130" stroke="#8f8a7d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="552" y1="250" x2="686" y2="240" stroke="#8f8a7d" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#ar)"/>
+</svg>
+</div>
+</section>
+
+<section class="sec">
+<h2>Where the build is</h2>
+<div class="grid">
+  <div class="box"><span class="k done">Done · in the simulator</span><span class="h">App shell + 4 tabs + mic</span><p>Ready, To test, Choices, Roadmap; request sheet; outbox. Reads the demo board in the real board format.</p></div>
+  <div class="box"><span class="k done">Done · in the simulator</span><span class="h">Offline mode</span><p>Verdicts, test notes, picks and requests go to an outbox on disk; the screens show them at once; "Work offline" switch.</p></div>
+  <div class="box"><span class="k done">Done · not tried on a phone yet</span><span class="h">Voice</span><p>Hold to talk, on-device transcription with project names, clean-up rules + Apple's on-device model when available.</p></div>
+  <div class="box"><span class="k next">Next</span><span class="h">GitHub link</span><p>Sign in, pick the repo, read the board and pictures, write the outbox into decisions.json / requests.json.</p></div>
+  <div class="box"><span class="k next">Then</span><span class="h">Steerify server</span><p>Push notifications, live session status, ▶ start on the Mac in real time.</p></div>
+  <div class="box"><span class="k later">If feasible</span><span class="h">Start in the cloud</span><p>Claude Code on the web on the same repo when the Mac is asleep.</p></div>
+</div>
+</section>
+</div>
+
+<script>
+// The Steerify pixel wheel, from the Mac app's 10×10 art.
+(function(){
+  var rows=["....##....",".#..##..#.","..######..","..##..##..","####..####","####..####","..##..##..","..######..",".#..##..#.","....##...."];
+  var c=document.getElementById("wheel"),x=c.getContext("2d"),s=12;
+  x.fillStyle="#2a2110";x.fillRect(0,0,120,120);
+  rows.forEach(function(r,j){r.split("").forEach(function(ch,i){if(ch==="#"){x.fillStyle="#ffb020";x.fillRect(i*s+1,j*s+1,s-2,s-2);}});});
+})();
+</script>

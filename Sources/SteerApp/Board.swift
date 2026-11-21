@@ -382,13 +382,9 @@ final class BoardStore: ObservableObject {
         return out
     }
 
-    /// The verdict that counts: your pick, else per-test notes mean "refine" (same suggestion as the web board).
-    func effectivePick(_ s: ShipItem) -> String? {
-        if let p = shipPick(s) { return p }
-        let fb = testFeedback(s)
-        if fb.values.contains(where: { !$0.note.isEmpty }) { return "refine" }
-        return nil
-    }
+    /// The verdict that counts: only a verdict you pressed. Notes alone (per test or overall) never decide for you:
+    /// the item stays in To test while you write, and Refine shows as "suggested" until you press it.
+    func effectivePick(_ s: ShipItem) -> String? { shipPick(s) }
 
     /// Your verdict on an earlier version, when this one is new (a re-test).
     func previousVerdict(_ s: ShipItem) -> (v: Int, pick: String, note: String)? {
@@ -534,6 +530,25 @@ final class BoardStore: ObservableObject {
         guard let b = best, b.1 >= 0.75 else { return nil }
         let p = ChapterProgress(roadmap.filter { $0.track == b.0 })   // the core, like the chapter header
         return (b.0, p.coreDone, p.core.count)
+    }
+
+    /// Several answers in one save (the phone's inbox): back-to-back `update`s re-read a file whose last save may still be
+    /// on its way (save() is async) and drop the earlier answer.
+    func updateMany(_ changes: [(key: String, change: (inout [String: Any]) -> Void)]) {
+        guard !changes.isEmpty else { return }
+        reload()
+        var all = choices
+        var history = store["history"] as? [Any] ?? []
+        for (key, change) in changes {
+            var c = all[key] as? [String: Any] ?? [:]
+            change(&c)
+            c["at"] = Self.now()
+            all[key] = c
+            history.append(["id": key, "pick": c["pick"] ?? NSNull(), "text": "", "note": c["note"] ?? "", "at": c["at"]!])
+        }
+        store["choices"] = all
+        store["history"] = history
+        save()
     }
 
     private func update(_ key: String, _ change: (inout [String: Any]) -> Void) {

@@ -30,6 +30,40 @@ struct BoardTask: Identifiable, Hashable {
 
 struct TaskCheck: Hashable { let text: String; let ok: Bool }
 
+/// The report standard (choice task-report-standard): what Claude fills in with finish_task `report`, drawn the same
+/// way for every task and every run, so a result reads at a glance and compares week to week.
+struct TaskReport: Hashable {
+    struct Kpi: Hashable { let value: String; let label: String }
+    struct Step: Hashable { let text: String; let n: String; let done: Bool }
+    struct Row: Hashable { let name: String; let value: Double; let ref: Double?; let show: String; let tag: String }
+    let headline: String          // ≤ 10 words: what you got
+    let kpis: [Kpi]               // 2–4 big numbers
+    let steps: [Step]             // what was done, 3–6, each with a count; done or pending
+    let rowsTitle: String         // what the bars measure
+    let refLabel: String          // what the reference mark is ("competitor avg")
+    let rows: [Row]               // one per item: bar, value vs reference, a 2–3 word tag
+    let points: [String]          // key points, max 3
+    let details: String?          // the full file, kept folded
+
+    init?(_ o: Any?) {
+        guard let o = o as? [String: Any] else { return nil }
+        func str(_ v: Any?) -> String { if let s = v as? String { return s }; if let n = v as? NSNumber { return n.stringValue }; return "" }
+        func num(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue ?? (v as? String).flatMap { Double($0) } }
+        headline = str(o["headline"])
+        kpis = (o["kpis"] as? [[String: Any]] ?? []).prefix(4).map { Kpi(value: str($0["value"]), label: str($0["label"])) }
+        steps = (o["steps"] as? [[String: Any]] ?? []).prefix(6).map { Step(text: str($0["text"]), n: str($0["n"]), done: $0["done"] as? Bool ?? true) }
+        let r = o["rows"] as? [String: Any] ?? [:]
+        rowsTitle = str(r["title"]); refLabel = str(r["ref"])
+        rows = (r["items"] as? [[String: Any]] ?? []).prefix(12).compactMap { i in
+            guard let v = num(i["value"]) else { return nil }
+            return Row(name: str(i["name"]), value: v, ref: num(i["ref"]), show: str(i["show"]).isEmpty ? str(i["value"]) : str(i["show"]), tag: str(i["tag"]))
+        }
+        points = (o["points"] as? [String] ?? []).prefix(3).map { $0 }
+        details = (o["details"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        if headline.isEmpty && kpis.isEmpty && steps.isEmpty && rows.isEmpty && points.isEmpty { return nil }
+    }
+}
+
 struct TaskRun: Identifiable, Hashable {
     let id: String
     let task: String
@@ -47,6 +81,7 @@ struct TaskRun: Identifiable, Hashable {
     let late: Bool
     let why: String?              // no result: why
     let note: String?             // your Redo note
+    let report: TaskReport?       // the standard report, when Claude filled it in
     var checksFailed: Int { checks.filter { !$0.ok }.count }
 }
 
@@ -132,7 +167,8 @@ enum TaskStore {
             return TaskRun(id: s(u["id"]), task: s(u["task"]), status: s(u["status"]), due: u["due"] as? String, started: s(u["started"]),
                            deadline: u["deadline"] as? String, finished: u["finished"] as? String, session: u["session"] as? String,
                            term: u["term"] as? String, summary: s(res["summary"]), files: res["files"] as? [String] ?? [], counts: counts,
-                           checks: checks, late: u["late"] as? Bool ?? false, why: u["why"] as? String, note: u["note"] as? String)
+                           checks: checks, late: u["late"] as? Bool ?? false, why: u["why"] as? String, note: u["note"] as? String,
+                           report: TaskReport(res["report"]))
         }
         return (tasks, runs.sorted { $0.started > $1.started })
     }
@@ -211,7 +247,8 @@ final class TaskClock {
     /// Test copies run it only with `--scratch-writes --dry-sessions` (sessions print their command instead of starting).
     static var enabled: Bool {
         let a = CommandLine.arguments
-        return AppModel.mayWriteBoards && (!a.contains("--background") || a.contains("--dry-sessions"))
+        let real = ProcessInfo.processInfo.environment["STEERIFY_TEST_REAL_SESSIONS"] == "1"   // a test copy allowed real sessions (Remote Control test)
+        return AppModel.mayWriteBoards && (!a.contains("--background") || a.contains("--dry-sessions") || real)
     }
 }
 
@@ -294,7 +331,7 @@ extension AppModel {
         if let sop = t.sop { brief.append("Follow: \(sop)") }
         if !t.brief.isEmpty { brief.append("Brief:\n\(t.brief)") }
         if let note, !note.isEmpty { brief.append("The user sent the last result back (Redo): \"\(note)\"") }
-        brief.append("Follow the steerify skill, intent `run`. You have \(t.maxMinutes) min. Finish with finish_task (run \(runId)): summary, files, counts, every check ok or not. No finish_task = the run shows \"No result\".")
+        brief.append("Follow the steerify skill, intent `run`. You have \(t.maxMinutes) min. Finish with finish_task (run \(runId)): summary, files, counts, every check ok or not, and the report (headline, 2–4 kpis, steps done, rows per item, ≤ 3 points; minimal text, details in the file). No finish_task = the run shows \"No result\".")
         let s = start(projectId: p.id, item: item, intent: .run, dry: dry, extraBrief: brief.joined(separator: "\n\n"), focus: focus, fresh: true)
         TaskStore.setRun(p.boardDir, id: runId) { r in
             if let cid = s?.claudeId { r["session"] = cid }
@@ -320,6 +357,8 @@ extension AppModel {
 struct TasksScreen: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var board: BoardStore
+    @State private var selected: String?      // run id whose report is open
+    @State private var closed = false         // you closed the report panel
 
     var body: some View {
         let _ = board.loadedAt
@@ -330,26 +369,56 @@ struct TasksScreen: View {
         let scheduled = tasks.filter { $0.schedule != nil }
         let ready = tasks.filter { t in t.schedule == nil && !runs.contains { $0.task == t.id } }
         let done = runs.filter { r in (r.status == "ok") && byId[r.task]?.schedule == nil }.prefix(12)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                if tasks.isEmpty {
-                    EmptyBoard(projectId: board.project.id, title: "NO TASKS YET", line: "Ask for an outcome, not a feature: a tutorial, a report, a weekly collection.", kind: .task)
-                } else {
-                    HStack {
-                        Text("Things Claude does for you, with your tools and your standards. Not code: they never go on the roadmap.")
-                            .font(.system(size: S(12))).foregroundStyle(Brand.mute)
-                        Spacer()
-                        ActionButton(title: "+ Task", icon: "task") { model.requestKindSeed = .task; model.requestOpen = true }
-                            .help("Describe the outcome you want; Claude sets up the task and runs it")
+        // The report panel: the run you clicked, else the first result to check that has a report.
+        let open: TaskRun? = closed ? nil
+            : (runs.first { $0.id == selected && $0.report != nil } ?? check.first { $0.report != nil && $0.status == "done" })
+        GeometryReader { g in
+            // Room for list + report side by side? Otherwise the report opens under its card.
+            let wide = g.size.width >= S(960)
+            let row = { (r: TaskRun) in
+                VStack(spacing: 0) {
+                    RunRow(board: board, run: r, task: byId[r.task], selected: open?.id == r.id) {
+                        if open?.id == r.id { closed = true } else { selected = r.id; closed = false }
+                    }
+                    if !wide, open?.id == r.id {
+                        TaskReportPanel(board: board, run: r, task: byId[r.task], inline: true) { closed = true }
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Brand.bg))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.line))
+                            .padding(.top, 6)
                     }
                 }
-                if !now.isEmpty { group("NOW") { ForEach(now) { r in RunRow(board: board, run: r, task: byId[r.task]) } } }
-                if !check.isEmpty { group("TO CHECK") { ForEach(check) { r in RunRow(board: board, run: r, task: byId[r.task]) } } }
-                if !scheduled.isEmpty { group("SCHEDULED") { ForEach(scheduled) { t in TaskRow(board: board, task: t, runs: runs.filter { $0.task == t.id }) } } }
-                if !ready.isEmpty { group("READY TO RUN") { ForEach(ready) { t in TaskRow(board: board, task: t, runs: []) } } }
-                if !done.isEmpty { group("DONE") { ForEach(Array(done)) { r in RunRow(board: board, run: r, task: byId[r.task]) } } }
             }
-            .padding(12)
+            HStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if tasks.isEmpty {
+                            EmptyBoard(projectId: board.project.id, title: "NO TASKS YET", line: "Ask for an outcome, not a feature: a tutorial, a report, a weekly collection.", kind: .task)
+                        } else {
+                            HStack {
+                                Text("Things Claude does for you, with your tools and your standards. Not code: they never go on the roadmap.")
+                                    .font(.system(size: S(12))).foregroundStyle(Brand.mute)
+                                Spacer()
+                                ActionButton(title: "+ Task", icon: "task") { model.requestKindSeed = .task; model.requestOpen = true }
+                                    .help("Describe the outcome you want; Claude sets up the task and runs it")
+                            }
+                        }
+                        if !now.isEmpty { group("NOW") { ForEach(now) { r in row(r) } } }
+                        if !check.isEmpty { group("TO CHECK") { ForEach(check) { r in row(r) } } }
+                        if !scheduled.isEmpty { group("SCHEDULED") { ForEach(scheduled) { t in TaskRow(board: board, task: t, runs: runs.filter { $0.task == t.id }) } } }
+                        if !ready.isEmpty { group("READY TO RUN") { ForEach(ready) { t in TaskRow(board: board, task: t, runs: []) } } }
+                        if !done.isEmpty { group("DONE") { ForEach(Array(done)) { r in row(r) } } }
+                    }
+                    .padding(12)
+                }
+                .frame(width: wide && open != nil ? S(460) : g.size.width).clipped()
+                if wide, let r = open {
+                    Rectangle().fill(Brand.line).frame(width: 1)
+                    ScrollView {
+                        TaskReportPanel(board: board, run: r, task: byId[r.task], inline: false) { closed = true }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
         }
         .background(Brand.bg)
     }
@@ -360,10 +429,10 @@ struct TasksScreen: View {
     }
 }
 
-private func taskCard<C: View>(_ hl: Color? = nil, @ViewBuilder _ c: () -> C) -> some View {
+private func taskCard<C: View>(_ hl: Color? = nil, selected: Bool = false, @ViewBuilder _ c: () -> C) -> some View {
     c().padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Brand.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(hl ?? Brand.line))
+        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Brand.panel2 : Brand.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(hl ?? (selected ? Brand.cream.opacity(0.5) : Brand.line), lineWidth: selected ? 2 : 1))
 }
 
 private func clock(_ iso: String?) -> String {
@@ -379,26 +448,42 @@ struct RunRow: View {
     @ObservedObject var board: BoardStore
     let run: TaskRun
     let task: BoardTask?
+    var selected = false
+    var onSelect: () -> Void = {}
     @State private var redo = false
     @State private var note = ""
 
     var body: some View {
         let ref = "task:" + run.task
         let tint: Color? = run.status == "done" ? Brand.amber : run.status == "noresult" ? Brand.red : nil
-        taskCard(tint) {
+        let rep = run.report.flatMap { _ in run.status == "done" || run.status == "ok" ? run.report : nil }
+        taskCard(tint, selected: selected) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 12) {
                     Text(icon).font(.system(size: S(14), weight: .bold)).frame(width: S(26), height: S(26))
                         .background(RoundedRectangle(cornerRadius: 6).fill(Brand.panel2)).foregroundStyle(tint ?? Brand.cream)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(task?.title ?? run.task).font(.system(size: S(13.5), weight: .semibold)).foregroundStyle(Brand.cream)
-                        Text(subtitle).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).lineLimit(2)
+                        if let rep, !rep.headline.isEmpty {
+                            Text(rep.headline).font(.system(size: S(12))).foregroundStyle(Brand.ink).lineLimit(2)
+                        } else {
+                            Text(subtitle).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).lineLimit(2)
+                        }
                     }
+                    .frame(minWidth: S(140), alignment: .leading).layoutPriority(1)
                     Spacer(minLength: 8)
-                    status
-                    actions(ref)
+                    if rep == nil { status; actions(ref).fixedSize() }
+                    else if run.status == "ok" { status }
+                    else { Text(clock(run.finished)).font(.system(size: S(11.5))).foregroundStyle(Brand.mute) }
                 }
-                if run.status == "done" || run.status == "ok", !(run.summary.isEmpty && run.files.isEmpty && run.counts.isEmpty) { result }
+                if let rep {
+                    if !rep.kpis.isEmpty { KpiTiles(kpis: rep.kpis, big: false) }
+                    HStack(spacing: 8) {
+                        if !run.checks.isEmpty { ChecksBar(checks: run.checks) }
+                        Spacer(minLength: 4)
+                        if run.status == "done" { actions(ref).fixedSize() }
+                    }
+                } else if run.status == "done" || run.status == "ok", !(run.summary.isEmpty && run.files.isEmpty && run.counts.isEmpty) { result }
                 if redo {
                     HStack {
                         TextField("What should be different?", text: $note).textFieldStyle(.roundedBorder).font(.system(size: S(12)))
@@ -408,6 +493,9 @@ struct RunRow: View {
                 }
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture { if rep != nil { onSelect() } }
+        .help(rep != nil ? (selected ? "Close the report" : "Open the report") : "")
         .id(ref + "@" + run.id).flash(ref)
     }
 
@@ -478,11 +566,7 @@ struct RunRow: View {
         .padding(.leading, S(38))
     }
 
-    private func open(_ f: String) {
-        if f.hasPrefix("http"), let u = URL(string: f) { NSWorkspace.shared.open(u); return }
-        let path = f.hasPrefix("/") ? f : (board.project.boardDir as NSString).appendingPathComponent(f)
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
-    }
+    private func open(_ f: String) { openTaskFile(f, board: board.project.boardDir) }
 
     private func send(_ ok: Bool) {
         model.setRunVerdict(projectId: board.project.id, run: run, ok: ok, note: note)
@@ -543,4 +627,188 @@ private func pill(_ text: String, _ c: Color) -> some View {
     Text(text).font(Brand.label(9)).tracking(0.6).foregroundStyle(c).lineLimit(1)
         .padding(.horizontal, 6).padding(.vertical, 2)
         .overlay(RoundedRectangle(cornerRadius: 4).stroke(c.opacity(0.7), lineWidth: 1)).fixedSize()
+}
+
+private func openTaskFile(_ f: String, board: String) {
+    if f.hasPrefix("http"), let u = URL(string: f) { NSWorkspace.shared.open(u); return }
+    let path = f.hasPrefix("/") ? f : (board as NSString).appendingPathComponent(f)
+    NSWorkspace.shared.open(URL(fileURLWithPath: path))
+}
+
+private func fileName(_ f: String) -> String { f.hasPrefix("http") ? f : (f as NSString).lastPathComponent }
+
+/// 2–4 big numbers, same width each.
+struct KpiTiles: View {
+    let kpis: [TaskReport.Kpi]
+    let big: Bool
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(kpis, id: \.self) { k in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(k.value).font(.system(size: S(big ? 24 : 18), weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
+                    Text(k.label.uppercased()).font(Brand.label(8.5)).tracking(0.4).foregroundStyle(Brand.mute).lineLimit(1).minimumScaleFactor(0.75)
+                }
+                .padding(.horizontal, 10).padding(.vertical, big ? 9 : 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 7).fill(big ? Brand.panel : Brand.bg.opacity(0.5)))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.line))
+            }
+        }
+    }
+}
+
+/// One segment per check: green met, red not; then "4/5 checks".
+struct ChecksBar: View {
+    let checks: [TaskCheck]
+    var body: some View {
+        let ok = checks.filter(\.ok).count
+        HStack(spacing: 6) {
+            HStack(spacing: 3) {
+                ForEach(Array(checks.enumerated()), id: \.offset) { _, c in
+                    RoundedRectangle(cornerRadius: 2).fill(c.ok ? Brand.green : Brand.red).frame(width: S(14), height: S(6)).help(c.text)
+                }
+            }
+            Text("\(ok)/\(checks.count) checks").font(.system(size: S(11.5))).foregroundStyle(ok == checks.count ? Brand.green : Brand.red)
+        }
+    }
+}
+
+/// The report, drawn by Steerify from the standard Claude fills in: headline, KPIs, what was done, one bar per item,
+/// key points, the file folded under Details.
+struct TaskReportPanel: View {
+    @ObservedObject var board: BoardStore
+    let run: TaskRun
+    let task: BoardTask?
+    var inline = false
+    let close: () -> Void
+    @State private var showChecks = false
+
+    var body: some View {
+        let r = run.report!
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    if inline {
+                        Text("REPORT").font(Brand.label(9.5)).tracking(1.4).foregroundStyle(Brand.mute)
+                    } else {
+                        Text(task?.title ?? run.task).font(.system(size: S(19), weight: .bold)).foregroundStyle(.white).lineLimit(2).layoutPriority(1)
+                    }
+                    Spacer(minLength: 8)
+                    if !run.checks.isEmpty {
+                        let bad = run.checksFailed
+                        Button { showChecks.toggle() } label: {
+                            Text(bad == 0 ? "\(run.checks.count)/\(run.checks.count) CHECKS" : "\(bad) CHECK\(bad == 1 ? "" : "S") FAILED")
+                                .font(Brand.label(9)).tracking(0.6).foregroundStyle(bad == 0 ? Brand.green : Brand.red)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .overlay(RoundedRectangle(cornerRadius: 4).stroke((bad == 0 ? Brand.green : Brand.red).opacity(0.7)))
+                                .lineLimit(1).fixedSize()
+                        }.buttonStyle(.plain).help("Show the checks")
+                    }
+                    Text(when).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).lineLimit(1).fixedSize()
+                    Button(action: close) { Text("✕").font(.system(size: S(12), weight: .semibold)).foregroundStyle(Brand.mute) }
+                        .buttonStyle(.plain).help("Close the report")
+                }
+                if !inline, !r.headline.isEmpty {
+                    Text(r.headline).font(.system(size: S(13))).foregroundStyle(Brand.ink).padding(.top, -10)
+                }
+                if showChecks {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(run.checks, id: \.self) { c in
+                            Text((c.ok ? "✓ " : "✗ ") + c.text).font(.system(size: S(11.5))).foregroundStyle(c.ok ? Brand.green : Brand.red)
+                        }
+                    }
+                }
+                if !inline, !r.kpis.isEmpty { KpiTiles(kpis: r.kpis, big: true) }   // inline: the card above already shows them
+                if !r.steps.isEmpty {
+                    section("WHAT WAS DONE")
+                    timeline(r.steps)
+                }
+                if !r.rows.isEmpty {
+                    HStack(alignment: .firstTextBaseline) {
+                        section("RESULT" + (r.rowsTitle.isEmpty ? "" : " · " + r.rowsTitle.uppercased()))
+                        Spacer(minLength: 8)
+                        if r.rows.contains(where: { $0.ref != nil }) {
+                            Text("│ = " + (r.refLabel.isEmpty ? "reference" : r.refLabel)).font(.system(size: S(11))).foregroundStyle(Brand.mute).lineLimit(1).fixedSize()
+                        }
+                    }
+                    bars(r.rows)
+                }
+                if !r.points.isEmpty {
+                    section("KEY POINTS")
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(r.points, id: \.self) { p in
+                            (Text("→ ").foregroundColor(Brand.amber) + Text(p).foregroundColor(Brand.ink)).font(.system(size: S(12.5)))
+                        }
+                    }
+                }
+                let files = (r.details.map { [$0] } ?? []) + run.files.filter { $0 != r.details }
+                if !files.isEmpty {
+                    HStack(spacing: 10) {
+                        Text("▸ Details").font(.system(size: S(12))).foregroundStyle(Brand.mute)
+                        Spacer(minLength: 4)
+                        ForEach(files, id: \.self) { f in
+                            Button { openTaskFile(f, board: board.project.boardDir) } label: {
+                                Text("↗ " + fileName(f)).font(.system(size: S(11.5))).underline().lineLimit(1)
+                            }.buttonStyle(.plain).foregroundStyle(Brand.cream).pointerStyle(.link)
+                        }
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.line))
+                }
+            }
+            .padding(.horizontal, inline ? 14 : 22).padding(.vertical, inline ? 12 : 18)
+    }
+
+    private var when: String {
+        let fin = clock(run.finished)
+        guard let a = TaskStore.date(run.started), let b = TaskStore.date(run.finished) else { return fin }
+        let m = max(1, Int(b.timeIntervalSince(a) / 60))
+        return fin + " · " + (m >= 60 ? "\(m / 60) h \(m % 60) min" : "\(m) min")
+    }
+
+    private func section(_ t: String) -> some View {
+        Text(t).font(Brand.label(9.5)).tracking(1.4).foregroundStyle(Brand.mute).padding(.bottom, -6)
+    }
+
+    private func timeline(_ steps: [TaskReport.Step]) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                VStack(spacing: 4) {
+                    ZStack {
+                        HStack(spacing: 0) {
+                            Rectangle().fill(i == 0 ? .clear : Brand.green.opacity(0.55)).frame(height: 2)
+                            Rectangle().fill(i == steps.count - 1 ? .clear : Brand.green.opacity(0.55)).frame(height: 2)
+                        }
+                        Circle().fill(s.done ? Brand.green : Brand.amber).frame(width: S(16), height: S(16))
+                            .overlay(Text(s.done ? "✓" : "…").font(.system(size: S(9), weight: .heavy)).foregroundStyle(Color(hex: 0x06140b)))
+                    }
+                    Text(s.text).font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Brand.ink).multilineTextAlignment(.center).lineLimit(2)
+                    if !s.n.isEmpty { Text(s.n.uppercased()).font(Brand.label(8.5)).tracking(0.4).foregroundStyle(Brand.mute).multilineTextAlignment(.center).lineLimit(2) }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func bars(_ rows: [TaskReport.Row]) -> some View {
+        let top = max(1, rows.map { max($0.value, $0.ref ?? 0) }.max() ?? 1)
+        return Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 9) {
+            ForEach(rows, id: \.self) { row in
+                GridRow {
+                    Text(row.name).font(.system(size: S(12.5), weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3).fill(Brand.panel2)
+                            RoundedRectangle(cornerRadius: 3).fill(Brand.blue).frame(width: max(2, g.size.width * row.value / top))
+                            if let ref = row.ref {
+                                Rectangle().fill(Brand.cream.opacity(0.75)).frame(width: 2, height: S(18)).offset(x: min(g.size.width - 2, g.size.width * ref / top))
+                            }
+                        }
+                    }
+                    .frame(height: S(12)).frame(minWidth: S(120))
+                    Text(row.show).font(.system(size: S(11.5), weight: .bold, design: .monospaced)).foregroundStyle(Brand.ink).lineLimit(1).fixedSize()
+                    Text(row.tag).font(.system(size: S(12), weight: .semibold)).foregroundStyle(Brand.amber).lineLimit(1).fixedSize()
+                }
+            }
+        }
+    }
 }

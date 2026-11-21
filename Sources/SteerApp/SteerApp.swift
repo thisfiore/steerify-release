@@ -33,7 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             : NSHostingController(rootView: AnyView(root))
         host.sceneBridgingOptions = [.toolbars, .title]
         host.sizingOptions = []                       // keep our size, not the content's ideal size
-        let size = whatsNew ? NSSize(width: 380, height: 330) : panelOnly ? NSSize(width: 320, height: 760) : manager ? NSSize(width: 960, height: 620) : NSSize(width: 1500, height: 940)
+        // `--window-width <n>`: the main window at that width (top bar density shots).
+        let mainW = a0.firstIndex(of: "--window-width").flatMap { $0 + 1 < a0.count ? Double(a0[$0 + 1]) : nil } ?? 1500
+        let size = whatsNew ? NSSize(width: 380, height: 330) : panelOnly ? NSSize(width: 320, height: 760) : manager ? NSSize(width: 960, height: 620) : NSSize(width: mainW, height: 940)
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 40, y: 40), size: size),
                          styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.contentViewController = host
@@ -105,6 +107,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = a.firstIndex(of: "--scroll-bench"), i + 1 < a.count {
             let out = a[i + 1], at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 6
             DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.scroll(w, out: out) }
+        }
+        // Test hook: `--switch-bench <out.json> <other project id> [seconds]`: switch to the other project and back 4 times,
+        // timing each switch until the window has drawn it (the first one is cold: that board was never opened).
+        if let i = a.firstIndex(of: "--switch-bench"), i + 2 < a.count {
+            let out = a[i + 1], other = a[i + 2], at = (i + 3 < a.count ? Double(a[i + 3]) : nil) ?? 6
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.switchProjects(w, m, to: other, out: out) }
         }
         SteerApp.applyTestArgs(m)
         m.startAutomation()
@@ -180,6 +188,10 @@ enum SteerifyMain {
         }
         if let i = CommandLine.arguments.firstIndex(of: "--outlook-check"), i + 1 < CommandLine.arguments.count {
             MainActor.assumeIsolated { SessionOutlookCheck.run(CommandLine.arguments[i + 1]) }
+            exit(0)
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--resume-nudge-check"), i + 1 < CommandLine.arguments.count {
+            MainActor.assumeIsolated { ResumeNudgeCheck.run(CommandLine.arguments[i + 1]) }
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--deploy-wake-check"), i + 1 < CommandLine.arguments.count {

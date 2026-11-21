@@ -47,6 +47,35 @@ enum PerfBench {
         step()
     }
 
+    static func switchProjects(_ w: NSWindow, _ m: AppModel, to other: String, out: String) {
+        guard let home = m.selectedProjectId, m.projects.contains(where: { $0.id == other }) else {
+            NSLog("switch-bench: no project \(other)"); NSApp.terminate(nil); return
+        }
+        var times: [Double] = []
+        var targets = Array(repeating: [other, home], count: 4).flatMap { $0 }
+        func step() {
+            guard !targets.isEmpty else { finish(); return }
+            let id = targets.removeFirst()
+            let t0 = CFAbsoluteTimeGetCurrent()
+            m.selectedProjectId = id
+            w.contentView?.layoutSubtreeIfNeeded()
+            w.displayIfNeeded()
+            times.append((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+            // Let async work settle between switches, as between two real clicks.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { step() }
+        }
+        func finish() {
+            let warm = Array(times.dropFirst(2)).sorted()
+            let r: [String: Any] = ["coldMs": ((times.first ?? 0) * 10).rounded() / 10,
+                                    "warmAvgMs": ((warm.reduce(0, +) / Double(max(warm.count, 1))) * 10).rounded() / 10,
+                                    "maxMs": ((times.max() ?? 0) * 10).rounded() / 10, "switches": times.count]
+            if let d = try? JSONSerialization.data(withJSONObject: r, options: [.sortedKeys]) { try? d.write(to: URL(fileURLWithPath: out)) }
+            NSLog("switch-bench: \(r)")
+            NSApp.terminate(nil)
+        }
+        step()
+    }
+
     static func click(_ w: NSWindow, x: Double, y: Double) {
         guard let cv = w.contentView else { return }
         let p = NSPoint(x: x, y: cv.bounds.height - y)          // content coords are bottom-up

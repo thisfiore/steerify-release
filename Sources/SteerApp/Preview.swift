@@ -365,7 +365,7 @@ struct PreviewOverlay: View {
                 verdictButton(s, "refine", "↻ Refine", Brand.amber, pick)
                 verdictButton(s, "broken", "✕ Broken", Brand.red, pick)
             }
-            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(s)) { board.setShip(s, pick: pick ?? "refine", note: $0) }
+            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(s)) { board.setShip(s, pick: pick, note: $0) }
             if let r = itemRef {
                 VStack(alignment: .leading, spacing: 6) {
                     if board.shipState(s) == .waiting {

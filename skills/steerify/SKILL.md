@@ -70,8 +70,25 @@ go straight to it. The item's conversation is resumed on later starts (Steerify 
 | `tag` | track | Core vs extras for a chapter that has none yet. Read its objective and every key result; for each one `set_roadmap_kind` with `proposed: true`: `core` only if the objective is not met without it, else `test` / `tutorial` / `enhancement` / `later`. Change nothing else. The user keeps or undoes the proposal on the chapter. Report a short table: item · kind · why (≤ 6 words). |
 | `resume` | track / reqs | A whole chapter (`track:<slug>` = a roadmap track, `reqs:<slug>` = a requirements group). **State of the art:** read every item of the chapter, its linked choices, To test items and requirements, then check the code to see what really exists (not what the board claims). Report done / partly done / missing in a few lines, fix wrong statuses on the board, name the **next step** and start it (mark it `wip`), unless it needs a choice from the user: then add the choice and do what is ready. |
 | `intake` | request | A new request the user filed with **+ Request** (⌘N). The brief has the text, screenshots, kind, chapter. Never ask what it is; open every screenshot. **Fix / refinement:** it is already a key result in "Fixes & refinements" (linked to its chapter): mark it `wip`, check the code, fix it, test, deliver (`road` = that key result), mark it `review`. **Feature:** read the code, then `add_chapter` (a draft: objective, 3–7 key results, requirements; the user approves it in Steerify; tag each key result's `kind`, see **Core and extras**) and put open questions on the board with `ask_choice`; build nothing until it is approved. **Task** (doing, not building: a tutorial from the SOP, a data collection, a report, anything on a schedule): never a chapter. Read the standard / tools it names, then `add_task` (concrete `outcome`, 2–5 `checks`, `sop`, `every` if it repeats, `request` = the request id, `runNow: true` for a one-off or a first run) and do it as `run` below; a repeating task's later runs are started by Steerify. **Question:** answer it from the code as a choice (`ask_choice`, 2–4 options, each showing its result). The kind is wrong? Say so, treat it as the right one and pass `kind` to `update_request` (Steerify learns from every correction). Always finish with `update_request` (status, became[], one-line note). |
-| `run` | task | One run of a task (Tasks tab; the brief has the run id, outcome, checks, the standard to follow, a Redo note if the user sent the last result back). Do the work with the project's tools, not code changes (a needed code change → `add_roadmap_item`, then carry on). Check the result against **every** check yourself. Finish with `finish_task` (run id, `summary`, `files` to open it, `counts`, `checks: [{text, ok}]` honestly); can't reach the outcome → `finish_task` with `failed: true` and why. Without `finish_task` the run shows "No result" when its time is up. Never deliver a task to To test. |
+| `run` | task | One run of a task (Tasks tab; the brief has the run id, outcome, checks, the standard to follow, a Redo note if the user sent the last result back). Do the work with the project's tools, not code changes (a needed code change → `add_roadmap_item`, then carry on). Check the result against **every** check yourself. Finish with `finish_task` (run id, `summary`, `files` to open it, `counts`, `checks: [{text, ok}]` honestly, and the `report`, see **Task report**); can't reach the outcome → `finish_task` with `failed: true` and why. Without `finish_task` the run shows "No result" when its time is up. Never deliver a task to To test. |
 | `init` | setup | A new project (`setup:<project>`), started from its welcome screen: the board is empty. Follow **First setup** below: read and run the project, show what you understood, ask with choices (never a wall of questions in the chat), then draft the first chapter. Write only in the board folder; everything is a draft for the user to approve. |
+
+## Task report (every task run)
+
+Steerify draws the result of a run from `finish_task` → `report`, the same way for every task and every week, so the
+user sees what was done and what came out without reading. **Minimal text**: numbers and short labels; prose only in
+the file under Details.
+
+| Field | What | Limit |
+| --- | --- | --- |
+| `headline` | what you got | ≤ 10 words |
+| `kpis` | `[{value, label}]` the big numbers of the outcome | 2–4 |
+| `steps` | `[{text, n, done}]` what was done, in order; `n` = its count ("244 · 60 d"); `done: false` = still pending | 3–6, text 2–3 words |
+| `rows` | `{title, ref, items: [{name, value, ref, show, tag}]}` one bar per item (brand, page, platform…), `ref` = the comparison mark (avg, last week, target), `show` = the value as text ("56 · 0.6×"), `tag` = the verdict | tag 2–3 words |
+| `points` | what matters, what to do next | ≤ 3, ≤ 8 words each |
+| `details` | the full file (markdown / PDF / link), kept folded | optional, default `files[0]` |
+
+The detailed file stays syntactic too: a table first, then one short bullet block per item; no paragraphs.
 
 ## Branches and releases (the project's flow)
 

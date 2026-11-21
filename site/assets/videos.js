@@ -12,7 +12,7 @@
   // after a few seconds), Replay, and the download. Scrolling away stops everything and brings the silent preview back.
   document.querySelectorAll('[data-herovid]').forEach((el) => {
     const v = el.querySelector('video'), btn = el.querySelector('[data-play]'), end = el.querySelector('.hv-end');
-    const list = [{ name: el.dataset.herovid, title: 'Steerify in 40 seconds' }].concat([...document.querySelectorAll('[data-ep]')].map((b) => ({ name: b.dataset.ep, title: b.querySelector('b').textContent })));
+    const list = [{ name: el.dataset.herovid, title: 'Steerify in 47 seconds' }].concat([...document.querySelectorAll('[data-ep]')].map((b) => ({ name: b.dataset.ep, title: b.querySelector('b').textContent })));
     el.classList.toggle('vert', upright());
     let seen = false, on = false, cur = 0, timer = 0;
     const load = (i) => { cur = i; v.poster = poster(list[i].name); v.src = file(list[i].name); };
@@ -52,6 +52,22 @@
     }
     if ('IntersectionObserver' in window) new IntersectionObserver((es) => { seen = es[0].isIntersecting; if (!on || !seen) preview(); }, { threshold: .35 }).observe(el);
     else { seen = true; preview(); }
+
+    // MARKETING LINKS — DO NOT REMOVE (they are in emails and posts already sent; see .steerify/README.md).
+    //   steerify.dev/?teaser  (or #teaser)   plays the hero film on arrival          ← sent on 20 Nov 2026
+    //   steerify.dev/?v=<name>               plays that film: fast-cut, battle, deciding, in-sync, never-lost, high-score
+    //   steerify.dev/?v=why-pro | why-simple | getting-started   go to the long videos on tutorial.html
+    // Browsers may block sound that starts by itself: then the hero stays on its silent preview under PLAY VIDEO.
+    // Redesigning the landing? Keep these working, whatever the player becomes. Check: node scripts/check-video-links.mjs
+    const q = new URLSearchParams(location.search);
+    const want = q.get('v') || (q.has('teaser') || location.hash === '#teaser' ? list[0].name : '');
+    if (want) {
+      const long = { 'getting-started': 'start', 'why-simple': 'why-simple', 'why-pro': 'why-pro' };
+      if (long[want]) { location.replace('tutorial.html#' + long[want]); return; }
+      const i = Math.max(0, list.findIndex((x) => x.name === want));
+      el.scrollIntoView({ block: 'center' }); seen = true; start(i);
+      v.play().catch(() => { if (i === 0) preview(); });
+    }
   });
 
   const dlg = document.querySelector('.epdlg');
