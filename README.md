@@ -59,11 +59,15 @@ And this is the real app, on the demo project that comes with it:
     <td width="50%"><img src="site/assets/shots/demo/web/test.jpg" alt="To test"><br><b>To test.</b> Every delivery with its tests, a picture for each one.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="site/assets/shots/demo/web/roadmap.jpg" alt="Roadmap"><br><b>Roadmap.</b> Chapters, progress, and a Start button on every item.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/roadmap.jpg" alt="Roadmap"><br><b>Roadmap.</b> Chapters, area tags, each feature with its pictures, a Start on every item.</td>
     <td width="50%"><img src="site/assets/shots/demo/web/requirements.jpg" alt="Requirements"><br><b>Requirements.</b> Claude proposes them. You confirm, edit or park each line.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="site/assets/shots/demo/web/new-request.jpg" alt="Request"><br><b>Request.</b> Type a fix or an idea from anywhere. Steerify files it in the right chapter.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/tasks.jpg" alt="Tasks"><br><b>Tasks.</b> Work that isn't code (a tutorial, a weekly report), once or on a schedule. Every run ends with a result you OK or send back.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/sessions.jpg" alt="Sessions"><br><b>Sessions.</b> Rowing in blue, your turn in violet, done in grey. Ready shows where you left off.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="site/assets/shots/demo/web/request-mark.jpg" alt="Request"><br><b>Request.</b> Mark the picture, say what's wrong. Steerify files it as a fix, a feature or a task.</td>
     <td width="50%"><img src="site/assets/shots/demo/web/search.jpg" alt="Search"><br><b>Search.</b> One search across sessions, choices, roadmap and requests.</td>
   </tr>
 </table>

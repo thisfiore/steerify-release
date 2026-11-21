@@ -15,6 +15,13 @@ OUT=site/assets/shots/demo; mkdir -p $OUT
 TMP=$(mktemp -d)
 BOARD=$(node scripts/demo-stage.mjs $TMP/tiny-todo 20)
 echo "[\"$BOARD\"]" > $TMP/workspaces.json
+# The request sheet's "recent screenshots" strip reads this folder, never your Desktop: fill it with demo pictures.
+mkdir -p $TMP/shots && i=0
+for f in demo/tiny-todo/.steerify/img/*/*.png; do i=$((i+1)); cp $f "$TMP/shots/Screenshot 2026-11-20 at 10.4$i.00.png"; done
+export STEERIFY_SHOTS_DIR=$TMP/shots
+# Sessions show their terminal: a git repo and a throwaway home keep your paths out of the picture.
+git -C ${BOARD:h} init -q && git -C ${BOARD:h} -c user.name=demo -c user.email=demo@example.com commit -qam demo --allow-empty >/dev/null 2>&1
+mkdir -p $TMP/home
 
 # name | app arguments (the key screens of the product)
 SHOTS=(
@@ -28,15 +35,19 @@ SHOTS=(
   "release|--tab release"
   "new-request|--tab test --request Filter: show only what is left"
   "search|--tab road --palette due"
+  "tasks|--tab task"
+  "sessions|--tab ready --flow-demo test:first-version,choice:due-dates,road:filter-all-active-done;working,waiting,idle"
+  "request-mark|--tab test --request-img $PWD/demo/tiny-todo/.steerify/img/ship/first-version-week.png --request-mark dot:0.62,0.30;rect:0.08,0.55,0.5,0.2 --request The counter is cut off here, and the empty state looks bare"
 )
 for s in $SHOTS; do
   name=${s%%|*}; args=${s#*|}
   (( ${#ONLY} )) && [[ -z ${ONLY[(r)$name]} ]] && continue
   # --request / --palette take the rest of the line as one argument
-  if [[ $args == *--request* ]]; then set -- ${=args%%--request*} --request "${args#*--request }"
+  if [[ $args == *"--request "* ]]; then set -- ${=args%%--request\ *} --request "${args#*--request }"
   elif [[ $args == *--palette* ]]; then set -- ${=args%%--palette*} --palette "${args#*--palette }"
   else set -- ${=args}; fi
-  STEERIFY_WORKSPACES=$TMP/workspaces.json $BIN --background --project tiny-todo "$@" --snapshot $PWD/$OUT/$name.png 6 >/dev/null 2>&1 || true
+  H=$HOME; [[ $name == sessions ]] && H=$TMP/home
+  HOME=$H STEERIFY_WORKSPACES=$TMP/workspaces.json $BIN --background --project tiny-todo "$@" --snapshot $PWD/$OUT/$name.png 6 >/dev/null 2>&1 || true
   [ -f $OUT/$name.png ] && echo "$name  $(sips -g pixelWidth $OUT/$name.png | awk '/pixelWidth/{print $2}') px" || echo "$name  FAILED"
 done
 rm -rf $TMP

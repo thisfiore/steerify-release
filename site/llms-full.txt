@@ -40,6 +40,27 @@ Close the laptop, come back, know. Steerify remembers the chapter you were on, w
 
 ## Release notes
 
+### v0.5.6 (21 Nov): Every feature keeps its pictures.
+- **Roadmap, rebuilt**: Each key result shows its pictures, design first, then the test shots. Area tags named by the local AI, core vs extras, busiest chapter on top, Done folded.
+- **Mark the picture**: In a new request the picture opens big: ⌘-click drops a numbered dot, drag marks an area, and ① ② go into your text.
+- **Simple choices, one list**: Naming, order or yes/no: one list with a radio per option, no empty picture.
+- **Ready: where you left off**: Your chapters, the next step and what waits on you, in one tab. Release sits apart from build, with a release note for Claude.
+- **Picks reach the session that asked**: Answer a choice and the session that asked it gets it, once all its choices are answered. A deploy wakes the session waiting on it.
+
+### v0.5.5 (20 Nov · evening): Not only code.
+- **Tasks**: A new tab for work Claude does with your tools: a tutorial from the SOP, a weekly report. Once or on a schedule; every run ends with a result you OK or Redo, or shows No result.
+- **Sessions you can read at a glance**: Rowing is blue, your turn is violet with Test or Answer, done is grey with a tick.
+- **Next strip**: At most two things to do now, on top of the board, one button each.
+- **Drop a folder to start**: Drop a folder on the Dock icon or the window. Set up with Claude, then watch the board fill in.
+- **Test it opens the feature**: Links to a home page or a dead page are refused, so Test it always lands on the thing to check.
+
+### v0.5.2–0.5.4 (20 Nov): It updates itself.
+- **Updates in the background**: New versions download by themselves. Hover Restart to update to see what's in it.
+- **Requests, faster**: Your latest screenshots one click away, the project guessed from what you type, and a request for another project stays there.
+- **First setup asks with choices**: Claude runs your app, shows what it understood and asks with pictures, not a wall of questions.
+- **Where to test**: Each project lists its real test addresses; links anywhere else are refused.
+- **Demo project**: Tiny Todo comes with the app: try every screen before touching your own code.
+
 ### v0.5 (19 Nov): Ask from anywhere.
 - **New request (⌘N)**: A fix, a tweak, a feature or a question, with screenshots. Steerify shows where it goes, then starts a briefed Claude session.
 - **From any app (⌃⌥N)**: The menu bar opens a request anywhere and asks which project. A compact panel, by priority.
