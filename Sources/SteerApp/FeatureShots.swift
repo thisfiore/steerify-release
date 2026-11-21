@@ -23,7 +23,18 @@ struct FeatureMedia {
 
 extension BoardStore {
     func ships(forRoad r: RoadItem) -> [ShipItem] {
-        ships.filter { $0.roads.contains { $0 == r.text || BoardFiles.slug($0) == r.id } }
+        // Index built once per board: road text and its slug → deliveries (was a slug of every delivery's text per row).
+        let ix: [String: [Int]] = memoized("shipsByRoad", durable: true) {
+            var m: [String: [Int]] = [:]
+            for (i, s) in ships.enumerated() {
+                for rd in s.roads {
+                    for k in Set(["t:" + rd, "s:" + BoardFiles.slug(rd)]) where m[k]?.last != i { m[k, default: []].append(i) }
+                }
+            }
+            return m
+        }
+        let hits = Set((ix["t:" + r.text] ?? []) + (ix["s:" + r.id] ?? []))
+        return ships.indices.filter(hits.contains).map { ships[$0] }
     }
     func ships(forReq id: String) -> [ShipItem] { ships.filter { $0.reqs.contains(id) } }
 
@@ -37,7 +48,7 @@ extension BoardStore {
     }
 
     func media(road r: RoadItem, snaps: Int) -> FeatureMedia {
-        memoized("media:road:\(r.id)#\(snaps)") {
+        memoized("media:road:\(r.id)#\(snaps)", durable: true) {
             let linked = ships(forRoad: r)
             var choiceIds = Set(thread(of: "road:" + r.id).filter { $0.hasPrefix("choice:") }.map { String($0.dropFirst(7)) })
             // Choices of the request this key result came from, only when the request made just this one item
@@ -54,7 +65,7 @@ extension BoardStore {
 
     /// A whole chapter: the design of its own choices (asked from its request), then the newest test pictures of its key results.
     func media(chapter name: String, snaps: Int) -> FeatureMedia {
-        memoized("media:track:\(name)#\(snaps)") {
+        memoized("media:track:\(name)#\(snaps)", durable: true) {
             let items = roadmap.filter { $0.track == name }
             let linked = ships.filter { s in s.roads.contains { rd in items.contains { $0.text == rd || $0.id == BoardFiles.slug(rd) } } }
             let origins = Set(chapters.filter { $0.name == name }.compactMap { $0.request.map { "request:" + $0 } } + ["track:" + BoardFiles.slug(name)])
@@ -67,7 +78,7 @@ extension BoardStore {
     }
 
     func media(req r: Requirement, snaps: Int) -> FeatureMedia {
-        memoized("media:req:\(r.id)#\(snaps)") {
+        memoized("media:req:\(r.id)#\(snaps)", durable: true) {
             let linked = ships(forReq: r.id)
             var choiceIds = Set(linked.flatMap(\.choices))
             for d in decisions where d.origin == "req:" + r.id || d.why.contains("requirement \(r.id)") { choiceIds.insert(d.id) }

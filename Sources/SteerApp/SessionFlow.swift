@@ -36,7 +36,18 @@ extension BoardStore {
 
     /// Every board item of the same feature as `ref`: its key result(s), the deliveries for them, the choices they built,
     /// the requests that became them. Includes `ref` itself.
-    func thread(of ref: String) -> Set<String> { memoized("thread:" + ref) { computeThread(of: ref) } }
+    /// A request's thread reads the request log (outside the board): it expires; every other thread lasts until the board changes.
+    func thread(of ref: String) -> Set<String> { memoized("thread:" + ref, durable: !ref.hasPrefix("request:")) { computeThread(of: ref) } }
+    /// Delivery road text → "road:<id>", built once per board (it was a scan of the whole roadmap per delivery per row).
+    private func roadRefIndex(_ text: String) -> String? {
+        let ix: [String: String] = memoized("roadRefIndex", durable: true) {
+            var m: [String: String] = [:]
+            for r in roadmap.reversed() { m[r.text] = "road:" + r.id }   // first match wins, as before
+            for r in roadmap.reversed() { m["#slug:" + r.id] = "road:" + r.id }
+            return m
+        }
+        return ix["#slug:" + BoardFiles.slug(text)] ?? ix[text]
+    }
     private func computeThread(of ref: String) -> Set<String> {
         let roads = roads(of: ref)
         var out: Set<String> = [ref]
@@ -48,8 +59,7 @@ extension BoardStore {
         }
         guard !roads.isEmpty else { return out }
         out.formUnion(roads)
-        for s in ships where !roads.isDisjoint(with: Set(s.roads.compactMap { r in
-            roadmap.first { $0.id == BoardFiles.slug(r) || $0.text == r }.map { "road:" + $0.id } })) {
+        for s in ships where !roads.isDisjoint(with: Set(s.roads.compactMap(roadRefIndex))) {
             out.insert("test:" + s.id)
             out.formUnion(s.choices.map { "choice:" + $0 })
         }

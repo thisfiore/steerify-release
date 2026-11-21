@@ -100,8 +100,14 @@ enum PixelArt {
 
     /// Apple Intelligence's on-device model, when it is on and ready: reads the whole title and picks from the set.
     /// Falls back silently (word model) on Macs without it. Results are cached like the rest.
+    /// What is already known for this title (Apple Intelligence's pick, else the word model's), without working anything out.
+    static func cached(_ title: String) -> String? { cache["ai|" + title] ?? cache[title] }
+    /// Titles Apple Intelligence was already asked about without a usable answer (this run): not asked again on every appear.
+    private static var refused = Set<String>()
     static func refine(_ title: String) async -> String? {
         if let c = cache["ai|" + title] { return c }
+        if refused.contains(title) { return nil }
+        refused.insert(title)
         guard #available(macOS 26, *), case .available = SystemLanguageModel.default.availability else { return nil }
         let names = icons.keys.sorted()
         let list = names.map { "\($0): \(icons[$0]!.words.prefix(4).joined(separator: ", "))" }.joined(separator: "\n")
@@ -156,10 +162,12 @@ struct AutoIcon: View {
     var tile = false
     @State private var name: String?
     var body: some View {
-        ArtIcon(name: name ?? "sparkle", size: size, tile: tile)
+        ArtIcon(name: name ?? PixelArt.cached(title) ?? "sparkle", size: size, tile: tile)
             .task(id: title) {
-                name = PixelArt.pick(title)                                   // instant: word model
-                if let better = await PixelArt.refine(title) { name = better } // Apple Intelligence, when ready
+                // Only set when it changes: a row scrolling back into view must not redraw for the same icon.
+                let now = PixelArt.cached(title) ?? PixelArt.pick(title)                  // instant: remembered, else word model
+                if name != now { name = now }
+                if let better = await PixelArt.refine(title), better != name { name = better }  // Apple Intelligence, when ready
             }
     }
 }

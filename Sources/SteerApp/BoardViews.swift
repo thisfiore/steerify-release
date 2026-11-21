@@ -1118,17 +1118,16 @@ struct RoadTrackView: View {
     /// Done rows are folded by default (nil = auto: open only when the list shows no open row, e.g. the Done filter).
     @State private var showDone: Bool? = nil
     /// Chapters folded to one line, remembered per project (your focus: what you keep open stays open).
-    @AppStorage private var collapsedRaw: String
+    /// The click flips this view's own state (what redraws the row); ChapterFolds only remembers it. Driving the fold from
+    /// outside the view (@AppStorage, then a shared store) saved it but the roadmap list never redrew the row (21 Nov).
+    @State private var foldedNow: Bool? = nil
     init(board: BoardStore, track: String, items: [RoadItem]) {
         self.board = board; self.track = track; self.items = items
-        _collapsedRaw = AppStorage(wrappedValue: "", "collapsedChapters." + board.project.id, store: Prefs.store)
     }
-    private var collapsedSet: Set<String> { Set(collapsedRaw.split(separator: "\n").map(String.init)) }
-    private var collapsed: Bool { collapsedSet.contains(BoardFiles.slug(track)) }
+    private var collapsed: Bool { foldedNow ?? ChapterFolds.shared.isFolded(board.project.id, BoardFiles.slug(track)) }
     private func setCollapsed(_ on: Bool) {
-        var c = collapsedSet; let k = BoardFiles.slug(track)
-        if on { c.insert(k) } else { c.remove(k) }
-        withAnimation(.easeOut(duration: 0.15)) { collapsedRaw = c.sorted().joined(separator: "\n") }
+        foldedNow = on
+        ChapterFolds.shared.set(board.project.id, BoardFiles.slug(track), folded: on)
     }
     @ObservedObject private var snaps = MockSnapshots.shared
     private var info: Chapter? { board.chapters.first { $0.name == track } }
@@ -1243,33 +1242,42 @@ struct RoadTrackView: View {
         let all = board.roadmap.filter { $0.track == track }
         let done = all.filter { $0.status == "done" }.count
         let prog = ChapterProgress(all)
-        if collapsed { compact(all, prog) } else { full(all, done: done, prog) }
+        // One container with the scroll id: each branch carrying the same .id kept the lazy list showing the open card
+        // after a fold (21 Nov, "collapse chapter is not working").
+        VStack(spacing: 0) {
+            if collapsed { compact(all, prog) } else { full(all, done: done, prog) }
+        }
+        .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
     }
 
     /// The chapter on one line: icon, title, progress, what is moving. Click to open it again.
     @ViewBuilder private func compact(_ all: [RoadItem], _ prog: ChapterProgress) -> some View {
         let open = all.filter { $0.status != "done" }
         let moving = open.filter { ["wip", "review", "you"].contains($0.status) }.count
+        // A real button (a tap gesture on the row did not always open it), the session chip beside it, not inside.
         HStack(spacing: 10) {
-            Image(systemName: "chevron.right").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute)
-            AutoIcon(title: track, size: S(18), tile: true)
-            Text(track).font(.system(size: S(12.5), weight: .semibold)).foregroundStyle(Brand.cream).lineLimit(1)
-            if info?.draft == true { Pill(text: "draft", color: Brand.green) }
-            Spacer(minLength: 8)
-            if moving > 0 { Text("\(moving) moving").font(.system(size: S(11))).foregroundStyle(Brand.amber) }
-            Text(rolling ? "\(open.count) open" : "\(prog.coreDone)/\(prog.core.count) core").font(.system(size: S(11)).monospacedDigit())
-                .foregroundStyle(prog.coreReleased && !rolling ? Brand.green : Brand.mute)
-            ProgressView(value: Double(all.count - open.count), total: Double(max(all.count, 1))).progressViewStyle(.linear).tint(Brand.green).frame(width: S(60))
+            Button { setCollapsed(false) } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "chevron.right").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute)
+                    AutoIcon(title: track, size: S(18), tile: true)
+                    Text(track).font(.system(size: S(12.5), weight: .semibold)).foregroundStyle(Brand.cream).lineLimit(1)
+                    if info?.draft == true { Pill(text: "draft", color: Brand.green) }
+                    Spacer(minLength: 8)
+                    if moving > 0 { Text("\(moving) moving").font(.system(size: S(11))).foregroundStyle(Brand.amber) }
+                    Text(rolling ? "\(open.count) open" : "\(prog.coreDone)/\(prog.core.count) core").font(.system(size: S(11)).monospacedDigit())
+                        .foregroundStyle(prog.coreReleased && !rolling ? Brand.green : Brand.mute)
+                    ProgressView(value: Double(all.count - open.count), total: Double(max(all.count, 1))).progressViewStyle(.linear).tint(Brand.green).frame(width: S(60))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Open this chapter")
             SessionChip(projectId: board.project.id, ref: "track:" + BoardFiles.slug(track))
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 9).fill(Brand.panel))
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(Brand.line))
-        .contentShape(Rectangle())
-        .onTapGesture { setCollapsed(false) }
-        .help("Open this chapter")
-        .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
     }
 
     @ViewBuilder private func full(_ all: [RoadItem], done: Int, _ prog: ChapterProgress) -> some View {
@@ -1322,7 +1330,6 @@ struct RoadTrackView: View {
             doneSection(all)
             }
         }
-        .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
     }
 
     /// OKR header: the core is the headline (ring + bar); extras sit below, thinner and quieter, never holding the chapter back.

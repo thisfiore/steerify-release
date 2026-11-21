@@ -80,6 +80,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if then == "leave" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Prefs.store.set(BoardTab.road.rawValue, forKey: Prefs.boardTab) } }
             }
         }
+        // Test hook: `--click <x> <y> [seconds]`: a real mouse click at that point of the window (points, from the
+        // top-left of the content), as a person would (no Accessibility permission needed). Repeatable.
+        for (i, s) in a.enumerated() where s == "--click" && i + 2 < a.count {
+            guard let x = Double(a[i + 1]), let y = Double(a[i + 2]) else { continue }
+            let at = (i + 3 < a.count ? Double(a[i + 3]) : nil) ?? 4
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.click(w, x: x, y: y) }
+        }
+        // Test hook: `--shot <file.png> [seconds]`: like --snapshot, but the window stays visible (an invisible window
+        // is not redrawn after a click, so live changes need this one).
+        if let i = a.firstIndex(of: "--shot"), i + 1 < a.count {
+            let out = a[i + 1], at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 6
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                let v = w.contentView?.superview ?? w.contentView!
+                if let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                    v.cacheDisplay(in: v.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
+                }
+                NSApp.terminate(nil)
+            }
+        }
+        // Test hook: `--scroll-bench <out.json> [seconds]`: scroll the board list top → bottom → top in 60 pt steps,
+        // timing each frame (layout + draw), then write {frames, avgMs, p95Ms, maxMs} and quit. The roadmap's scroll budget.
+        if let i = a.firstIndex(of: "--scroll-bench"), i + 1 < a.count {
+            let out = a[i + 1], at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 6
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.scroll(w, out: out) }
+        }
         SteerApp.applyTestArgs(m)
         m.startAutomation()
     }

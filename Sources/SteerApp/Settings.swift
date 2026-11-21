@@ -4,8 +4,9 @@ import AppKit
 /// User preferences, all remembered in UserDefaults.
 enum Prefs {
     /// Test instances (`--background`) get their own settings, so they never change tabs or sizes in the user's window.
+    /// STEERIFY_PREFS_SUITE gives a test run settings of its own (two sessions testing at once never switch each other's tab).
     static let store: UserDefaults = CommandLine.arguments.contains("--background")
-        ? UserDefaults(suiteName: "com.frenkfiore.steerify.tests")! : .standard
+        ? UserDefaults(suiteName: ProcessInfo.processInfo.environment["STEERIFY_PREFS_SUITE"] ?? "com.frenkfiore.steerify.tests")! : .standard
     static let fontPreset = "fontPreset"            // small | medium | large
     static let terminalFraction = "terminalFraction" // share of the width for the terminal (default 0.30)
     static let sidebarVisible = "sidebarVisible"

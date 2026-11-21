@@ -185,18 +185,26 @@ final class BoardStore: ObservableObject {
     @Published private(set) var loadedAt = Date.distantPast { didSet { memo = [:] } }
     /// Answers that are costly to work out and only change with the board (an item's thread, a session's stage).
     /// Emptied on every board change, and after 5 s for what lives outside the board files (the request log).
-    private var memo: [String: Any] = [:]
+    private var memo: [String: Any] = [:] { didSet { if memo.isEmpty { volatileMemo = [:] } } }
+    private var volatileMemo: [String: Any] = [:]
     private var memoAt = Date.distantPast
-    func memoized<T>(_ key: String, _ make: () -> T) -> T {
-        if Date().timeIntervalSince(memoAt) > 5 { memo = [:]; memoAt = Date() }
-        if let hit = memo[key] { return hit as! T }
-        let v = make(); memo[key] = v as Any; return v
+    /// `durable`: the answer depends only on the board files (and what the key names), so it stays until the board
+    /// changes. Otherwise it also expires after 5 s. Durable rows keep scrolling the roadmap cheap (21 Nov: the 5 s
+    /// expiry recomputed every row's thread and pictures while scrolling).
+    func memoized<T>(_ key: String, durable: Bool = false, _ make: () -> T) -> T {
+        if durable {
+            if let hit = memo[key] { return hit as! T }
+            let v = make(); memo[key] = v as Any; return v
+        }
+        if Date().timeIntervalSince(memoAt) > 5 { volatileMemo = [:]; memoAt = Date() }
+        if let hit = volatileMemo[key] { return hit as! T }
+        let v = make(); volatileMemo[key] = v as Any; return v
     }
     @Published private(set) var links: [SessionLink] = [] { didSet { memo = [:] } }
     /// Local AI: roadmap proposals read from recent commits (LocalAI.swift), never applied by themselves.
-    @Published var commitProposals: [RoadProposal] = []
+    @Published var commitProposals: [RoadProposal] = [] { didSet { memo = [:] } }
     /// Local AI: key results a recent Claude session is working on (LocalAI.swift), never applied by themselves.
-    @Published var sessionProposals: [RoadProposal] = []
+    @Published var sessionProposals: [RoadProposal] = [] { didSet { memo = [:] } }
     var commitCheckedAt = Date.distantPast
     private var manifestTime: Date?
 
@@ -719,6 +727,9 @@ extension BoardStore {
 
     /// Status the roadmap item should have, from its linked To test deliveries.
     func consolidation(track: String) -> [RoadProposal] {
+        memoized("consolidation:" + track, durable: true) { computeConsolidation(track: track) }
+    }
+    private func computeConsolidation(track: String) -> [RoadProposal] {
         let order = ["todo": 0, "you": 1, "wip": 2, "review": 3, "done": 4]
         var out: [RoadProposal] = []
         for r in roadmap where r.track == track && r.status != "done" {

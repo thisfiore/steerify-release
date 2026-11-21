@@ -25,7 +25,7 @@ mkdir -p $TMP/home
 
 # name | app arguments (the key screens of the product)
 SHOTS=(
-  "ready|--tab ready"
+  "ready|--tab ready --since-hours 0"
   "test|--tab test"
   "test-preview|--tab test --preview test:first-version"
   "choices|--tab choice"
