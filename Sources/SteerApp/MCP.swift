@@ -64,6 +64,9 @@ enum SteerifyMCP {
         ["name": "set_roadmap_status",
          "description": "Set the status of a roadmap item (todo | wip | review | done | you). item = exact text or its slug. Mark done only with evidence (approved delivery, commit, deploy).",
          "inputSchema": schema(["item": str, "status": ["type": "string", "enum": ["todo", "wip", "review", "done", "you"]]], ["item", "status"])],
+        ["name": "set_roadmap_kind",
+         "description": "Say what a key result is for: core (the chapter's objective is met when every core key result is done) or an extra that never holds the chapter back: test | tutorial | enhancement | later (an idea, not promised). item = exact text or its slug; kind \"\" = clear (Steerify guesses from the words). proposed: true = a draft the user keeps or undoes on the chapter (use it when tagging an existing chapter, intent tag).",
+         "inputSchema": schema(["item": str, "kind": ["type": "string", "enum": ["core", "test", "tutorial", "enhancement", "later", ""]], "proposed": ["type": "boolean"]], ["item", "kind"])],
         ["name": "set_requirement_status",
          "description": "Set a requirement's status in board.json after checking the code: built (verified in the code, with evidence) | proposed | question. Never use it to answer for the user; their verdicts live in decisions.json.",
          "inputSchema": schema(["id": str, "status": ["type": "string", "enum": ["built", "proposed", "question"]], "evidence": str], ["id", "status"])],
@@ -74,15 +77,15 @@ enum SteerifyMCP {
          "description": "Save where this project is tested into steerify.json: environments = [{name, url, area?, note?}] (e.g. {name:\"platform\", url:\"https://platform.example.com\", area:\"platform\"}, {name:\"local\", url:\"http://localhost:5173\"}). To test links must start with one of these; deliver refuses a project host that is not listed. Only save addresses you found in the code / deploy config or the user gave you.",
          "inputSchema": schema(["environments": ["type": "array", "items": ["type": "object"]]], ["environments"])],
         ["name": "add_roadmap_item",
-         "description": "Add a key result to a roadmap chapter: {chapter (exact name), text, status? (todo), area?, request? (request id it comes from), for? (the feature chapter a fix belongs to), create? (true: create the chapter if missing)}. Fixes and small refinements go to the rolling chapter \"Fixes & refinements\".",
-         "inputSchema": schema(["chapter": str, "text": str, "status": str, "area": str, "request": str, "for": str, "create": ["type": "boolean"]], ["chapter", "text"])],
+         "description": "Add a key result to a roadmap chapter: {chapter (exact name), text, status? (todo), kind? (core | test | tutorial | enhancement | later: core = needed for the objective, the rest are extras), area?, request? (request id it comes from), for? (the feature chapter a fix belongs to), create? (true: create the chapter if missing)}. Fixes and small refinements go to the rolling chapter \"Fixes & refinements\".",
+         "inputSchema": schema(["chapter": str, "text": str, "status": str, "kind": str, "area": str, "request": str, "for": str, "create": ["type": "boolean"]], ["chapter", "text"])],
         ["name": "add_chapter",
-         "description": "Draft a new roadmap chapter for a feature request: {name, area, objective (one line), items: [key result texts], requirements?: [{id, text}], request? (request id)}. It lands as a DRAFT: the user approves it (Add to roadmap) or discards it in Steerify. Open questions go on the board with ask_choice.",
-         "inputSchema": schema(["name": str, "area": str, "objective": str, "items": ["type": "array", "items": ["type": "string"]],
+         "description": "Draft a new roadmap chapter for a feature request: {name, area, objective (one line), items: [key result texts, or {text, kind}: kind = core (needed for the objective) | test | tutorial | enhancement | later; untagged items are guessed from their words], requirements?: [{id, text}], request? (request id)}. It lands as a DRAFT: the user approves it (Add to roadmap) or discards it in Steerify. Open questions go on the board with ask_choice.",
+         "inputSchema": schema(["name": str, "area": str, "objective": str, "items": ["type": "array"],
                                 "requirements": ["type": "array", "items": ["type": "object"]], "request": str], ["name", "items"])],
         ["name": "update_request",
-         "description": "Record what a request became: {id, status (working | done | needs-you | discarded), became? [board refs: road:<slug>, track:<slug>, choice:<id>, test:<id>], note? (one line)}. Keeps the request history in Steerify honest.",
-         "inputSchema": schema(["id": str, "status": str, "became": ["type": "array", "items": ["type": "string"]], "note": str], ["id"])],
+         "description": "Record what a request became: {id, status (working | done | needs-you | discarded), became? [board refs: road:<slug>, track:<slug>, choice:<id>, test:<id>], note? (one line), kind? (fix | refine | feature | task | question: set it when the filed kind was wrong; Steerify learns from it)}. Keeps the request history in Steerify honest.",
+         "inputSchema": schema(["id": str, "status": str, "became": ["type": "array", "items": ["type": "string"]], "note": str, "kind": str], ["id"])],
         ["name": "add_task",
          "description": "Put a task on the Tasks tab: work Claude DOES for the user with existing tools and standards (a tutorial from the SOP, a data collection, a report), never code. {id? (slug), title, outcome (what done looks like, concrete: what file / where / how many), checks: [how to tell the result is right, 2–5 short lines], sop? (the standard, skill or doc it follows), brief? (anything else), every? (\"mon 08:00\", \"mon,thu 09:30\", \"weekdays 08:00\", \"daily 07:00\"; omit = once), maxMinutes? (default 120: no result by then = No result), area?, request? (request id), runNow? (true: this session runs it now; you get the run id)}. Same id = update the task. Steerify starts scheduled runs itself and watches each run for a result.",
          "inputSchema": schema(["id": str, "title": str, "outcome": str, "checks": ["type": "array", "items": ["type": "string"]], "sop": str, "brief": str,
@@ -171,11 +174,44 @@ enum SteerifyMCP {
                 const slug = s => s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48);
                 let hit = null;
                 for (const t of b.tracks || []) for (const it of t.items || []) if (it[0] === want || slug(it[0]) === slug(want)) {
+                  if (it[1] !== st) { if (!(it[2] && typeof it[2] === 'object')) it[2] = {}; it[2].moved = new Date().toISOString() }
                   it[1] = st; hit = it[0];
-                  if (it[2] && typeof it[2] === 'object') { if (st === 'done') it[2].doneAt = new Date().toISOString().slice(0,10); else delete it[2].doneAt }
+                  if (st === 'done') { if (!(it[2] && typeof it[2] === 'object')) it[2] = {}; it[2].doneAt = new Date().toISOString().slice(0,10) }
+                  else if (it[2] && typeof it[2] === 'object') { delete it[2].doneAt; if (!Object.keys(it[2]).length) it.length = 2 }
                 }
                 if (!hit) throw new Error('No roadmap item ' + want);
                 out = st + ': ' + hit;
+                """)
+        case "set_roadmap_kind":
+            guard let item = a["item"] as? String, let k = a["kind"] as? String, k.isEmpty || RoadItem.kinds.contains(k) else {
+                return ("item and kind (core | test | tutorial | enhancement | later | \"\") are required", true)
+            }
+            let r = editBoard(board, """
+                const want = \(jsonString(item)); const k = \(jsonString(k)); const proposed = \(a["proposed"] as? Bool == true ? "true" : "false");
+                const slug = s => s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48);
+                let hit = null;
+                for (const t of b.tracks || []) for (const it of t.items || []) if (it[0] === want || slug(it[0]) === slug(want)) {
+                  if (it.length < 2) it[1] = 'todo';
+                  if (k) { if (!(it[2] && typeof it[2] === 'object')) it[2] = {}; it[2].kind = k; if (proposed) it[2].kindProposed = true; else delete it[2].kindProposed }
+                  else if (it[2] && typeof it[2] === 'object') { delete it[2].kind; delete it[2].kindProposed; if (!Object.keys(it[2]).length) it.length = 2 }
+                  hit = it[0];
+                }
+                if (!hit) throw new Error('No roadmap item ' + want);
+                out = (k || 'guessed') + ': ' + hit;
+                """)
+            if !r.1 { ui(["action": "refresh", "board": board]) }
+            return r
+        case "keep_kinds", "undo_kinds":                     // app-only (Keep / Undo on a chapter Claude tagged)
+            guard let ch = a["chapter"] as? String else { return ("chapter is required", true) }
+            let keep = name == "keep_kinds"
+            return editBoard(board, """
+                const ch = \(jsonString(ch)), keep = \(keep ? "true" : "false"); let n = 0;
+                const t = (b.tracks || []).find(x => x.name === ch); if (!t) throw new Error('No chapter ' + ch);
+                for (const it of t.items || []) if (it[2] && typeof it[2] === 'object' && it[2].kindProposed) {
+                  delete it[2].kindProposed; if (!keep) delete it[2].kind; n++;
+                  if (!Object.keys(it[2]).length) it.length = 2;
+                }
+                out = (keep ? 'kept ' : 'undid ') + n + ' kinds in ' + ch;
                 """)
         case "set_requirement_status":
             guard let id = a["id"] as? String, let st = a["status"] as? String else { return ("id and status are required", true) }
@@ -207,6 +243,7 @@ enum SteerifyMCP {
             if let r = a["request"] as? String, !r.isEmpty { meta["req"] = r; meta["at"] = String(RequestLog.now().prefix(10)) }
             if let f = a["for"] as? String, !f.isEmpty { meta["for"] = f }
             if let ar = a["area"] as? String, !ar.isEmpty { meta["area"] = ar }
+            if let k = a["kind"] as? String, RoadItem.kinds.contains(k) { meta["kind"] = k }
             let r = editBoard(board, """
                 const ch = \(jsonString(ch)), text = \(jsonString(text)), st = \(jsonString(a["status"] as? String ?? "todo"));
                 const meta = \(jsonString(meta)), create = \(a["create"] as? Bool == true ? "true" : "false"), area = \(jsonString(a["area"] as? String ?? ""));
@@ -220,7 +257,14 @@ enum SteerifyMCP {
             if !r.1 { ui(["action": "refresh", "board": board]) }
             return r
         case "add_chapter":
-            guard let name = a["name"] as? String, !name.isEmpty, let items = a["items"] as? [String], !items.isEmpty else { return ("name and items are required", true) }
+            // items: plain texts, or {text, kind} so Claude says which key results are the core.
+            let items: [[Any]] = (a["items"] as? [Any] ?? []).compactMap { x in
+                if let t = x as? String, !t.isEmpty { return [t, "todo"] }
+                guard let o = x as? [String: Any], let t = o["text"] as? String, !t.isEmpty else { return nil }
+                if let k = o["kind"] as? String, RoadItem.kinds.contains(k) { return [t, "todo", ["kind": k]] }
+                return [t, "todo"]
+            }
+            guard let name = a["name"] as? String, !name.isEmpty, !items.isEmpty else { return ("name and items are required", true) }
             let reqs = a["requirements"] as? [[String: Any]] ?? []
             let day = String(RequestLog.now().prefix(10))
             let r = editBoard(board, """
@@ -229,7 +273,7 @@ enum SteerifyMCP {
                 b.tracks = b.tracks || [];
                 if (b.tracks.some(t => t.name === name && !t.draft)) throw new Error('Chapter already on the roadmap: ' + name);
                 b.tracks = b.tracks.filter(t => t.name !== name);
-                const t = { name, area: area || undefined, draft: true, items: items.map(x => [x, 'todo']) };
+                const t = { name, area: area || undefined, draft: true, items };
                 if (obj) t.objective = obj; if (req) t.request = req;
                 b.tracks.push(t);
                 if (reqs.length) {
@@ -264,6 +308,11 @@ enum SteerifyMCP {
                 if let st = a["status"] as? String { r["status"] = st }
                 if let bc = a["became"] as? [String] { r["became"] = Array(NSOrderedSet(array: (r["became"] as? [String] ?? []) + bc)) }
                 if let n = a["note"] as? String { r["note"] = n }
+                // Claude's correction of the kind: the suggestion stays as `guess`, so the triage learns (TriageLessons).
+                if let k = (a["kind"] as? String).flatMap(RequestKind.init(rawValue:)), k.rawValue != r["kind"] as? String {
+                    if r["guess"] == nil { r["guess"] = r["kind"] }
+                    r["kind"] = k.rawValue; r["kindBy"] = "claude"
+                }
                 r["updated"] = RequestLog.now()
             }
             if !ok { return ("no request \(id)", true) }

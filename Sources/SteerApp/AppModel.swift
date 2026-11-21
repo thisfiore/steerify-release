@@ -83,6 +83,8 @@ final class AppModel: ObservableObject {
     /// Answers waiting for a session, and what was just sent to sessions (Nudges.swift).
     @Published var nudges: [Nudge] = []
     @Published var recentPings: [Nudge] = []
+    /// Deploys to tell sessions that waited on them (DeployWake.swift), by session id.
+    var deployWakes: [UUID: PendingWake] = [:]
     var notified = Set<String>()
     private var statusWatcher: StatusWatcher?
     private var nudgeTimer: Timer?

@@ -435,6 +435,7 @@ extension AppModel {
                 Deploys.append(DeployRecord(repo: repo.name, commit: commit, at: BoardStore.now(), by: "steerify deploy",
                                             committedAt: Git.run(repo.path, ["log", "-1", "--format=%cI", commit])), in: p.boardDir)
                 self.markLive(p)
+                self.wakeAfterDeploy(repo, commit: commit, in: p)   // the session that waited on this deploy finishes up
                 // A deployed app restarts: ask its live check again until it answers with the new version.
                 if p.release?.repos[repo.name]?.liveCheck != nil {
                     for delay in [5, 20, 60, 150] {

@@ -114,6 +114,46 @@ struct RoadItem: Identifiable, Hashable {
     var request: String? = nil
     var forChapter: String? = nil
     var doneAt: String? = nil
+    /// Last status change (meta.moved, ISO), else when it was done or filed: the chapter's activity (chapter-order).
+    var movedAt: String? = nil
+    /// What the key result is for: "core" (the objective is met when every core item is done) or an extra:
+    /// "test", "tutorial", "enhancement", "later". Set by Claude or by you (meta.kind); nil = guessed from the words.
+    var kindTag: String? = nil
+    /// The kind was proposed by Claude and waits for your Keep / Undo on the chapter.
+    var kindProposed: Bool = false
+
+    static let kinds = ["core", "test", "tutorial", "enhancement", "later"]
+    /// The kind in use: the tag, else a guess from the text (a "Later: …" idea, a tutorial, a test project…).
+    var kind: String { kindTag ?? Self.guessKind(text) }
+    var isCore: Bool { kind == "core" }
+    var kindGuessed: Bool { kindTag == nil }
+
+    static func guessKind(_ text: String) -> String {
+        let t = text.lowercased().trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("later") || t.hasPrefix("someday") || t.hasPrefix("maybe") || t.hasPrefix("nice to have") || t.hasPrefix("idea:") { return "later" }
+        if t.hasPrefix("tutorial") || t.hasPrefix("video") || t.hasPrefix("docs:") || t.hasPrefix("launch pass") { return "tutorial" }
+        if t.hasPrefix("test ") || t.hasPrefix("tests") || t.hasPrefix("test:") || t.hasPrefix("usability study") || t.hasPrefix("e2e") { return "test" }
+        if t.hasPrefix("polish") || t.hasPrefix("enhancement") || t.hasPrefix("refine") { return "enhancement" }
+        return "core"
+    }
+}
+
+/// OKR reading of a chapter: the core decides whether the objective is met; extras never hold it back.
+struct ChapterProgress {
+    let core: [RoadItem], extras: [RoadItem]
+    var coreDone: Int { core.filter { $0.status == "done" }.count }
+    var extrasDone: Int { extras.filter { $0.status == "done" }.count }
+    /// Extras that are still promised work (later ideas are not).
+    var extrasOpen: Int { extras.filter { $0.status != "done" && $0.kind != "later" }.count }
+    var fraction: Double { core.isEmpty ? 0 : Double(coreDone) / Double(core.count) }
+    var coreReleased: Bool { !core.isEmpty && coreDone == core.count }
+    /// The day the last core key result was marked done (when known).
+    var releasedOn: String? { coreReleased ? core.compactMap(\.doneAt).max() : nil }
+    init(_ items: [RoadItem]) {
+        let c = items.filter(\.isCore)
+        // A chapter with no core at all (only extras): every item counts, as before.
+        if c.isEmpty { core = items; extras = [] } else { core = c; extras = items.filter { !$0.isCore } }
+    }
 }
 /// A roadmap chapter (track). `draft`: drafted by Claude from a feature request, waiting for your OK.
 struct Chapter: Identifiable, Hashable { var id: String { name }; let name: String; let area: String; let draft: Bool; let request: String?; let objective: String? }
@@ -155,6 +195,8 @@ final class BoardStore: ObservableObject {
     @Published private(set) var links: [SessionLink] = [] { didSet { memo = [:] } }
     /// Local AI: roadmap proposals read from recent commits (LocalAI.swift), never applied by themselves.
     @Published var commitProposals: [RoadProposal] = []
+    /// Local AI: key results a recent Claude session is working on (LocalAI.swift), never applied by themselves.
+    @Published var sessionProposals: [RoadProposal] = []
     var commitCheckedAt = Date.distantPast
     private var manifestTime: Date?
 
@@ -243,7 +285,10 @@ final class BoardStore: ObservableObject {
                 let area = (meta?["area"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? str(t["area"])
                 return RoadItem(text: text, status: pair.count > 1 ? str(pair[1]) : "todo", track: str(t["name"]), area: area,
                                 request: meta?["req"] as? String, forChapter: (meta?["for"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                                doneAt: meta?["doneAt"] as? String)
+                                doneAt: meta?["doneAt"] as? String,
+                                movedAt: (meta?["moved"] ?? meta?["doneAt"] ?? meta?["at"]) as? String,
+                                kindTag: (meta?["kind"] as? String).flatMap { RoadItem.kinds.contains($0) ? $0 : nil },
+                                kindProposed: meta?["kindProposed"] as? Bool ?? false)
             }
         }
 
@@ -284,6 +329,7 @@ final class BoardStore: ObservableObject {
 
     private var choices: [String: Any] { store["choices"] as? [String: Any] ?? [:] }
 
+    func choiceMapEntry(_ key: String) -> [String: Any]? { choiceMap[key] }
     func verdict(_ key: String) -> Verdict {
         let c = choiceMap[key] ?? [:]
         return Verdict(pick: c["pick"], note: c["note"] as? String ?? "", at: c["at"] as? String, v: c["v"] as? Int,
@@ -478,8 +524,8 @@ final class BoardStore: ObservableObject {
             if s > (best?.1 ?? 0) { best = (t, s) }
         }
         guard let b = best, b.1 >= 0.75 else { return nil }
-        let items = roadmap.filter { $0.track == b.0 }
-        return (b.0, items.filter { $0.status == "done" }.count, items.count)
+        let p = ChapterProgress(roadmap.filter { $0.track == b.0 })   // the core, like the chapter header
+        return (b.0, p.coreDone, p.core.count)
     }
 
     private func update(_ key: String, _ change: (inout [String: Any]) -> Void) {
@@ -661,6 +707,7 @@ struct RoadProposal: Identifiable, Hashable {
     let evidence: String
     let sure: Bool             // explicit link (sure) or a strong text match (likely, unchecked by default)
     var fromCommit = false     // read from a recent commit (Local AI), never sure
+    var fromSession = false    // read from a Claude session working on it (Local AI), never sure, never past wip
 }
 
 extension BoardStore {
@@ -702,6 +749,8 @@ extension BoardStore {
                 out.append(RoadProposal(item: r.text, from: r.status, to: b.0, evidence: b.1, sure: b.2))
             } else if best == nil, let c = commitProposals.first(where: { $0.item == r.text && $0.from == r.status }) {
                 out.append(c)          // no delivery says anything: what the commits say
+            } else if best == nil, let c = sessionProposals.first(where: { $0.item == r.text && $0.from == r.status }) {
+                out.append(c)          // nor the commits: what a session working on it says
             }
         }
         return out
@@ -714,6 +763,18 @@ extension BoardStore {
         let dir = project.boardDir
         DispatchQueue.global(qos: .userInitiated).async {
             for (item, st) in changes { _ = SteerifyMCP.call("set_roadmap_status", ["item": item, "status": st], board: dir) }
+            DispatchQueue.main.async { self.reload() }
+        }
+        return before
+    }
+
+    /// Set key-result kinds (item text → kind, nil = back to the guess) and reload. Returns the previous tags (for undo).
+    @discardableResult
+    func setRoadKind(_ changes: [(String, String?)]) -> [(String, String?)] {
+        let before = changes.compactMap { c in roadmap.first { $0.text == c.0 }.map { ($0.text, $0.kindTag) } }
+        let dir = project.boardDir
+        DispatchQueue.global(qos: .userInitiated).async {
+            for (item, k) in changes { _ = SteerifyMCP.call("set_roadmap_kind", ["item": item, "kind": k ?? ""], board: dir) }
             DispatchQueue.main.async { self.reload() }
         }
         return before

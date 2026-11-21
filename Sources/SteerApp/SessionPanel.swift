@@ -4,13 +4,19 @@ import SwiftUI
 
 enum SessionName {
     static let verbs: [String: String] = ["fix": "Fix", "release": "Ship", "plan": "Plan", "build": "Build", "check": "Check",
-                                          "look": "Look", "resume": "Resume", "ship": "Release", "consolidate": "Tidy", "choose": "Decide"]
+                                          "look": "Look", "resume": "Resume", "ship": "Release", "consolidate": "Tidy", "choose": "Decide",
+                                          "intake": "New"]
     private static let filler: Set<String> = ["the", "a", "an", "of", "on", "in", "for", "with", "and", "to", "from", "steerify", "chapter",
                                                "requirements", "release", "consolidate", "is", "are", "by", "at", "+"]
 
     /// "Multi-shot on prod: 5 bugs found while making the tutorial" + fix → "Fix · Multi-shot bugs"
     static func short(_ title: String, intent: String?) -> String {
         var t = title
+        // A request: its words are the subject ("Request: In steerify I clicked…" used to give "Request Read").
+        if t.hasPrefix("Request: ") {
+            let subject = requestWords(String(t.dropFirst(9)))
+            return intent.flatMap { verbs[$0] }.map { "\($0) · \(subject)" } ?? subject
+        }
         for p in ["Chapter: ", "Requirements: ", "Consolidate: ", "Release: ", "Release setup: ", "Steerify: "] where t.hasPrefix(p) { t = String(t.dropFirst(p.count)) }
         t = t.replacingOccurrences(of: "\\(.*?\\)", with: "", options: .regularExpression)
         // Before the colon is usually the subject; keep one telling word after it.
@@ -32,6 +38,43 @@ enum SessionName {
         if subject.isEmpty { subject = String(t.prefix(18)) }
         guard let i = intent, let v = verbs[i] else { return subject }
         return "\(v) · \(subject)"
+    }
+
+    /// The first words of a request, without the way people start one ("In steerify I clicked …", "We should …").
+    static func requestWords(_ text: String) -> String {
+        let lead: Set<String> = ["in", "on", "steerify", "i", "we", "you", "it", "should", "would", "could", "can", "like", "to", "want",
+                                 "please", "the", "a", "an", "just", "so", "think", "maybe", "also", "when", "if", "clicked", "click",
+                                 "got", "get", "see", "saw", "there", "is", "are", "this", "that", "my", "let", "me", "make", "need", "and",
+                                 "i'd", "i’d", "we'd", "we’d", "let's", "let’s", "i'm", "i’m", "have", "has", "had", "of", "for", "with"]
+        let first = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+        var words = first.replacingOccurrences(of: "[\u{2460}-\u{2473}\t]", with: " ", options: .regularExpression)
+            .split(separator: " ").map { $0.trimmingCharacters(in: .punctuationCharacters) }.filter { !$0.isEmpty }
+        while let w = words.first, lead.contains(w.lowercased()), words.count > 2 { words.removeFirst() }
+        var subject = ""
+        for w in words {
+            if !subject.isEmpty && subject.count + w.count + 1 > 24 { break }
+            subject += subject.isEmpty ? w : " " + w
+        }
+        // No dangling "a", "the", "of" at the end.
+        var tail = subject.split(separator: " ").map(String.init)
+        while tail.count > 2, let w = tail.last, lead.contains(w.lowercased()) { tail.removeLast() }
+        subject = tail.joined(separator: " ")
+        if subject.isEmpty { subject = String(first.prefix(22)) }
+        return subject.prefix(1).uppercased() + subject.dropFirst()
+    }
+
+    /// 2–4 words naming a request (Apple Intelligence). nil when it is off: the caller keeps the words.
+    static func requestSubject(_ text: String) async -> String? {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count >= 12 else { return nil }
+        let rules = "You name requests for a project board. Answer only with a title of 2 to 4 words saying what the request is about "
+            + "(the thing to change), like \"Tasks tab session label\" or \"Export orders to CSV\". No quotes, no period, "
+            + "never the words Request, Issue or Steerify."
+        guard let a = await LocalAI.ask(key: "rname|" + LocalAI.hash(clean), instructions: rules, prompt: String(clean.prefix(1500))) else { return nil }
+        let t = (a.split(whereSeparator: \.isNewline).first.map(String.init) ?? "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’.*#").union(.whitespaces))
+        guard (1...6).contains(t.split(separator: " ").count), t.count <= 40 else { return nil }
+        return t
     }
 }
 
@@ -99,7 +142,7 @@ struct SessionChip2: View {
                     let tag = wrapped ? nil : stage
                     if verb != nil || tag != nil {
                         HStack(spacing: 5) {
-                            if let verb { Text(verb.uppercased()).font(Brand.label(8)).tracking(0.6).foregroundStyle(Brand.mute) }
+                            if let verb { Text(verb.uppercased()).font(Brand.label(8)).tracking(0.6).foregroundStyle(Brand.mute).lineLimit(1).fixedSize() }
                             if let tag { StageTag(tab: tag) }
                         }
                     }
@@ -122,23 +165,26 @@ struct SessionChip2: View {
                         Text("your turn").font(.system(size: S(10))).foregroundStyle(Brand.violet.opacity(0.85)).lineLimit(1).fixedSize()
                     }.padding(.top, 2)
                 } else if vertical || selected {
-                    Text(subtitle(outlook, turn) + (vertical && outlook == nil && turn == nil ? " · " + session.repo.name : ""))
+                    Text(subtitle(outlook, turn) + (vertical && outlook == nil && turn == nil ? " · " + whereName : ""))
                         .font(.system(size: S(10))).foregroundStyle(subtitleColor(outlook, turn))
                         .lineLimit(vertical && outlook?.isDone == false ? 3 : 1).fixedSize(horizontal: false, vertical: true)
                 }
             }
             if vertical { Spacer(minLength: 4) }
             if !vertical, let turn { turnButton(turn) }
-            if case .next? = outlook, hover || selected {
+            // Hover controls keep their space when hidden (opacity, not if): showing them must never
+            // narrow the chip, rewrap the name or push the neighbours.
+            let showControls = hover || selected
+            if case .next? = outlook {
                 Button { model.goOn(session) } label: {
                     Image(systemName: "arrow.right.circle.fill").font(.system(size: S(15))).foregroundStyle(Brand.amber)
                 }
                 .buttonStyle(SteerButton()).pointerStyle(.link).help("Tell the session to take the next step it named")
+                .opacity(showControls ? 1 : 0).allowsHitTesting(showControls)
             }
-            if hover || selected {
-                Button(action: close) { Image(systemName: "xmark").font(.system(size: S(8), weight: .bold)) }
-                    .buttonStyle(SteerButton()).foregroundStyle(Brand.mute).help("Close session (⌘W)")
-            }
+            Button(action: close) { Image(systemName: "xmark").font(.system(size: S(8), weight: .bold)) }
+                .buttonStyle(SteerButton()).foregroundStyle(Brand.mute).help("Close session (⌘W)")
+                .opacity(showControls ? 1 : 0).allowsHitTesting(showControls)
         }
         .padding(.horizontal, 10).padding(.vertical, vertical ? 8 : 5)
         .frame(maxWidth: vertical ? .infinity : nil, alignment: .leading)
@@ -172,6 +218,11 @@ struct SessionChip2: View {
         let parts = session.title.components(separatedBy: " · ")
         if parts.count > 1, SessionName.verbs.values.contains(parts[0]) { return (parts[0], parts.dropFirst().joined(separator: " · ")) }
         return (nil, session.title)
+    }
+
+    /// Where the session works: its repo. A task works across the project (not one repo), so it names the project.
+    private var whereName: String {
+        stage == .task ? (model.projects.first { $0.id == session.projectId }?.name ?? session.repo.name) : session.repo.name
     }
 
     private func subtitle(_ o: SessionOutlook?, _ t: BoardTurn?) -> String {
@@ -233,14 +284,24 @@ struct DoneTick: View {
 struct PulseDot: View {
     let color: Color
     var pulsing = false
-    @State private var on = false
     var body: some View {
+        if pulsing {
+            // Stepped ring (4 frames, ~3 per second) instead of a repeatForever animation: that one redrew the
+            // whole window 60 times a second for every working session (25–30% CPU with the app untouched).
+            TimelineView(.periodic(from: .now, by: 0.35)) { t in
+                dot(step: Int(t.date.timeIntervalSinceReferenceDate / 0.35) % 4)
+            }
+        } else { dot(step: nil) }
+    }
+    private func dot(step: Int?) -> some View {
         ZStack {
-            if pulsing { Circle().stroke(color.opacity(on ? 0 : 0.7), lineWidth: 2).frame(width: on ? 14 : 7, height: on ? 14 : 7) }
+            if let step {
+                let d = 7 + CGFloat(step) * 7 / 3
+                Circle().stroke(color.opacity(0.7 * (1 - Double(step) / 3)), lineWidth: 2).frame(width: d, height: d)
+            }
             Circle().fill(color).frame(width: 7, height: 7)
         }
         .frame(width: 14, height: 14)
-        .onAppear { if pulsing { withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { on = true } } }
     }
 }
 

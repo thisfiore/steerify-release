@@ -27,6 +27,12 @@ extension AppModel {
                                     detail: s.title, button: "Open", claude: true) { [weak self] in self?.selectedSession[p.id] = s.id })
         }
 
+        let rel = releasable(p.id)
+        if let r = rel.first {
+            out.append(NextPlanStep(id: "release", text: rel.count == 1 ? "An approved change is ready to release" : "\(rel.count) approved changes ready to release",
+                                    detail: rel.count == 1 ? r.title : "one release, or pick what goes in", button: "Open", claude: false) { openReady() })
+        }
+
         let groups = groupedNudges(p.id)
         if let g = groups.first {
             out.append(NextPlanStep(id: "ready", text: groups.count == 1 ? "Your answers are ready to build" : "\(groups.count) answers ready to build",

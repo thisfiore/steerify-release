@@ -138,7 +138,8 @@ struct ProjectCard: View {
 
     var body: some View {
         let b = model.board(for: project)
-        let road = b.roadmap
+        // Core key results only: tests, tutorials, enhancements and later ideas never make a project look behind.
+        let road = b.roadmap.filter(\.isCore)
         let done = road.filter { $0.status == "done" }.count
         let frac = road.isEmpty ? 0 : Double(done) / Double(road.count)
         let choices = b.decisions.filter { !b.isDecided($0) && !b.isParked($0) }.count
@@ -165,7 +166,7 @@ struct ProjectCard: View {
                 PixelProgress(fraction: frac, working: working)
                 HStack(spacing: 0) {
                     Text("\(Int(frac * 100))%").font(.system(size: S(12), weight: .bold).monospacedDigit()).foregroundStyle(Brand.green)
-                    Text(" of the roadmap · \(done)/\(road.count)").font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
+                    Text(" of the core roadmap · \(done)/\(road.count)").font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
                 }
             }
             VStack(alignment: .leading, spacing: 3) {

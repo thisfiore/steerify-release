@@ -104,7 +104,7 @@ final class SinceYouLeft: ObservableObject {
             let toTest = b.ships.filter { model.chapterOf(ref: "test:" + $0.id, title: $0.title, in: b) == t && [.toTest, .retest].contains(b.shipState($0)) }.count
             let next = items.filter { $0.status != "done" }.sorted { (order[$0.status] ?? 9) < (order[$1.status] ?? 9) }.first
             let line2 = toTest > 0 ? "Waiting on you: \(toTest) to test" : next.map { "Next: " + short($0.text, 70) } ?? "Chapter complete"
-            out.append(ChapterNews(chapter: t, area: items.first?.area ?? "", done: items.filter { $0.status == "done" }.count, total: items.count,
+            out.append(ChapterNews(chapter: t, area: items.first?.area ?? "", done: ChapterProgress(items).coreDone, total: ChapterProgress(items).core.count,
                                    facts: unique, line1: plainLine(unique), line2: line2, waiting: toTest > 0,
                                    ref: toTest > 0 ? "test:" + (b.ships.first { model.chapterOf(ref: "test:" + $0.id, title: $0.title, in: b) == t && [.toTest, .retest].contains(b.shipState($0)) }?.id ?? "")
                                        : "track:" + BoardFiles.slug(t)))

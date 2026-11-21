@@ -156,6 +156,10 @@ enum SteerifyMain {
             MainActor.assumeIsolated { SessionOutlookCheck.run(CommandLine.arguments[i + 1]) }
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--deploy-wake-check"), i + 1 < CommandLine.arguments.count {
+            MainActor.assumeIsolated { DeployWakeCheck.run(CommandLine.arguments[i + 1]) }
+            exit(0)
+        }
         SteerApp.main()
     }
 }
@@ -247,6 +251,7 @@ struct SteerApp: App {
         if let i = a.firstIndex(of: "--deploy"), i + 1 < a.count, let p = m.project, let r = p.repos.first(where: { $0.name == a[i + 1] }) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { m.deploy(r, in: p) }
         }
+        if a.contains("--origin-ping-demo") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { OriginPingDemo.run(m) } }
         if let i = a.firstIndex(of: "--flow-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SessionFlowDemo.run(m, a[i + 1]) } }
         if let i = a.firstIndex(of: "--open-shells"), i + 1 < a.count, let n = Int(a[i + 1]) {
             for k in 0..<n { m.newSession(.shell, repo: m.project?.repos[k % max(1, m.project?.repos.count ?? 1)]) }

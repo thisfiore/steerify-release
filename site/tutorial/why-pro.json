@@ -1,0 +1,76 @@
+{
+ "title": "Steerify for people with 99 terminals",
+ "seconds": 140.5,
+ "chapters": [
+  {
+   "id": "b01",
+   "t": 0,
+   "label": "99 terminals"
+  },
+  {
+   "id": "b02",
+   "t": 4.94,
+   "label": "The problem is state"
+  },
+  {
+   "id": "b03",
+   "t": 12.15,
+   "label": "One board, in your repo"
+  },
+  {
+   "id": "b04",
+   "t": 24.59,
+   "label": "It starts as a request"
+  },
+  {
+   "id": "b05",
+   "t": 34.78,
+   "label": "Choices, visually"
+  },
+  {
+   "id": "b06",
+   "t": 46.28,
+   "label": "Requirements stay true"
+  },
+  {
+   "id": "b07",
+   "t": 57.07,
+   "label": "Sessions on the roadmap"
+  },
+  {
+   "id": "b08",
+   "t": 65.65,
+   "label": "Git, your way"
+  },
+  {
+   "id": "b09",
+   "t": 72.36,
+   "label": "Testing, tied to the feature"
+  },
+  {
+   "id": "b10",
+   "t": 89.48,
+   "label": "Release"
+  },
+  {
+   "id": "b11",
+   "t": 98.1,
+   "label": "Tasks, not code"
+  },
+  {
+   "id": "b12",
+   "t": 114.48,
+   "label": "What now?"
+  },
+  {
+   "id": "b13",
+   "t": 122.04,
+   "label": "Where you left off"
+  },
+  {
+   "id": "b14",
+   "t": 132.98,
+   "label": "One board"
+  }
+ ]
+}

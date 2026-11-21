@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How Steerify knows what a Claude Code session is doing · Hooks, not terminal scraping</title>
+<meta name="description" content="Steerify reads Claude Code session state from hooks and the session transcript, never from terminal output. Which hooks it uses, how working, idle and needs-you are told apart, and how it knows a question is waiting on you.">
+<link rel="canonical" href="https://steerify.dev/claude-code-session-status.html">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0d0f12">
+<meta name="author" content="Frenk">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Steerify">
+<meta property="og:url" content="https://steerify.dev/claude-code-session-status.html">
+<meta property="og:title" content="How Steerify knows what a Claude Code session is doing">
+<meta property="og:description" content="Hooks, never the terminal output. How Steerify tells working, idle, needs you and asks you apart.">
+<meta property="og:image" content="https://steerify.dev/assets/og-3.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","@id":"https://steerify.dev/claude-code-session-status.html#page","url":"https://steerify.dev/claude-code-session-status.html","headline":"How Steerify knows what a Claude Code session is doing","description":"Steerify reads Claude Code session state from hooks and the session transcript, never from terminal output.","inLanguage":"en","datePublished":"2026-11-21","dateModified":"2026-11-21","author":{"@type":"Person","name":"Frenk"},"isPartOf":{"@id":"https://steerify.dev/#site"},"about":{"@id":"https://steerify.dev/#app"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Steerify","item":"https://steerify.dev/"},{"@type":"ListItem","position":2,"name":"Session status","item":"https://steerify.dev/claude-code-session-status.html"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does Steerify get session state from Claude Code hooks or from the terminal output?","acceptedAnswer":{"@type":"Answer","text":"From hooks, never from the terminal output. Every session Steerify starts runs with a small hook file passed through claude --settings. To tell a finished session from one that asked you a question, Steerify also reads Claude's last reply in the session transcript."}},{"@type":"Question","name":"Which Claude Code hooks does Steerify use?","acceptedAnswer":{"@type":"Answer","text":"SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, StopFailure, Notification, PermissionRequest and SessionEnd. They are added next to your own hooks, which keep running."}},{"@type":"Question","name":"How does Steerify know Claude asked me a question?","acceptedAnswer":{"@type":"Answer","text":"The Stop hook alone cannot tell finished from asked you something. When a session goes idle, Steerify reads Claude's last reply in the session's .jsonl transcript. A question shows as asks you, a next step Claude would take shows as next, and work that waits on the board counts as done. No tokens are spent on this."}},{"@type":"Question","name":"Does Steerify change my Claude Code settings or hooks?","acceptedAnswer":{"@type":"Answer","text":"No. The hook file is Steerify's own and is passed per session with claude --settings. Your settings files are not edited and your own hooks keep running."}},{"@type":"Question","name":"Does watching sessions use CPU or tokens?","acceptedAnswer":{"@type":"Answer","text":"No polling and no tokens. The hook writes one small status file per event and the app is woken by macOS file events. Nothing runs while nothing happens."}}]}]}</script>
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/site.css?v=10">
+<script src="assets/brand.js?v=10" defer></script>
+<style>
+.vs h1 { font: 700 clamp(34px, 5vw, 60px)/1.05 var(--f-sans); letter-spacing: -.03em; margin-top: 14px }
+.vs .lead { margin-top: 18px; max-width: 720px }
+.vs h2 { font-size: clamp(24px, 3vw, 34px); margin-top: 56px }
+.vs p, .vs li { color: #c8c2b3; max-width: 760px }
+.vs ul { padding-left: 20px; margin-top: 14px }
+.vs li { margin-top: 6px }
+.vs code { font: 13.5px var(--f-mono); color: var(--amber); background: #050607; border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px }
+.vs-table { width: 100%; max-width: 860px; border-collapse: collapse; margin-top: 24px; font-size: 15.5px }
+.vs-table th, .vs-table td { text-align: left; vertical-align: top; padding: 14px 16px 14px 0; border-top: 1px solid var(--line); color: #c8c2b3 }
+.vs-table thead th { font: 12px/1 var(--f-pix); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); border-top: 0 }
+.vs-table td b { color: var(--cream) }
+.dot { display: inline-block; width: 9px; height: 9px; margin-right: 8px; background: var(--mute) } .dot.b { background: #8fb0ff } .dot.v { background: #c4a7ff } .dot.a { background: var(--amber) }
+@media (max-width: 760px) { .vs-table { font-size: 14px } .vs-table th, .vs-table td { padding-right: 10px } }
+.vs .note { margin-top: 56px; font-size: 13.5px; color: var(--mute) }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span data-wheel="tile"></span><b>STEERIFY</b></a>
+    <nav>
+      <a href="index.html#decide">Deciding</a>
+      <a href="index.html#how">How it works</a>
+      <a href="index.html#real">Screenshots</a>
+      <a href="releases.html">What's new</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a class="btn sm amber" href="index.html#get">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="vs">
+    <div class="wrap">
+      <span class="eyebrow">Under the hood</span>
+      <h1>How Steerify knows what a Claude Code session is doing</h1>
+      <p class="lead">Hooks, never the terminal output. And one look at the transcript, to tell "finished" from "asked you something".</p>
+      <p class="aside" style="margin-top:12px;font-size:22px">The question that sits in scrollback for 40 minutes, while you think Claude is still working. That one.</p>
+
+      <h2>The short answer</h2>
+      <p style="margin-top:14px">Every Claude Code session that Steerify starts carries a few <b>Claude Code hooks</b>. Each hook event flips the session's state in the app: working, idle, or needs you. When a session stops, Steerify reads <b>Claude's last reply in the session transcript</b> to see whether it is done or waiting on an answer. The terminal you see is a real terminal, and Steerify never reads what is printed in it.</p>
+
+      <h2>1. Hooks, added per session</h2>
+      <p style="margin-top:14px">Steerify starts each session with <code>claude --settings</code> and a small hook file of its own. Your settings files are not edited, and your own hooks keep running next to these:</p>
+      <ul>
+        <li><code>SessionStart</code>, <code>SessionEnd</code></li>
+        <li><code>UserPromptSubmit</code>, <code>PreToolUse</code>, <code>PostToolUse</code></li>
+        <li><code>Stop</code>, <code>StopFailure</code></li>
+        <li><code>Notification</code>, <code>PermissionRequest</code></li>
+      </ul>
+      <p style="margin-top:14px">The hook is a few lines of shell. It writes the name of the last event, and the time, to one small status file per session.</p>
+
+      <h2>2. From event to state</h2>
+      <table class="vs-table">
+        <thead><tr><th>Hook event</th><th>What you see</th></tr></thead>
+        <tbody>
+          <tr><td>A prompt, or any tool use</td><td><span class="dot b"></span><b>Working.</b> Claude is rowing.</td></tr>
+          <tr><td>Stop</td><td><span class="dot"></span><b>Idle.</b> Then the transcript decides what kind of idle (see below).</td></tr>
+          <tr><td>A permission request, or a notification</td><td><span class="dot a"></span><b>Needs you.</b> The tab is marked, and the menu bar shows a count.</td></tr>
+          <tr><td>Session end</td><td><span class="dot"></span><b>Ended.</b></td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:18px">The app watches the status folder with macOS file events (FSEvents). There is no polling: nothing runs while nothing happens.</p>
+
+      <h2>3. Finished, or asked you something?</h2>
+      <p style="margin-top:14px">A <code>Stop</code> event only says Claude stopped typing. It does not say why. So when a session goes idle, Steerify reads Claude's last reply from the session transcript (the <code>.jsonl</code> file Claude Code keeps for every conversation) and sorts it:</p>
+      <ul>
+        <li><b>A question that is not on the board</b> shows as <span class="dot v"></span>"asks you: …". The session stays open.</li>
+        <li><b>A next step Claude would take</b> shows as "next: …", with a Go on button.</li>
+        <li><b>Work that waits on the board</b> (a test, a choice, a release) counts as done. The board has it, so the chat no longer needs you.</li>
+        <li><b>Nothing left</b> counts as done.</li>
+      </ul>
+      <p style="margin-top:14px">This is plain reading of a local file. No model is called and no tokens are spent.</p>
+
+      <h2>4. Why not read the terminal?</h2>
+      <ul>
+        <li><b>It breaks.</b> Claude Code's screen is a text interface that changes between versions. A scraper has to be fixed every time it does.</li>
+        <li><b>It polls.</b> To notice a change on screen you have to keep looking at the screen. With 99 sessions, that is 99 loops.</li>
+        <li><b>It guesses.</b> Hooks are Claude Code telling you what happened. Screen text is you guessing.</li>
+      </ul>
+
+      <h2>Questions</h2>
+      <div class="faq" style="margin-top:20px">
+        <div><h3>Does it change my Claude Code setup?</h3><p>No. The hook file is passed per session. Sessions you start yourself, outside Steerify, are untouched.</p></div>
+        <div><h3>Where is the status kept?</h3><p>In Steerify's own folder under Application Support on your Mac. One tiny file per session, replaced on every event. Nothing leaves your machine.</p></div>
+        <div><h3>What does Steerify do with the state?</h3><p>It shows it on every session tab and roadmap item, counts what needs you in the menu bar, and <kbd>⌘J</kbd> jumps to the next thing waiting on you.</p></div>
+        <div><h3>Can I read the code?</h3><p>Yes, it is open source. Look at <code>Status.swift</code> and <code>SessionOutlook.swift</code> in the <a href="https://github.com/thisfiore/steerify-release">repository</a>.</p></div>
+      </div>
+
+      <div style="margin-top:44px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+        <a class="btn amber" href="index.html#get">Download Steerify</a>
+        <a class="btn" href="tutorial.html#why-pro">Watch: Steerify for 99 terminals (2 min)</a>
+      </div>
+
+      <p class="note">Steerify is an independent project and is not affiliated with Anthropic. Claude and Claude Code are Anthropic's trademarks. Checked against Steerify 0.5.5 on 21 November 2026. Spotted a mistake? <a href="https://github.com/thisfiore/steerify-release/issues">Open an issue</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-meta">
+      <span><span data-wheel></span> <b class="pix" style="color:var(--cream)">STEERIFY</b></span>
+      <span>Independent project · not affiliated with Anthropic or Apple · Claude and Apple Intelligence are their trademarks</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

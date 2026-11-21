@@ -44,12 +44,16 @@ struct RequestSheet: View {
     @State private var shots: [URL] = []              // your latest screenshots (RecentShots.swift)
     @State private var shotThumbs: [URL: NSImage] = [:]
     @State private var shotWatch: DispatchSourceFileSystemObject?
+    @State private var marks: [ShotMark] = []         // ShotMarker.swift: dots and areas on the pictures, ① in the text
+    @State private var shown: URL?                    // the picture shown big
     @FocusState private var focused: Bool
 
     private var board: BoardStore { model.board(for: project) }
     private var kind: RequestKind { kindSet ?? triage.kind }
     private var chapter: String? { chapterSet ?? triage.chapter }
     private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// A mark lives while its picture is attached and its badge is still in the text (delete ② in the text, the mark goes).
+    private var liveMarks: [ShotMark] { marks.filter { images.contains($0.img) && text.contains($0.badge) } }
     /// Opened from outside a project (menu bar, ⌃⌥N): the project is a question, so it is guessed and named on the button.
     private var pickProject: Bool { model.requestPickProject && model.projects.count > 1 }
 
@@ -64,6 +68,10 @@ struct RequestSheet: View {
                     Text("⌘↩ send · Esc").font(.system(size: S(10.5), design: .monospaced)).foregroundStyle(Brand.mute)
                 }
                 if model.requestPickProject && model.projects.count > 1 { projectPills }
+                if !images.isEmpty {
+                    ShotMarker(images: images, shown: $shown, marks: Binding(get: { liveMarks }, set: { marks = $0 }),
+                               onMark: addMark, onRemove: { u in images.removeAll { $0 == u } })
+                }
                 editor
                 if !shots.isEmpty { RecentShotsStrip(shots: shots, thumbs: shotThumbs, images: $images, onMore: pickOlder) }
                 attachments
@@ -73,7 +81,7 @@ struct RequestSheet: View {
                         .font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
                 } else { thinks }
                 actions
-                history
+                if images.isEmpty { history }   // a picture to mark takes its room
             }
             .padding(16)
             .background(RoundedRectangle(cornerRadius: 12).fill(Color(hex: 0x14161b)))
@@ -87,6 +95,7 @@ struct RequestSheet: View {
         .onDisappear { shotWatch?.cancel(); shotWatch = nil }
         .onChange(of: project.id) { _, _ in projectChanged() }
         .onChange(of: text) { _, _ in retriage(); guessProject() }
+        .onChange(of: images) { old, new in if let added = new.last(where: { !old.contains($0) }) { shown = added } }
         .onKeyPress(.escape) { close(); return .handled }
         .onExitCommand { close() }
     }
@@ -212,7 +221,7 @@ struct RequestSheet: View {
             }
             HStack(spacing: 6) {
                 ForEach(RequestKind.allCases) { k in
-                    Button { kindSet = k == triage.kind ? nil : k } label: { pill(k.label, k.color, filled: k == kind) }.buttonStyle(.plain).pointerStyle(.link)
+                    Button { kindSet = k == triage.kind ? nil : k } label: { pill(k.label, k.color, filled: k == kind) }.buttonStyle(.plain).pointerStyle(.link).help(k.rule)
                 }
                 Spacer()
                 Menu {
@@ -226,8 +235,8 @@ struct RequestSheet: View {
                 } label: {
                     Text(chapter.map { "About: \($0)" } ?? "About: no chapter").lineLimit(1).truncationMode(.tail)
                 }
-                .menuStyle(.borderlessButton).fixedSize().font(.system(size: S(11))).foregroundStyle(Brand.cream)
-                .frame(maxWidth: 300, alignment: .trailing)
+                .menuStyle(.borderlessButton).font(.system(size: S(11))).foregroundStyle(Brand.cream)
+                .frame(minWidth: 60, maxWidth: 260, alignment: .trailing).layoutPriority(-1)
             }
             Text(nextLine).font(.system(size: S(11))).foregroundStyle(Brand.ink.opacity(0.75)).fixedSize(horizontal: false, vertical: true)
         }
@@ -289,6 +298,17 @@ struct RequestSheet: View {
 
     // MARK: Behaviour
 
+    /// A new dot or area: next number, its badge at the end of the text, back to typing.
+    private func addMark(_ m: ShotMark) {
+        let n = (liveMarks.map(\.n).max() ?? 0) + 1
+        let mark = ShotMark(n: n, img: m.img, rect: m.rect)
+        marks.removeAll { $0.n == n }
+        marks.append(mark)
+        let sep = text.isEmpty || text.hasSuffix(" ") || text.hasSuffix("\n") ? "" : " "
+        text += sep + mark.badge + " "
+        focused = true
+    }
+
     private func setUp() {
         text = model.requestSeed; model.requestSeed = ""
         if let k = model.requestKindSeed { kindSet = k; model.requestKindSeed = nil }
@@ -303,6 +323,14 @@ struct RequestSheet: View {
         // Test hooks: `--request-img <png>` attaches a picture, `--request-send file|claude` sends after 2 s.
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--request-img"), i + 1 < a.count { images.append(URL(fileURLWithPath: a[i + 1])) }
+        // `--request-mark "dot:x,y;rect:x,y,w,h"` (0–1) marks the last picture, as ⌘-click and drag would.
+        if let i = a.firstIndex(of: "--request-mark"), i + 1 < a.count, let u = images.last {
+            for part in a[i + 1].split(separator: ";") {
+                let v = part.split(separator: ":").last?.split(separator: ",").compactMap { Double($0) } ?? []
+                if v.count == 2 { addMark(ShotMark(n: 0, img: u, rect: CGRect(x: v[0], y: v[1], width: 0, height: 0))) }
+                if v.count == 4 { addMark(ShotMark(n: 0, img: u, rect: CGRect(x: v[0], y: v[1], width: v[2], height: v[3]))) }
+            }
+        }
         // `--request-switch <project>`: another project takes the window 1 s in (the request must stay here).
         if let i = a.firstIndex(of: "--request-switch"), i + 1 < a.count {
             let other = a[i + 1]
@@ -363,7 +391,8 @@ struct RequestSheet: View {
     private func retriage() {
         let chs = board.chapters.filter { !$0.draft }.map { c in (name: c.name, items: board.roadmap.filter { $0.track == c.name }.map(\.text)) }
         let ctx = model.chapter(of: context, in: project)
-        let words = RequestTriage.classify(text, chapters: chs, context: ctx)
+        let lessons = TriageLessons.load(project.boardDir)
+        let words = RequestTriage.classify(text, chapters: chs, context: ctx, lessons: lessons)
         triage = words
         // Apple Intelligence refines it once you pause typing (free, on this Mac); the word model stays if it is off.
         let asked = text
@@ -371,7 +400,7 @@ struct RequestSheet: View {
         refining = Task {
             try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled, asked == text else { return }
-            if let better = await RequestTriage.refine(asked, chapters: chs, context: ctx, words: words), asked == text { triage = better }
+            if let better = await RequestTriage.refine(asked, chapters: chs, context: ctx, words: words, lessons: lessons), asked == text { triage = better }
         }
     }
 
@@ -445,7 +474,11 @@ struct RequestSheet: View {
     private func send(fileOnly: Bool) {
         guard !empty else { return }
         let k = kind, ch = chapter
-        let id = model.fileRequest(projectId: project.id, text: text, kind: k, chapter: ch, images: images,
+        // Marked pictures go as a copy with the dots and areas drawn in; the original stays as it was.
+        let drops = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Steerify/drops", isDirectory: true)
+        let live = liveMarks
+        let sent = images.map { u in ShotBurn.burn(u, marks: live.filter { $0.img == u }, into: drops) ?? u }
+        let id = model.fileRequest(projectId: project.id, text: text, kind: k, guess: triage.kind, chapter: ch, images: sent,
                                    context: context, contextTitle: contextTitle, fileOnly: fileOnly)
         close()
         guard id != nil else { model.showToast("Could not file the request"); return }

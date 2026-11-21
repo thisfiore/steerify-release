@@ -87,23 +87,24 @@ struct PixelCTA: View {
     var subtitle: String? = nil
     var color: Color = Brand.amber
     var small = false
+    var icon = "play"          // a PixelIcon name: "ship" (set sail), "rocket" (release)
     let action: () -> Void
     var body: some View {
         Button(action: action) { EmptyView() }
-            .buttonStyle(PixelCTAStyle(title: title, subtitle: subtitle, color: color, small: small))
+            .buttonStyle(PixelCTAStyle(title: title, subtitle: subtitle, color: color, small: small, icon: icon))
     }
 }
 
 private struct PixelCTAStyle: ButtonStyle {
-    let title: String; let subtitle: String?; let color: Color; var small = false
-    func makeBody(configuration: Configuration) -> some View { CTALabel(title: title, subtitle: subtitle, color: color, small: small, pressed: configuration.isPressed) }
+    let title: String; let subtitle: String?; let color: Color; var small = false; var icon = "play"
+    func makeBody(configuration: Configuration) -> some View { CTALabel(title: title, subtitle: subtitle, color: color, small: small, icon: icon, pressed: configuration.isPressed) }
     struct CTALabel: View {
-        let title: String; let subtitle: String?; let color: Color; var small = false; let pressed: Bool
+        let title: String; let subtitle: String?; let color: Color; var small = false; var icon = "play"; let pressed: Bool
         @State private var hover = false
         var body: some View {
             let px: CGFloat = small ? 2 : 3
             HStack(spacing: small ? 6 : 10) {
-                PixelIcon(name: "play", size: S(small ? 9 : 13)).foregroundStyle(Color(hex: 0x1a1200))
+                PixelIcon(name: icon, size: S(small ? 9 : (icon == "play" ? 13 : 16))).foregroundStyle(Color(hex: 0x1a1200))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title.uppercased()).font(.system(size: S(small ? 11 : 14), weight: .black, design: .monospaced)).tracking(small ? 0.8 : 1.2)
                     if let subtitle { Text(subtitle).font(.system(size: S(10.5), weight: .semibold, design: .monospaced)).opacity(0.7) }

@@ -1,0 +1,70 @@
+{
+ "title": "Steerify, explained simply",
+ "label": "EXPLAINED SIMPLY",
+ "voice": {
+  "provider": "elevenlabs",
+  "source": "ElevenLabs, Frenk's own voice"
+ },
+ "slides": [
+  {
+   "id": "a01",
+   "chapter": "The fastest builder",
+   "text": "Imagine you hired the fastest builder in the world. He builds a whole house before lunch. One small problem. He never asks what you wanted."
+  },
+  {
+   "id": "a02",
+   "chapter": "Meet Claude",
+   "text": "That builder is Claude. Brilliant. Tireless. And if you ask for a dog house, he might build you a castle. A very nice castle."
+  },
+  {
+   "id": "a03",
+   "chapter": "Ninety-nine of him",
+   "text": "Now imagine ninety-nine of him. All building at once. And three of them are standing still, waiting for you to answer a question. You don't know which three."
+  },
+  {
+   "id": "a04",
+   "chapter": "The clipboard",
+   "text": "Steerify is the clipboard on the wall. One board, where every builder writes two things. Here is my question. Here is what I finished."
+  },
+  {
+   "id": "a05",
+   "chapter": "Say what you want",
+   "text": "Let's try it. Say you want a website for your bakery. You type that. In normal words, like you'd say it to a person."
+  },
+  {
+   "id": "a06",
+   "chapter": "He asks with pictures",
+   "text": "Before he builds anything, Claude asks. Not with a wall of text. With pictures. Do you want it like this, like this, or like this? You point at one."
+  },
+  {
+   "id": "a07",
+   "chapter": "He builds",
+   "text": "Then he builds. You go and do something else. Coffee is a valid choice."
+  },
+  {
+   "id": "a08",
+   "chapter": "You look",
+   "text": "When it's ready, you get a picture of the result, and one simple question. Does this look right? If not, you put a finger on the picture and say what's wrong."
+  },
+  {
+   "id": "a09",
+   "chapter": "You say OK",
+   "text": "When you're happy, you say OK. One button, and it goes live."
+  },
+  {
+   "id": "a10",
+   "chapter": "Not only building",
+   "text": "And it is not only building. Ask for a report every Monday, and he hands it in, for you to check. Like homework. His homework."
+  },
+  {
+   "id": "a11",
+   "chapter": "What you never do",
+   "text": "You never read code. You never scroll through a thousand lines of chat. You look. You choose. You say ship."
+  },
+  {
+   "id": "a12",
+   "chapter": "That's Steerify",
+   "text": "That's Steerify. You decide. Claude builds. It's free, it's for Mac, and it lives at steerify dot dev."
+  }
+ ]
+}

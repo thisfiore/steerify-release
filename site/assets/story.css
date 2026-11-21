@@ -112,4 +112,7 @@
 .gs-player { margin-top: 18px; max-width: 1000px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #07080a }
 .gs-player video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9 }
 .gs-code { font: 13.5px var(--f-mono); font-style: normal; color: var(--amber); background: #050607; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; user-select: all }
-@media (max-width: 760px) { .gs-jump { grid-template-columns: 1fr } }
+.gs-why { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 8px; max-width: 1000px } .gs-why figure { margin: 0 }
+.gs-why figcaption { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 12px; align-items: baseline } .gs-why figcaption b { font-size: 17px; color: var(--cream) }
+.gs-why figcaption i { font: 12px var(--f-mono); font-style: normal; color: var(--amber) } .gs-why figcaption span { grid-column: 1 / -1; font-size: 14.5px; color: var(--mute); line-height: 1.5 }
+@media (max-width: 760px) { .gs-jump { grid-template-columns: 1fr } .gs-why { grid-template-columns: 1fr } }

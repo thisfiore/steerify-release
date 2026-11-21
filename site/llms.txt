@@ -16,6 +16,7 @@ Key facts:
 - [Tutorial](https://steerify.dev/tutorial.html): seven narrated chapters (about a minute) and a 30-second teaser video
 - [What's new](https://steerify.dev/releases.html): release notes v0.1 to v0.5
 - [Steerify vs T3 Code](https://steerify.dev/t3-code-alternative.html): honest comparison and when to pick which
+- [How Steerify knows what a Claude Code session is doing](https://steerify.dev/claude-code-session-status.html): session state from Claude Code hooks and the transcript, never from terminal output
 
 ## Compared to other tools
 

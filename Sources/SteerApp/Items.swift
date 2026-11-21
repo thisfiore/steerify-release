@@ -20,6 +20,7 @@ struct ItemRef: Hashable {
 /// What a session is asked to do with its item. Mirrors the intents of the steerify skill.
 enum Intent: String, CaseIterable {
     case fix, release, plan, build, check, look, resume, ship, consolidate, choose, intake
+    case tag                      // track:<slug>: Claude proposes core vs extras for every key result (you keep or undo)
     case run                      // task:<id>: reach the task's outcome, hand in the result (Tasks.swift)
     case initialize = "init"     // setup:<project>: Claude reads the project, interviews you, drafts the board
 }
@@ -77,7 +78,7 @@ enum BoardFiles {
         case "task":
             if let t = TaskStore.load(project.boardDir).tasks.first(where: { $0.id == ref.id }) { r.title = t.title; r.area = t.area }
         case "request":
-            if let q = RequestLog.load(project.boardDir).first(where: { $0.id == ref.id }) { r.title = "Request: " + q.short; r.area = q.area }
+            if let q = RequestLog.load(project.boardDir).first(where: { $0.id == ref.id }) { r.title = "Request: " + (q.title ?? q.short); r.area = q.area }
         case "track":
             if let t = (board["tracks"] as? [[String: Any]] ?? []).first(where: { slug(str($0["name"])) == ref.id }) {
                 r.title = "Chapter: " + str(t["name"]); r.area = t["area"] as? String

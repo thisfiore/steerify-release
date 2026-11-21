@@ -61,6 +61,22 @@ enum TestEnvs {
     /// Why a test link does not lead to the feature (nil = it does). The Test it button must open the exact
     /// page / record / item under test, never a home page (request r261120-174139: a test linked to
     /// https://platform.synthetic-brain.com and the user had to find the feature by hand).
+    /// Links Steerify can act on (AppModel.handle). Anything else does nothing when clicked.
+    static let appActions: Set<String> = ["start", "new", "open", "since"]
+
+    /// A link that does nothing at all when clicked: not a link, or a steerify:// action the app does not have
+    /// (request r261121-103305: a test linked to steerify://request showed an enabled Test it that did nothing).
+    /// The To test card hides its Test it button for these.
+    static func dead(_ s: String) -> Bool {
+        let raw = s.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty, let u = URL(string: raw), let sch = u.scheme?.lowercased() else { return true }
+        guard sch == "steerify" else { return false }
+        let action = u.host ?? "", query = u.query ?? ""
+        if !appActions.contains(action) { return true }
+        if action == "start", !query.contains("item=") { return true }
+        return false
+    }
+
     static func generic(_ s: String, envs: [TestEnv] = []) -> String? {
         let raw = s.trimmingCharacters(in: .whitespaces)
         guard let u = URL(string: raw), let sch = u.scheme?.lowercased() else { return "nothing (not a valid link)" }
@@ -82,6 +98,7 @@ enum TestEnvs {
         case "steerify":
             let action = u.host ?? ""
             if action.isEmpty { return "Steerify only, not the item" }
+            if dead(raw) { return "nothing (Steerify has no \"\(action)\" link that leads to the item)" }
             if action == "open", !query.contains("item=") { return "the project, not the item" }
             return nil
         case "file":

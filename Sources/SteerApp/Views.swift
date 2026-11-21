@@ -574,7 +574,7 @@ struct ProjectSwitcher: View {
                         if ProjectSetup.needsWelcome(model.board(for: p)) {
                             SetupTag()   // a new project: "not set up" instead of an empty 0% bar
                         } else {
-                        let road = model.board(for: p).roadmap
+                        let road = model.board(for: p).roadmap.filter(\.isCore)   // core only
                         let frac = road.isEmpty ? 0 : Double(road.filter { $0.status == "done" }.count) / Double(road.count)
                         PixelProgress(fraction: frac, blocks: 10, working: road.contains { $0.status == "wip" })
                             .frame(width: S(64)).scaleEffect(y: 0.8)

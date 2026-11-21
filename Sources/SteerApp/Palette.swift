@@ -172,15 +172,15 @@ enum PaletteIndex {
 
             for c in b.chapters {
                 let items = b.roadmap.filter { $0.track == c.name }
-                let done = items.filter { $0.status == "done" }.count
                 let wip = items.contains { $0.status == "wip" }
-                let all = !items.isEmpty && done == items.count
+                let cp = ChapterProgress(items), done = cp.coreDone
+                let all = cp.coreReleased     // core released = the chapter is done
                 let h = PaletteHit(id: "track:\(p.id):\(c.name)", kind: .chapter, projectId: p.id, projectName: p.name, ref: "track:" + BoardFiles.slug(c.name),
                                    title: c.name, context: b.areaName(c.area), state: c.draft ? "draft" : all ? "done" : wip ? "wip" : "todo",
                                    stateColor: c.draft ? Brand.blue : all ? Brand.green : wip ? Brand.amber : Brand.mute, rank: wip ? 3 : all ? 9 : 5,
                                    body: c.objective ?? "",
                                    lines: items.prefix(7).map { PaletteLine(mark: $0.status == "done" ? "✓" : $0.status == "wip" ? "▸" : "·", text: $0.text, on: $0.status == "wip") },
-                                   linesTitle: items.count > 7 ? "First 7 of \(items.count)" : "Items", progress: (done, items.count))
+                                   linesTitle: items.count > 7 ? "First 7 of \(items.count)" : "Items", progress: (done, cp.core.count))
                 out.append(keyed(h, "track"))
             }
 

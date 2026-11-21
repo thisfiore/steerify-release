@@ -332,15 +332,16 @@ struct TasksScreen: View {
         let done = runs.filter { r in (r.status == "ok") && byId[r.task]?.schedule == nil }.prefix(12)
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Things Claude does for you, with your tools and your standards. Not code: they never go on the roadmap.")
-                        .font(.system(size: S(12))).foregroundStyle(Brand.mute)
-                    Spacer()
-                    ActionButton(title: "+ Task", icon: "task") { model.requestKindSeed = .task; model.requestOpen = true }
-                        .help("Describe the outcome you want; Claude sets up the task and runs it")
-                }
                 if tasks.isEmpty {
-                    EmptyBoard(projectId: board.project.id, title: "NO TASKS YET", line: "Ask for an outcome, not a feature: a tutorial, a report, a weekly collection.")
+                    EmptyBoard(projectId: board.project.id, title: "NO TASKS YET", line: "Ask for an outcome, not a feature: a tutorial, a report, a weekly collection.", kind: .task)
+                } else {
+                    HStack {
+                        Text("Things Claude does for you, with your tools and your standards. Not code: they never go on the roadmap.")
+                            .font(.system(size: S(12))).foregroundStyle(Brand.mute)
+                        Spacer()
+                        ActionButton(title: "+ Task", icon: "task") { model.requestKindSeed = .task; model.requestOpen = true }
+                            .help("Describe the outcome you want; Claude sets up the task and runs it")
+                    }
                 }
                 if !now.isEmpty { group("NOW") { ForEach(now) { r in RunRow(board: board, run: r, task: byId[r.task]) } } }
                 if !check.isEmpty { group("TO CHECK") { ForEach(check) { r in RunRow(board: board, run: r, task: byId[r.task]) } } }

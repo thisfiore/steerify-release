@@ -34,6 +34,8 @@ struct PixelIcon: View {
         "play": [".#.......", ".##......", ".###.....", ".####....", ".#####...", ".####....", ".###.....", ".##......", ".#......."],
         "task": ["..####...", ".#....#.#", "#......##", "#.....###", "#........", "#.......#", "#.......#", ".#.....#.", "..#####.."],
         "ship": ["....#....", "...###...", "..#####..", "....#....", "....#....", "#########", ".#######.", "..#####..", "........."],
+        "rocket": ["......###", ".....####", "....#..#.", "...#####.", ".######..", "..####...", ".#.##....", "#.#......", "#........"],
+        "boat": ["....#....", "....##...", "....###..", "....####.", "....#####", "....#....", "#########", ".#######.", "..#####.."],
     ]
     var body: some View {
         Canvas { ctx, sz in
@@ -66,6 +68,20 @@ struct BoardScreen: View {
         return a.firstIndex(of: "--show").flatMap { $0 + 1 < a.count ? a[$0 + 1] : nil } ?? "open"
     }()
     @AppStorage(Prefs.testLayout, store: Prefs.store) private var testLayout = "list"
+    @State private var pendingScroll: AppModel.FocusRequest? = nil
+    @ObservedObject private var smart = SmartAreaModel.shared
+    /// Roadmap areas regrouped by the local AI (choice smart-areas), when it has run for this project.
+    private var smartAreas: SmartAreas? { tab == .road ? smart.get(board.project.id) : nil }
+    private var areaList: [(key: String, name: String)] { smartAreas.map { $0.areas.map { (key: $0.key, name: $0.name) } } ?? board.areas }
+    private func roadArea(_ r: RoadItem) -> String { smartAreas.map { $0.items[r.id] ?? "" } ?? r.area }
+
+    private func scroll(_ proxy: ScrollViewProxy) {
+        guard let f = pendingScroll else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation { proxy.scrollTo(f.ref, anchor: .top) }
+            if pendingScroll == f { pendingScroll = nil }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -78,26 +94,34 @@ struct BoardScreen: View {
             } else if tab == .task {
                 TasksScreen(board: board)
             } else {
-            FilterBar(board: board, tab: tab, area: $area, state: $state, counts: counts)
+            FilterBar(board: board, tab: tab, area: $area, state: $state, counts: counts, areaCounts: areaCounts, areas: areaList,
+                      smartAt: smartAreas?.at, smartRunning: smart.running.contains(board.project.id),
+                      regroup: LocalAI.ready && tab == .road ? { Task { await smart.refresh(board, force: true) } } : nil)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 10) { list }
                         .padding(12)
                 }
-                .onChange(of: model.focus) { _, f in
-                    guard let f, f.projectId == board.project.id else { return }
-                    if f.ref.hasPrefix("test:") { testLayout = "list" }   // a jump to a card opens it in full
-                    let kind = String(f.ref.split(separator: ":").first ?? "")
-                    if let t = BoardTab(rawValue: kind == "track" ? "road" : kind == "reqs" ? "req" : kind) { tab = t }
-                    // After the tab switch (which resets the filter): show everything so the item is in the list.
-                    DispatchQueue.main.async { area = nil; state = "all" }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo(f.ref, anchor: .top) } }
-                }
+                // The list may only just have appeared (jump from Ready / Tasks / Release): scroll once it is there.
+                .onAppear { scroll(proxy) }
+                .onChange(of: pendingScroll) { _, _ in scroll(proxy) }
             }
         }
         }
         .background(Brand.bg)
-        .onChange(of: tab) { _, _ in state = "open" }
+        // Listened to here, not on the list: a jump from Ready, Tasks or Release (Where you left off,
+        // Also waiting on you) must switch the tab even though no list is showing yet.
+        .onChange(of: model.focus) { _, f in
+            guard let f, f.projectId == board.project.id else { return }
+            if f.ref.hasPrefix("test:") { testLayout = "list" }   // a jump to a card opens it in full
+            let kind = String(f.ref.split(separator: ":").first ?? "")
+            if let t = BoardTab(rawValue: kind == "track" ? "road" : kind == "reqs" ? "req" : kind) { tab = t }
+            // After the tab switch (which resets the filter): show everything so the item is in the list.
+            DispatchQueue.main.async { area = nil; state = "all"; pendingScroll = f }
+        }
+        .onChange(of: tab) { _, _ in state = "open"; area = nil }
+        // The local AI regroups this project's roadmap now if due, then every hour while it is open.
+        .task(id: board.project.id) { await smart.keepFresh(board) }
     }
 
     @ViewBuilder private var list: some View {
@@ -110,13 +134,13 @@ struct BoardScreen: View {
             } else {
                 ForEach(ships) { ShipCard(board: board, item: $0).id("test:" + $0.id).flash("test:" + $0.id) }
             }
-            if ships.isEmpty { EmptyBoard(projectId: board.project.id, title: state == "open" ? "NOTHING TO TEST" : "NOTHING HERE", line: "Claude is either working or sleeping.") }
+            if ships.isEmpty { EmptyBoard(projectId: board.project.id, title: state == "open" ? "NOTHING TO TEST" : "NOTHING HERE", line: "Claude is either working or sleeping.", kind: .test) }
         case .choice:
             ForEach(choices) { DecisionCard(board: board, d: $0).id("choice:" + $0.id).flash("choice:" + $0.id) }
-            if choices.isEmpty { EmptyBoard(projectId: board.project.id, title: "NO OPEN CHOICES", line: "You are, briefly, unblocking no one.") }
+            if choices.isEmpty { EmptyBoard(projectId: board.project.id, title: "NO OPEN CHOICES", line: "You are, briefly, unblocking no one.", kind: .choice) }
         case .req:
             ForEach(reqGroups, id: \.self) { g in ReqGroupView(board: board, group: g, items: reqs.filter { $0.group == g }) }
-            if reqs.isEmpty { EmptyBoard(projectId: board.project.id, title: "NOTHING TO REVIEW", line: "Every requirement has an answer. Suspicious, but nice.") }
+            if reqs.isEmpty { EmptyBoard(projectId: board.project.id, title: "NOTHING TO REVIEW", line: "Every requirement has an answer. Suspicious, but nice.", kind: .req) }
         case .release, .ready, .task:
             EmptyView()
         case .road:
@@ -135,20 +159,20 @@ struct BoardScreen: View {
             }
             ForEach(roadTracks, id: \.self) { t in RoadTrackView(board: board, track: t, items: road.filter { $0.track == t }) }
                 .task { await board.refreshCommitProposals() }
-            if road.isEmpty { EmptyBoard(projectId: board.project.id, title: "ROADMAP CLEAR", line: "Either everything is done or nobody wrote it down.") }
+            if road.isEmpty { EmptyBoard(projectId: board.project.id, title: "ROADMAP CLEAR", line: "Either everything is done or nobody wrote it down.", kind: .road) }
         }
     }
 
     // Filtering (area + state), per tab. Each state is a function so the filter bar can show counts.
-    private func inArea(_ a: [String]) -> Bool { area == nil || a.contains(area!) }
+    private func inArea(_ a: [String], _ sel: String?) -> Bool { sel == nil || a.contains(sel!) }
     private var ships: [ShipItem] { shipsIn(state) }
     private var choices: [BoardDecision] { choicesIn(state) }
     private var reqs: [Requirement] { reqsIn(state) }
     private var road: [RoadItem] { roadIn(state) }
 
-    func shipsIn(_ st: String) -> [ShipItem] {
+    func shipsIn(_ st: String, area sel: String?? = nil) -> [ShipItem] {
         board.ships.filter { s in
-            guard inArea([s.area]) else { return false }
+            guard inArea([s.area], sel ?? area) else { return false }
             let x = board.shipState(s), pick = board.effectivePick(s)
             switch st {
             case "open": return x == .toTest || x == .retest
@@ -159,9 +183,9 @@ struct BoardScreen: View {
             }
         }
     }
-    func choicesIn(_ st: String) -> [BoardDecision] {
+    func choicesIn(_ st: String, area sel: String?? = nil) -> [BoardDecision] {
         board.decisions.filter { d in
-            guard inArea(d.areas) else { return false }
+            guard inArea(d.areas, sel ?? area) else { return false }
             switch st {
             case "open": return !board.isDecided(d) && !board.isParked(d)
             case "decided": return board.isDecided(d)
@@ -170,9 +194,9 @@ struct BoardScreen: View {
             }
         }.reversed()
     }
-    func reqsIn(_ st: String) -> [Requirement] {
+    func reqsIn(_ st: String, area sel: String?? = nil) -> [Requirement] {
         board.requirements.filter { r in
-            guard inArea([r.area]) else { return false }
+            guard inArea([r.area], sel ?? area) else { return false }
             switch st {
             case "open": return board.isOpen(r)
             case "decide": return board.isOpen(r) && r.status == "question"
@@ -183,9 +207,9 @@ struct BoardScreen: View {
         }
     }
     private var reqGroups: [String] { Array(NSOrderedSet(array: reqs.map(\.group)).array as! [String]).reversed() }
-    func roadIn(_ st: String) -> [RoadItem] {
+    func roadIn(_ st: String, area sel: String?? = nil) -> [RoadItem] {
         board.roadmap.filter { r in
-            guard inArea([r.area]) else { return false }
+            guard inArea([roadArea(r)], sel ?? area) else { return false }
             switch st {
             case "open": return r.status != "done"
             case "done": return r.status == "done"
@@ -193,10 +217,15 @@ struct BoardScreen: View {
             }
         }
     }
+    /// Drafts first, then the chapter with the latest activity (choice chapter-order): a status change, a delivery,
+    /// a session started on it. Ties keep the newest chapter first.
     private var roadTracks: [String] {
         let list = Array((NSOrderedSet(array: road.map(\.track)).array as! [String]).reversed())
         let drafts = Set(board.chapters.filter(\.draft).map(\.name))
-        return list.filter { drafts.contains($0) } + list.filter { !drafts.contains($0) }
+        let act = board.chapterActivity()
+        let rest = list.enumerated().filter { !drafts.contains($0.element) }
+            .sorted { (act[$0.element] ?? "", $1.offset) > (act[$1.element] ?? "", $0.offset) }.map(\.element)
+        return list.filter { drafts.contains($0) } + rest
     }
 
     private func count(_ st: String) -> Int {
@@ -204,6 +233,16 @@ struct BoardScreen: View {
     }
     private var counts: [String: Int] {
         Dictionary(uniqueKeysWithValues: FilterBar.states(tab).map { ($0.0, count($0.0)) })
+    }
+    /// Per area, in the state shown now ("" = all areas).
+    private var areaCounts: [String: Int] {
+        func n(_ a: String?) -> Int {
+            switch tab { case .test: shipsIn(state, area: .some(a)).count; case .choice: choicesIn(state, area: .some(a)).count
+                         case .req: reqsIn(state, area: .some(a)).count; case .road: roadIn(state, area: .some(a)).count; case .release, .ready, .task: 0 }
+        }
+        var out = ["": n(nil)]
+        for a in areaList { out[a.key] = n(a.key) }
+        return out
     }
 }
 
@@ -252,7 +291,7 @@ struct TabBar: View {
     /// What needs you: refine/broken + untested on To test, open choices, unreviewed requirements.
     private func badge(_ t: BoardTab) -> Int {
         switch t {
-        case .ready: return model.groupedNudges(board.project.id).count
+        case .ready: return model.groupedNudges(board.project.id).count + model.releasable(board.project.id).count
         case .test: return board.ships.filter { [.toTest, .retest].contains(board.shipState($0)) }.count
         case .choice: return board.decisions.filter { !board.isDecided($0) && !board.isParked($0) }.count
         case .req: return board.requirements.filter { $0.status == "question" && board.isOpen($0) }.count
@@ -269,6 +308,13 @@ struct FilterBar: View {
     @Binding var area: String?
     @Binding var state: String
     let counts: [String: Int]
+    /// Items per area in the current state (nil key = every area), for the area chips.
+    var areaCounts: [String: Int] = [:]
+    var areas: [(key: String, name: String)] = []
+    /// Set when the areas are the local AI's groups (choice smart-areas): when it last regrouped.
+    var smartAt: Date? = nil
+    var smartRunning = false
+    var regroup: (() -> Void)? = nil
 
     static func states(_ tab: BoardTab) -> [(String, String)] {
         switch tab {
@@ -281,8 +327,16 @@ struct FilterBar: View {
     }
     private var states: [(String, String)] { Self.states(tab) }
 
-    /// One quiet line (choice board-nav-filters, A): state segments, then the area menu. No box, no labels.
+    /// State segments on one quiet line; the areas as tags right under them (request r261121-105031), one click each.
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            stateRow
+            if areas.count > 1 { areaRow }
+        }
+        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+    }
+
+    private var stateRow: some View {
         HStack(spacing: 10) {
             HStack(spacing: 2) {
                 ForEach(states, id: \.0) { s in
@@ -304,23 +358,48 @@ struct FilterBar: View {
             if area != nil || state != "open" {
                 Button("Clear") { area = nil; state = "open" }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11.5)))
             }
-            if board.areas.count > 1 {
-                Menu {
-                    Button("All areas") { area = nil }
-                    Divider()
-                    ForEach(board.areas, id: \.key) { a in
-                        Button { area = a.key } label: { if area == a.key { Label(a.name, systemImage: "checkmark") } else { Text(a.name) } }
-                    }
-                } label: {
-                    Text("Area: " + (board.areas.first { $0.key == area }?.name ?? "All")).font(.system(size: S(12)))
-                        .foregroundStyle(area == nil ? Brand.ink : Color(hex: 0xffd27a))
-                }
-                .menuStyle(.borderlessButton).fixedSize()
-                .help("Show one area only")
-            }
             if tab == .test { LayoutSwitch() }
         }
-        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+    }
+
+    /// One tag per area: click to show only that area, click again (or All) to show everything.
+    private var areaRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                areaTag(nil, "All areas", areaCounts[""] ?? 0)
+                ForEach(areas, id: \.key) { a in areaTag(a.key, a.name, areaCounts[a.key] ?? 0) }
+                if smartAt != nil || smartRunning || regroup != nil { smartNote }
+            }
+            .padding(.leading, 2)
+        }
+    }
+    /// Who made these groups and when; click to regroup now.
+    private var smartNote: some View {
+        Button { regroup?() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "sparkles").font(.system(size: S(9.5)))
+                Text(smartRunning ? "Regrouping…" : smartAt.map { d in let m = max(Int(-d.timeIntervalSinceNow / 60), 0); return "Local AI · " + (m < 1 ? "just now" : m < 60 ? "\(m) min ago" : "\(m / 60) h ago") } ?? "Group with local AI")
+            }
+            .font(.system(size: S(10.5))).foregroundStyle(Brand.mute).padding(.leading, 4)
+        }.buttonStyle(.plain).pointerStyle(.link).disabled(smartRunning || regroup == nil)
+        .help("The on-device model regroups the roadmap by itself every hour while Steerify is open. Click to regroup now.")
+    }
+    private func areaTag(_ key: String?, _ name: String, _ n: Int) -> some View {
+        let on = area == key
+        return Button { area = on ? nil : key } label: {
+            HStack(spacing: 4) {
+                if key != nil { Text("#").foregroundStyle(on ? Color(hex: 0xffd27a).opacity(0.6) : Brand.mute) }
+                Text(name)
+                Text("\(n)").monospacedDigit().foregroundStyle(on ? Color(hex: 0xffd27a).opacity(0.7) : Brand.mute)
+            }
+            .font(.system(size: S(11), weight: on ? .semibold : .regular))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .foregroundStyle(on ? Color(hex: 0xffd27a) : n == 0 ? Brand.mute : Brand.ink)
+            .background(Capsule().fill(on ? Brand.amberDim : .clear))
+            .overlay(Capsule().stroke(on ? Color(hex: 0xffd27a).opacity(0.5) : Brand.line2))
+            .contentShape(Capsule())
+        }.buttonStyle(SteerButton())
+        .help(key == nil ? "Every area" : on ? "Showing \(name) only · click to show every area" : "Show \(name) only")
     }
 }
 
@@ -830,7 +909,8 @@ struct TestRow: View {
         HStack(alignment: .top, spacing: 8) {
             PixelIcon(name: "test", size: 10).foregroundStyle(Brand.mute).padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
-                if let u = test.url, let url = URL(string: u) {
+                // No Test it when the link leads nowhere (an app link Steerify cannot act on): the picture is the test.
+                if let u = test.url, !TestEnvs.dead(u), let url = URL(string: u) {
                     Button(test.label) { if url.scheme == "steerify" { model.handle(url) } else { NSWorkspace.shared.open(url) } }
                         .buttonStyle(.link).pointerStyle(.link).font(.system(size: S(12), weight: .medium))
                 } else { Text(test.label).font(.system(size: S(12), weight: .medium)) }
@@ -939,6 +1019,7 @@ struct ReqGroupView: View {
                             Image(systemName: "checkmark").font(.system(size: S(10), weight: .bold)).foregroundStyle(Brand.green).padding(.top, 2)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(r.text).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.7)).fixedSize(horizontal: false, vertical: true)
+                                FeatureStrip(board: board, req: r, compact: true)
                                 // Why it is settled, in plain sight (also the tooltip): "chapter approved …", "OK on To test · …".
                                 if let ev = r.evidence, !ev.isEmpty {
                                     Text(ev).font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1).truncationMode(.tail)
@@ -967,6 +1048,7 @@ struct ReqGroupView: View {
                     .frame(width: S(20), height: S(20)).background(RoundedRectangle(cornerRadius: 4).fill(Brand.amber))
                 Text(r.text).font(.system(size: S(13), weight: .medium)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
             }
+            FeatureStrip(board: board, req: r)
             HStack(spacing: 8) {
                 ClaudeButton(title: "Make it a choice", prominent: true) {
                     var x = ItemRef(ref: "req:" + r.id)!; x.title = String(r.text.prefix(60)); x.area = r.area
@@ -986,7 +1068,10 @@ struct ReqGroupView: View {
     private func proposalRow(_ r: Requirement) -> some View {
         let v = board.verdict("req:" + r.id).pickString
         return HStack(alignment: .top, spacing: 8) {
-            Text(r.text).font(.system(size: S(12.5))).foregroundStyle(Brand.ink).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.text).font(.system(size: S(12.5))).foregroundStyle(Brand.ink).fixedSize(horizontal: false, vertical: true)
+                FeatureStrip(board: board, req: r)
+            }
             Spacer(minLength: 8)
             if v == "change" { Text("you asked a change").font(.system(size: S(10.5))).foregroundStyle(Brand.amber) }
             if v == "later" { Text("later").font(.system(size: S(10.5))).foregroundStyle(Brand.mute) }
@@ -1030,8 +1115,68 @@ struct RoadTrackView: View {
     let track: String; let items: [RoadItem]
     @State private var consolidating = CommandLine.arguments.contains("--consolidate-open")   // test hook: panels open
     @State private var showArchived = false
-    @State private var showDone = true
+    /// Done rows are folded by default (nil = auto: open only when the list shows no open row, e.g. the Done filter).
+    @State private var showDone: Bool? = nil
+    /// Chapters folded to one line, remembered per project (your focus: what you keep open stays open).
+    @AppStorage private var collapsedRaw: String
+    init(board: BoardStore, track: String, items: [RoadItem]) {
+        self.board = board; self.track = track; self.items = items
+        _collapsedRaw = AppStorage(wrappedValue: "", "collapsedChapters." + board.project.id, store: Prefs.store)
+    }
+    private var collapsedSet: Set<String> { Set(collapsedRaw.split(separator: "\n").map(String.init)) }
+    private var collapsed: Bool { collapsedSet.contains(BoardFiles.slug(track)) }
+    private func setCollapsed(_ on: Bool) {
+        var c = collapsedSet; let k = BoardFiles.slug(track)
+        if on { c.insert(k) } else { c.remove(k) }
+        withAnimation(.easeOut(duration: 0.15)) { collapsedRaw = c.sorted().joined(separator: "\n") }
+    }
+    @ObservedObject private var snaps = MockSnapshots.shared
     private var info: Chapter? { board.chapters.first { $0.name == track } }
+    private func media(_ r: RoadItem) -> FeatureMedia { board.media(road: r, snaps: snaps.version) }
+    /// Every row keeps a picture column when any row of the chapter has pictures, so they line up as a grid.
+    private var picColumn: Bool { board.roadmap.contains { $0.track == track && !media($0).pics.isEmpty } }
+    private static var ctaWidth: CGFloat { S(165) }
+
+    /// Rows that show the same delivery / pictures sit together and show them once.
+    private func groups(_ rows: [RoadItem]) -> [[RoadItem]] {
+        var order: [String] = [], by: [String: [RoadItem]] = [:], out: [[RoadItem]] = []
+        for r in rows {
+            let k = media(r).groupKey
+            if k.isEmpty { order.append("#" + r.id); by["#" + r.id] = [r]; continue }
+            if by[k] == nil { order.append(k) }
+            by[k, default: []].append(r)
+        }
+        for k in order { out.append(by[k]!) }
+        return out
+    }
+
+    @ViewBuilder private func rowList(_ rows: [RoadItem]) -> some View {
+        let slot = picColumn
+        ForEach(groups(rows), id: \.first!.id) { g in
+            if g.count == 1 { row(g[0], slot: slot) } else { group(g, slot: slot) }
+        }
+    }
+
+    /// Key results delivered together: one frame, the pictures once in the column, the tests once below.
+    @ViewBuilder private func group(_ g: [RoadItem], slot: Bool) -> some View {
+        let m = media(g[0])
+        let allDone = g.allSatisfy { $0.status == "done" }
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(g) { row($0, slot: slot, inGroup: true) }
+            FeatureTestLine(board: board, media: m, compact: allDone, shared: g.count)
+                .padding(.leading, S(26)).padding(.top, 2).padding(.bottom, 4)
+        }
+        .padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Brand.panel2.opacity(0.55)))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.line.opacity(0.8)))
+        .overlay(alignment: .topTrailing) {
+            if slot {
+                FeatureThumbs(board: board, media: m, title: g[0].text, shared: g.count)
+                    .padding(.top, 5).padding(.trailing, 6 + Self.ctaWidth + 10)
+            }
+        }
+        .padding(.horizontal, -6)
+    }
     private var rolling: Bool { track == RequestLog.fixesChapter }
     /// Rolling chapter: done fixes older than a week are archived (folded away), so it never grows forever.
     private func archived(_ r: RoadItem) -> Bool {
@@ -1050,6 +1195,8 @@ struct RoadTrackView: View {
                     .font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
                 Spacer()
             }
+            Text("Checks To test verdicts · commits (21 days) · sessions on this chapter (7 days)" + (LocalAI.ready ? " · Local AI" : ""))
+                .font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
             ForEach(props) { p in
                 HStack(alignment: .top, spacing: 8) {
                     Toggle("", isOn: Binding(get: { selected.contains(p.id) }, set: { if $0 { selected.insert(p.id) } else { selected.remove(p.id) } }))
@@ -1059,7 +1206,7 @@ struct RoadTrackView: View {
                             Text(Self.label(p.from)).foregroundStyle(Brand.mute)
                             Image(systemName: "arrow.right").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute)
                             Text(Self.label(p.to)).foregroundStyle(Self.color(p.to)).fontWeight(.semibold)
-                            if p.fromCommit { Pill(text: "from a commit", color: Brand.blue) } else if !p.sure { Pill(text: "likely", color: Brand.blue) }
+                            if p.fromCommit { Pill(text: "from a commit", color: Brand.blue) } else if p.fromSession { Pill(text: "from a session", color: Brand.blue) } else if !p.sure { Pill(text: "likely", color: Brand.blue) }
                         }.font(.system(size: S(11)))
                         Text(p.item).font(.system(size: S(12.5))).foregroundStyle(Brand.ink).fixedSize(horizontal: false, vertical: true)
                         Text(p.evidence).font(.system(size: S(11))).foregroundStyle(Brand.mute).lineLimit(1)
@@ -1095,7 +1242,37 @@ struct RoadTrackView: View {
     var body: some View {
         let all = board.roadmap.filter { $0.track == track }
         let done = all.filter { $0.status == "done" }.count
-        let pct = all.isEmpty ? 0 : Double(done) / Double(all.count)
+        let prog = ChapterProgress(all)
+        if collapsed { compact(all, prog) } else { full(all, done: done, prog) }
+    }
+
+    /// The chapter on one line: icon, title, progress, what is moving. Click to open it again.
+    @ViewBuilder private func compact(_ all: [RoadItem], _ prog: ChapterProgress) -> some View {
+        let open = all.filter { $0.status != "done" }
+        let moving = open.filter { ["wip", "review", "you"].contains($0.status) }.count
+        HStack(spacing: 10) {
+            Image(systemName: "chevron.right").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute)
+            AutoIcon(title: track, size: S(18), tile: true)
+            Text(track).font(.system(size: S(12.5), weight: .semibold)).foregroundStyle(Brand.cream).lineLimit(1)
+            if info?.draft == true { Pill(text: "draft", color: Brand.green) }
+            Spacer(minLength: 8)
+            if moving > 0 { Text("\(moving) moving").font(.system(size: S(11))).foregroundStyle(Brand.amber) }
+            Text(rolling ? "\(open.count) open" : "\(prog.coreDone)/\(prog.core.count) core").font(.system(size: S(11)).monospacedDigit())
+                .foregroundStyle(prog.coreReleased && !rolling ? Brand.green : Brand.mute)
+            ProgressView(value: Double(all.count - open.count), total: Double(max(all.count, 1))).progressViewStyle(.linear).tint(Brand.green).frame(width: S(60))
+            SessionChip(projectId: board.project.id, ref: "track:" + BoardFiles.slug(track))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Brand.panel))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Brand.line))
+        .contentShape(Rectangle())
+        .onTapGesture { setCollapsed(false) }
+        .help("Open this chapter")
+        .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
+    }
+
+    @ViewBuilder private func full(_ all: [RoadItem], done: Int, _ prog: ChapterProgress) -> some View {
         Card {
             // Header: icon + title + objective get the full width; progress and actions share one line below.
             HStack(alignment: .top, spacing: 12) {
@@ -1107,42 +1284,170 @@ struct RoadTrackView: View {
                     if let o = info?.objective, !o.isEmpty {
                         Text(o).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.75)).fixedSize(horizontal: false, vertical: true)
                     }
+                    FeatureStrip(board: board, chapter: track)
                 }
                 Spacer(minLength: 0)
+                Button { setCollapsed(true) } label: {
+                    Image(systemName: "chevron.up").font(.system(size: S(10), weight: .bold)).foregroundStyle(Brand.mute)
+                        .padding(5).contentShape(Rectangle())
+                }.buttonStyle(SteerButton()).help("Fold this chapter to one line (remembered)")
             }
             HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
-                    progressBar(all)
-                    HStack(spacing: 12) {
-                        Text("\(done)/\(all.count) done · \(Int(pct * 100))%").font(.system(size: S(11), weight: .semibold).monospacedDigit())
-                            .foregroundStyle(done == all.count && !all.isEmpty ? Brand.green : Brand.ink)
-                        ForEach(Self.order.filter { $0 != "done" }, id: \.self) { st in
-                            let n = all.filter { $0.status == st }.count
-                            if n > 0 {
-                                HStack(spacing: 4) {
-                                    Circle().fill(Self.color(st)).frame(width: 7, height: 7)
-                                    Text("\(n) \(Self.label(st))").font(.system(size: S(11))).foregroundStyle(Brand.ink.opacity(0.7))
-                                }
-                            }
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                okrHeader(prog)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 SessionChip(projectId: board.project.id, ref: "track:" + BoardFiles.slug(track))
                 if info?.draft != true { actions(all, done: done) }
             }
+            if prog.coreReleased && !rolling && info?.draft != true { releasedBanner(prog) }
+            if !rolling { kindsPanel(all) }
             if info?.draft == true { draftPanel(all) }
             if consolidating { consolidatePanel(all).task { await board.refreshCommitProposals(force: true) } }
+            // A draft lists what it adds inside its green box; nothing else of it is on the roadmap yet.
+            if info?.draft != true {
             Divider().overlay(Brand.line)
             let open = items.filter { $0.status != "done" }
-            ForEach(open) { row($0) }
+            if rolling || prog.extras.isEmpty {
+                rowList(open)
+            } else {
+                let openCore = open.filter(\.isCore), openExtras = open.filter { !$0.isCore }
+                if !openCore.isEmpty {
+                    sectionHeader("CORE · \(prog.coreDone)/\(prog.core.count)", color: Brand.cream)
+                    rowList(openCore)
+                }
+                if !openExtras.isEmpty {
+                    sectionHeader("EXTRAS · \(prog.extrasDone)/\(prog.extras.count) · TESTS, TUTORIALS, ENHANCEMENTS, LATER", color: Brand.mute)
+                    rowList(openExtras.sorted { Self.kindOrder($0.kind) < Self.kindOrder($1.kind) })
+                }
+            }
             doneSection(all)
+            }
         }
         .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
     }
 
+    /// OKR header: the core is the headline (ring + bar); extras sit below, thinner and quieter, never holding the chapter back.
+    @ViewBuilder private func okrHeader(_ p: ChapterProgress) -> some View {
+        let released = p.coreReleased
+        HStack(alignment: .center, spacing: 12) {
+            if !p.extras.isEmpty && !rolling {
+                ZStack {
+                    Circle().stroke(Brand.line, lineWidth: S(4))
+                    Circle().trim(from: 0, to: p.fraction).stroke(Brand.green, style: StrokeStyle(lineWidth: S(4), lineCap: .round)).rotationEffect(.degrees(-90))
+                    VStack(spacing: 0) {
+                        if released { Image(systemName: "checkmark").font(.system(size: S(13), weight: .heavy)).foregroundStyle(Brand.green) }
+                        else { Text("\(p.coreDone)/\(p.core.count)").font(.system(size: S(11.5), weight: .bold).monospacedDigit()).foregroundStyle(Brand.cream) }
+                        Text("CORE").font(Brand.label(6.5)).tracking(0.5).foregroundStyle(Brand.mute)
+                    }
+                }
+                .frame(width: S(46), height: S(46))
+                .help(released ? "Core released: every core key result is done" : "Core key results done: the chapter's objective is met when this ring is full")
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                progressBar(p.core)
+                HStack(spacing: 12) {
+                    let label = p.extras.isEmpty || rolling ? "\(p.coreDone)/\(p.core.count) done · \(Int(p.fraction * 100))%"
+                                                            : released ? "Core released · 100%" : "Core \(Int(p.fraction * 100))% · \(p.coreDone)/\(p.core.count)"
+                    Text(label).font(.system(size: S(11), weight: .semibold).monospacedDigit())
+                        .foregroundStyle(released ? Brand.green : Brand.ink)
+                    ForEach(Self.order.filter { $0 != "done" }, id: \.self) { st in
+                        let n = p.core.filter { $0.status == st }.count
+                        if n > 0 {
+                            HStack(spacing: 4) {
+                                Circle().fill(Self.color(st)).frame(width: 7, height: 7)
+                                Text("\(n) \(Self.label(st))").font(.system(size: S(11))).foregroundStyle(Brand.ink.opacity(0.7))
+                            }
+                        }
+                    }
+                }
+                if !p.extras.isEmpty && !rolling {
+                    progressBar(p.extras, height: 3).opacity(0.55).padding(.top, 3)
+                    Text("Extras \(p.extrasDone)/\(p.extras.count) · tests, tutorials, enhancements, later: they never hold the chapter back")
+                        .font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// The moment the objective is met: every core key result is done. Extras left are polish, not debt.
+    @ViewBuilder private func releasedBanner(_ p: ChapterProgress) -> some View {
+        let left = p.extrasOpen
+        HStack(spacing: 10) {
+            Image(systemName: "flag.checkered").font(.system(size: S(15), weight: .semibold)).foregroundStyle(Brand.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Core released" + (p.releasedOn.map { " · " + Self.day($0) } ?? ""))
+                    .font(.system(size: S(12.5), weight: .semibold)).foregroundStyle(Brand.green)
+                Text(left == 0 ? "Objective met. Nothing promised is left." : "Objective met. \(left) extra\(left == 1 ? "" : "s") left to polish, none blocking.")
+                    .font(.system(size: S(11))).foregroundStyle(Brand.ink.opacity(0.75))
+            }
+            Spacer()
+            Text("CHAPTER LIVE").font(Brand.label(8)).tracking(0.7).foregroundStyle(Brand.green)
+                .padding(.horizontal, 6).padding(.vertical, 3).overlay(RoundedRectangle(cornerRadius: 4).stroke(Brand.green.opacity(0.7)))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Brand.green.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.green.opacity(0.45)))
+        .transition(.scale(scale: 0.96).combined(with: .opacity))
+    }
+
+    /// Core vs extras: Claude's proposal to keep or undo, or (nothing tagged yet) one button to ask Claude.
+    @ViewBuilder private func kindsPanel(_ all: [RoadItem]) -> some View {
+        let proposed = all.filter(\.kindProposed)
+        if !proposed.isEmpty {
+            let extras = proposed.filter { !$0.isCore }.count
+            HStack(spacing: 10) {
+                Text("CLAUDE TAGGED").font(Brand.label(8.5)).tracking(0.8).foregroundStyle(Brand.claude)
+                Text("\(proposed.count - extras) core · \(extras) extra\(extras == 1 ? "" : "s") · the bar above already counts them")
+                    .font(.system(size: S(11.5))).foregroundStyle(Brand.ink.opacity(0.8)).lineLimit(1)
+                Spacer()
+                Button { kinds(keep: true) } label: {
+                    Text("Keep").font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Color(hex: 0x1a1200))
+                        .padding(.horizontal, 10).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 6).fill(Brand.green))
+                }.buttonStyle(SteerButton()).help("Keep Claude's tags; right-click any row later to change one")
+                Button("Undo") { kinds(keep: false) }.buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
+                    .help("Drop Claude's tags: back to the guess from the words")
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Brand.claude.opacity(0.07)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.claude.opacity(0.45)))
+        } else if info?.draft != true, all.count >= 3, all.contains(where: { $0.status != "done" }), all.allSatisfy(\.kindGuessed) {
+            HStack(spacing: 8) {
+                Text("Core vs extras guessed from the words").font(.system(size: S(11))).foregroundStyle(Brand.mute)
+                Button {
+                    var x = ItemRef(ref: "track:" + BoardFiles.slug(track))!; x.title = "Core vs extras: " + track; x.area = all.first?.area
+                    model.start(projectId: board.project.id, item: x, intent: .tag)
+                } label: {
+                    Text("Tag with Claude").font(.system(size: S(11), weight: .semibold)).foregroundStyle(Brand.claude)
+                }.buttonStyle(.plain).pointerStyle(.link)
+                    .help("Claude reads the chapter and proposes which key results are core and which are extras; you keep or undo")
+                Spacer()
+            }
+        }
+    }
+
+    private func kinds(keep: Bool) {
+        let r = SteerifyMCP.call(keep ? "keep_kinds" : "undo_kinds", ["chapter": track], board: board.project.boardDir)
+        board.reload()
+        model.showToast(r.1 ? r.0 : keep ? "Core vs extras kept for “\(track)”" : "Claude's tags undone for “\(track)”")
+    }
+
+    private static func day(_ iso: String) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: String(iso.prefix(10))) else { return iso }
+        let o = DateFormatter(); o.dateFormat = "d MMM"; return o.string(from: d)
+    }
+
+    private func sectionHeader(_ t: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(t).font(Brand.label(8.5)).tracking(0.8).lineLimit(1)
+            Rectangle().fill(Brand.line).frame(height: 1)
+        }.foregroundStyle(color).padding(.top, 4)
+    }
+
+    private static func kindOrder(_ k: String) -> Int { ["core": 0, "test": 1, "tutorial": 2, "enhancement": 3, "later": 4][k] ?? 5 }
+    private static func kindColor(_ k: String) -> Color { ["tutorial": Brand.violet, "enhancement": Brand.blue, "test": Brand.ink.opacity(0.7)][k] ?? Brand.mute }
+
     /// One bar, coloured by status (done first), so the share already done reads at a glance.
-    private func progressBar(_ all: [RoadItem]) -> some View {
+    private func progressBar(_ all: [RoadItem], height: CGFloat = 6) -> some View {
         GeometryReader { g in
             HStack(spacing: 2) {
                 ForEach(Self.order, id: \.self) { st in
@@ -1153,7 +1458,7 @@ struct RoadTrackView: View {
                     }
                 }
             }
-        }.frame(height: 6)
+        }.frame(height: height)
     }
 
     @ViewBuilder private func actions(_ all: [RoadItem], done: Int) -> some View {
@@ -1188,8 +1493,9 @@ struct RoadTrackView: View {
         let doneItems = all.filter { $0.status == "done" }
         let old = doneItems.filter(archived)
         let shown = doneItems.filter { showArchived || !archived($0) }
+        let showDone = self.showDone ?? !items.contains { $0.status != "done" }
         if !doneItems.isEmpty {
-            Button { withAnimation(.easeOut(duration: 0.15)) { showDone.toggle() } } label: {
+            Button { withAnimation(.easeOut(duration: 0.15)) { self.showDone = !showDone } } label: {
                 HStack(spacing: 6) {
                     Image(systemName: showDone ? "chevron.down" : "chevron.right").font(.system(size: S(9), weight: .bold))
                     Text("DONE · \(doneItems.count)").font(Brand.label(8.5)).tracking(0.8)
@@ -1198,7 +1504,7 @@ struct RoadTrackView: View {
             }.buttonStyle(.plain).pointerStyle(.link).padding(.top, 4)
                 .help(showDone ? "Fold what is done" : "Show what is done")
             if showDone {
-                ForEach(shown) { row($0) }
+                rowList(shown)
                 if !old.isEmpty {
                     Button { showArchived.toggle() } label: {
                         Text(showArchived ? "Hide archived" : "\(old.count) archived · done more than a week ago")
@@ -1209,29 +1515,40 @@ struct RoadTrackView: View {
         }
     }
 
-    @ViewBuilder private func row(_ r: RoadItem) -> some View {
+    @ViewBuilder private func row(_ r: RoadItem, slot: Bool = false, inGroup: Bool = false) -> some View {
         let isDone = r.status == "done"
+        let m = media(r)
         HStack(alignment: .top, spacing: 10) {
             Button { set(r, isDone ? "todo" : "done") } label: { statusMark(r.status) }
                 .buttonStyle(SteerButton()).padding(.top, isDone ? 1 : 2)
                 .help(isDone ? "Done · click to reopen" : "Click: mark as done · right-click: any status")
                 .contextMenu { statusMenu(r) }
+            let extra = !r.isCore && !rolling
             VStack(alignment: .leading, spacing: 2) {
-                Text(r.text).font(.system(size: S(isDone ? 11.5 : 12.5))).foregroundStyle(isDone ? Brand.mute : Brand.ink)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if extra { kindTag(r) }
+                    Text(r.text).font(.system(size: S(isDone || extra ? 11.5 : 12.5))).foregroundStyle(isDone ? Brand.mute : extra ? Brand.ink.opacity(0.7) : Brand.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let f = r.forChapter {
                     Button { model.focusItem(projectId: board.project.id, ref: "track:" + BoardFiles.slug(f)) } label: {
                         Text("↳ \(f)").font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1)
                     }.buttonStyle(.plain).pointerStyle(.link).help("The chapter this fix belongs to")
                 }
+                if !inGroup { FeatureTestLine(board: board, media: m, compact: isDone).padding(.top, 2) }
             }
             Spacer(minLength: 8)
+            if slot {
+                if !inGroup && !m.pics.isEmpty { FeatureThumbs(board: board, media: m, title: r.text) }
+                else { Color.clear.frame(width: FeatureThumbs.width, height: 1) }
+            }
+            HStack(spacing: 10) {
             if !isDone && r.status != "todo" {
                 Text(Self.label(r.status)).font(.system(size: S(10.5))).foregroundStyle(Self.color(r.status))
             }
             SessionChip(projectId: board.project.id, ref: "road:" + r.id)
             if isDone {
-                Menu { statusMenu(r) } label: { Image(systemName: "ellipsis") }
+                Menu { statusMenu(r); Divider(); Menu("Kind") { kindMenu(r) } } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Brand.mute).pointerStyle(.link)
             } else {
                 Menu {
@@ -1240,12 +1557,42 @@ struct RoadTrackView: View {
                     Button("Just look") { start(r, .look) }
                     Divider()
                     Menu("Mark as") { statusMenu(r) }
+                    Menu("Kind") { kindMenu(r) }
                 } label: { HStack(spacing: 4) { PixelIcon(name: "play", size: 8); Text("Start") } }
                 .menuStyle(.borderlessButton).fixedSize().font(.system(size: S(11))).pointerStyle(.link)
             }
+            }
+            .frame(width: slot ? Self.ctaWidth : nil, alignment: .trailing)
         }
         .padding(.vertical, isDone ? 1 : 3)
+        .contentShape(Rectangle())
+        .contextMenu { Section("Kind") { kindMenu(r) }; Section("Mark as") { statusMenu(r) } }
         .id("road:" + r.id).flash("road:" + r.id)
+    }
+
+    private func kindTag(_ r: RoadItem) -> some View {
+        Text(r.kind.uppercased()).font(Brand.label(7.5)).tracking(0.5).foregroundStyle(Self.kindColor(r.kind))
+            .padding(.horizontal, 4).padding(.vertical, 1.5)
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Self.kindColor(r.kind).opacity(0.45)))
+            .opacity(r.kindGuessed ? 0.75 : 1)
+            .overlay(alignment: .topTrailing) { if r.kindProposed { Circle().fill(Brand.claude).frame(width: 4, height: 4).offset(x: 2, y: -2) } }
+            .help(r.kindProposed ? "Proposed by Claude · Keep or Undo on the chapter, or right-click to change"
+                  : r.kindGuessed ? "Guessed from the words · right-click to change" : "An extra: it never holds the chapter back · right-click to change")
+    }
+
+    @ViewBuilder private func kindMenu(_ r: RoadItem) -> some View {
+        ForEach(RoadItem.kinds, id: \.self) { k in
+            Button { setKind(r, k) } label: {
+                let t = k == "core" ? "Core: needed for the objective" : k == "later" ? "Later: an idea, not promised" : k.capitalized
+                if r.kind == k { Label(t + (r.kindGuessed ? " (guessed)" : ""), systemImage: "checkmark") } else { Text(t) }
+            }
+        }
+    }
+
+    private func setKind(_ r: RoadItem, _ k: String) {
+        guard k != r.kindTag else { return }
+        let before = board.setRoadKind([(r.text, k)])
+        model.showToast("“\(r.text.prefix(50))\(r.text.count > 50 ? "…" : "")” → \(k)", undo: { [board] in board.setRoadKind(before) })
     }
 
     /// A chapter Claude drafted from a feature request: nothing is on the roadmap until you say so.
@@ -1258,8 +1605,10 @@ struct RoadTrackView: View {
                 if let req { Text("from your request “\(req.short)”").font(.system(size: S(11))).foregroundStyle(Brand.mute).lineLimit(1) }
                 Spacer()
             }
-            Text("\(all.count) key results · \(reqs.count) requirements proposed" + (reqs.isEmpty ? "" : " (Requirements tab)"))
-                .font(.system(size: S(11.5))).foregroundStyle(Brand.blue)
+            Text("Adds \(all.count) key result\(all.count == 1 ? "" : "s")" + (reqs.isEmpty ? "" : " and \(reqs.count) requirement\(reqs.count == 1 ? "" : "s")") + ", all new:")
+                .font(.system(size: S(11.5))).foregroundStyle(Brand.ink.opacity(0.8))
+            draftList("KEY RESULTS", all.map { ($0.isCore ? nil : $0.kind, $0.text) })
+            if !reqs.isEmpty { draftList("REQUIREMENTS", reqs.map { (nil, $0.text) }) }
             HStack(spacing: 8) {
                 Button { decide(true, req) } label: {
                     Text("Add to roadmap").font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Color(hex: 0x1a1200))
@@ -1277,6 +1626,24 @@ struct RoadTrackView: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Brand.green.opacity(0.06)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.green.opacity(0.5)))
+    }
+
+    /// What a draft adds, one "+" row each (an extra shows its kind).
+    private func draftList(_ title: String, _ rows: [(String?, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(Brand.label(8)).tracking(0.8).foregroundStyle(Brand.mute)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text("+").font(.system(size: S(12), weight: .bold)).foregroundStyle(Brand.green)
+                    if let k = r.0 {
+                        Text(k.uppercased()).font(Brand.label(7.5)).tracking(0.5).foregroundStyle(Self.kindColor(k))
+                            .padding(.horizontal, 4).padding(.vertical, 1.5)
+                            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Self.kindColor(k).opacity(0.45)))
+                    }
+                    Text(r.1).font(.system(size: S(12))).foregroundStyle(Brand.ink).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 
     private func decide(_ approve: Bool, _ req: BoardRequest?) {
@@ -1332,6 +1699,24 @@ struct RoadTrackView: View {
 }
 
 
+extension BoardStore {
+    /// Latest activity per chapter (ISO or date strings, compared as text): key results' status changes,
+    /// deliveries linked to them, sessions started on the chapter or one of its key results.
+    func chapterActivity() -> [String: String] {
+        var out: [String: String] = [:]
+        func bump(_ t: String, _ s: String?) { if let s, !s.isEmpty, s > out[t] ?? "" { out[t] = s } }
+        var trackOf: [String: String] = [:]
+        for r in roadmap { trackOf[r.id] = r.track; trackOf[r.text] = r.track; bump(r.track, r.movedAt) }
+        for s in ships { for rd in s.roads { if let t = trackOf[rd] ?? trackOf[BoardFiles.slug(rd)] { bump(t, s.updated) } } }
+        let bySlug = Dictionary(chapters.map { (BoardFiles.slug($0.name), $0.name) }, uniquingKeysWith: { a, _ in a })
+        for l in links {
+            if l.item.hasPrefix("track:"), let t = bySlug[String(l.item.dropFirst(6))] { bump(t, l.started) }
+            else if l.item.hasPrefix("road:"), let t = trackOf[String(l.item.dropFirst(5))] { bump(t, l.started) }
+        }
+        return out
+    }
+}
+
 /// Amber flash on the item ⌘K just opened.
 struct Flash: ViewModifier {
     @EnvironmentObject var model: AppModel
@@ -1381,7 +1766,8 @@ struct TestChapter: View {
                 }.help(c)
             }
             HStack(spacing: 6) {
-                if let u = test.url, let url = URL(string: u) {
+                // No Test it when the link leads nowhere (an app link Steerify cannot act on): the picture is the test.
+                if let u = test.url, !TestEnvs.dead(u), let url = URL(string: u) {
                     // A link that does not reach the feature (older deliveries) says so instead of looking like a test.
                     let vague = TestEnvs.generic(u, envs: TestEnvs.load(board.project.boardDir))
                     Button { if url.scheme == "steerify" { model.handle(url) } else { NSWorkspace.shared.open(url) } } label: {

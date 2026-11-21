@@ -33,10 +33,11 @@ extension AppModel {
         let order = ["wip": 0, "you": 1, "review": 2, "todo": 3]
         return last.compactMap { t, v -> ChapterResume? in
             guard let items = tracks[t] else { return nil }
-            let done = items.filter { $0.status == "done" }.count
-            guard done < items.count else { return nil }
+            guard items.contains(where: { $0.status != "done" }) else { return nil }
+            let core = ChapterProgress(items)          // progress = the core; extras never make it look behind
+            let done = core.coreDone
             let next = items.filter { $0.status != "done" }.sorted { (order[$0.status] ?? 9) < (order[$1.status] ?? 9) }.first?.text
-            return ChapterResume(track: t, area: items.first?.area ?? "", done: done, total: items.count, lastAt: v.0, lastWhat: v.1, next: next)
+            return ChapterResume(track: t, area: items.first?.area ?? "", done: done, total: core.core.count, lastAt: v.0, lastWhat: v.1, next: next)
         }
         .sorted { ($0.lastAt ?? .distantPast) > ($1.lastAt ?? .distantPast) }
         .prefix(limit).map { $0 }
@@ -70,12 +71,14 @@ struct ResumeChapters: View {
     @EnvironmentObject var model: AppModel
     let project: Project
     var compact = false
+    var limit = 3
+    var showHeader = true
 
     var body: some View {
-        let list = model.whereYouLeftOff(project, limit: compact ? 2 : 3)
+        let list = model.whereYouLeftOff(project, limit: compact ? 2 : limit)
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("WHERE YOU LEFT OFF").font(Brand.label(9.5)).tracking(1).foregroundStyle(Brand.amber)
+                if showHeader { Text("WHERE YOU LEFT OFF").font(Brand.label(9.5)).tracking(1).foregroundStyle(Brand.amber) }
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, c in card(c, hero: i == 0) }
             }
         }

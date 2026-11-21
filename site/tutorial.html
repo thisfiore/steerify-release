@@ -32,7 +32,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="assets/site.css?v=10">
-<link rel="stylesheet" href="assets/story.css?v=15">
+<link rel="stylesheet" href="assets/story.css?v=16">
 <script src="assets/brand.js?v=7" defer></script>
 <script src="assets/infographics.js?v=7" defer></script>
 <script src="assets/tutorial.js?v=7" defer></script>
@@ -61,9 +61,9 @@
         <a href="#zero" data-id="l01"><b>Start from zero</b><i>0:00</i></a>
         <a href="#have-claude-code" data-id="l04"><b>I already have Claude Code</b><i>0:31</i></a>
         <a href="#installed" data-id="l05"><b>Both are installed</b><i>0:41</i></a>
-        <a href="#inside" data-id="l07"><b>How Claude gets inside</b><i>1:00</i></a>
-        <a href="#tabs" data-id="l09"><b>What the tabs mean</b><i>1:27</i></a>
-        <a href="#request" data-id="l16"><b>Asking for something new</b><i>2:06</i></a>
+        <a href="#inside" data-id="l07"><b>How Claude gets inside</b><i>1:02</i></a>
+        <a href="#tabs" data-id="l09"><b>What the tabs mean</b><i>1:30</i></a>
+        <a href="#request" data-id="l16"><b>Asking for something new</b><i>2:15</i></a>
       </div>
       <div class="gs-player">
         <video id="gs-video" controls playsinline preload="metadata" poster="videos/posters/getting-started.jpg" src="videos/getting-started.mp4"></video>
@@ -92,6 +92,25 @@
     v.addEventListener('timeupdate', () => { let cur = links[0]; links.forEach((a) => { if (t[a.dataset.id] != null && v.currentTime >= t[a.dataset.id]) cur = a; }); links.forEach((x) => x.classList.toggle('on', x === cur)); });
   })();
   </script>
+
+  <section class="gs" id="why" style="padding-top:0">
+    <div class="wrap">
+      <span class="eyebrow">Why Steerify</span>
+      <h2 class="rel-title" style="font-size:clamp(26px,4vw,44px)">The same idea, told twice.</h2>
+      <p class="lead" style="margin-top:12px">Pick the one that sounds like you.</p>
+      <div class="gs-why">
+        <figure id="why-simple">
+          <div class="gs-player"><video controls playsinline preload="none" poster="videos/posters/why-simple.jpg" src="videos/why-simple.mp4"></video></div>
+          <figcaption><b>I don't code</b><i>1:12</i><span>The fastest builder in the world, a dog house, a castle, and a clipboard. No jargon.</span></figcaption>
+        </figure>
+        <figure id="why-pro">
+          <div class="gs-player"><video controls playsinline preload="none" poster="videos/posters/why-pro.jpg" src="videos/why-pro.mp4"></video></div>
+          <figcaption><b>I have 99 terminals open</b><i>2:20</i><span>State in your repo, choices and requirements tied to deliveries, git flows, focused tests, release, tasks.</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+  <script>document.querySelectorAll('#why video').forEach((v, _, all) => v.addEventListener('play', () => all.forEach((o) => { if (o !== v) o.pause(); })));</script>
 
   <section class="tut" style="padding-top:0">
     <div class="wrap">

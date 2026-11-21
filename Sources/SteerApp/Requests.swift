@@ -14,6 +14,16 @@ enum RequestKind: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String { ["fix": "Fix", "refine": "Refinement", "feature": "New feature", "task": "Task", "question": "Question"][rawValue]! }
     var color: Color { [.fix: Brand.amber, .refine: Brand.blue, .feature: Brand.green, .task: Brand.claude, .question: Brand.cream][self]! }
+    /// The standard in one line per kind: shown on the pills and given to Apple Intelligence.
+    var rule: String {
+        switch self {
+        case .fix: return "Something in the product is broken, wrong or does nothing. Result: code fixed."
+        case .refine: return "A change to something the product already has: layout, wording, flow, behaviour. Result: code changed."
+        case .feature: return "A capability the product does not have yet. Result: new code, planned as a chapter."
+        case .task: return "Work done WITH the product or the team's tools, not ON it: a report, a tutorial, a data collection, sending something. Result: a file, a list or counts. No code changes."
+        case .question: return "The user asks what to do or how something works. Result: an answer or a choice."
+        }
+    }
     /// Where this kind lands, in plain words.
     func destination(_ chapter: String?) -> String {
         switch self {
@@ -22,6 +32,32 @@ enum RequestKind: String, CaseIterable, Identifiable {
         case .task: return "Tasks · Claude does it, you check the result"
         case .question: return "A choice on the board"
         }
+    }
+}
+
+/// The triage standard, refreshed by the board itself: every request whose kind was changed (by you in the sheet,
+/// or by Claude at intake) is a lesson. The words use them for near-identical asks, Apple Intelligence sees the latest ones.
+enum TriageLessons {
+    struct Lesson { let text: String; let from: RequestKind; let to: RequestKind }
+
+    static func load(_ dir: String, max: Int = 10) -> [Lesson] {
+        RequestLog.raw(dir).compactMap { r -> (String, Lesson)? in
+            guard let t = r["text"] as? String, let to = RequestKind(rawValue: r["kind"] as? String ?? ""),
+                  let from = RequestKind(rawValue: r["guess"] as? String ?? ""), from != to else { return nil }
+            return ((r["updated"] as? String) ?? (r["at"] as? String) ?? "", Lesson(text: t, from: from, to: to))
+        }.sorted { $0.0 > $1.0 }.prefix(max).map(\.1)
+    }
+
+    /// A past correction that is almost the same ask (≥ 55% of the words shared).
+    static func match(_ text: String, in lessons: [Lesson]) -> Lesson? {
+        let mine = Set(RequestTriage.words(text).map(RequestTriage.stem))
+        guard mine.count >= 4 else { return nil }
+        return lessons.max { a, b in overlap(mine, a.text) < overlap(mine, b.text) }.flatMap { overlap(mine, $0.text) >= 0.55 ? $0 : nil }
+    }
+
+    private static func overlap(_ mine: Set<String>, _ other: String) -> Double {
+        let theirs = Set(RequestTriage.words(other).map(RequestTriage.stem))
+        return Double(mine.intersection(theirs).count) / Double(max(1, mine.union(theirs).count))
     }
 }
 
@@ -39,6 +75,7 @@ struct BoardRequest: Identifiable, Hashable {
     let became: [String]          // board refs it turned into (road:…, track:…, choice:…, test:…)
     let note: String?             // Claude's one line on what happened
     let area: String?
+    var title: String? = nil      // 2–4 words naming it (Apple Intelligence), written once when its session starts
 
     var short: String {
         let first = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
@@ -59,7 +96,8 @@ enum RequestLog {
             BoardRequest(id: s(r["id"]), at: s(r["at"]), text: s(r["text"]), kind: RequestKind(rawValue: s(r["kind"])) ?? .refine,
                          chapter: r["chapter"] as? String, imgs: r["imgs"] as? [String] ?? [], context: r["context"] as? String,
                          contextTitle: r["contextTitle"] as? String, status: (r["status"] as? String) ?? "filed",
-                         became: r["became"] as? [String] ?? [], note: r["note"] as? String, area: r["area"] as? String)
+                         became: r["became"] as? [String] ?? [], note: r["note"] as? String, area: r["area"] as? String,
+                         title: r["title"] as? String)
         }.sorted { $0.at > $1.at }
     }
 
@@ -110,11 +148,16 @@ enum RequestTriage {
     static let featureWords = ["new ", "add ", "support", "integrate", "integration", "would like", "i want", "we need", "feature",
                                "allow", "let me", "ability", "option to", "build ", "create ", "aggiungi", "nuov", "vorrei", "serve "]
     /// Doing, not building (choice tasks-place): an outcome with existing tools and standards, often repeating.
-    static let taskWords = ["process ", "collect", "collection", "download ", "scrape", "every day", "every week", "every monday", "every morning",
-                            "weekly", "daily", "each week", "each month", "monthly", "recurring", "schedule ", "our sop", "our standard",
-                            "standard operating", "procedure", "tutorial", "prepare ", "send the", "send a ", "report on", "weekly report",
-                            "newsletter", "run our", "using our", "with our tools", "data collection", "ogni settimana", "ogni giorno",
-                            "settimanal", "raccogli", "prepara ", "procedura"]
+    /// Not "process" / "schedule" / "standard" alone: in product talk they mean the app's flow ("double step slows the process").
+    static let taskWords = ["process the ", "process all", "process these", "process our", "collect", "collection", "download ", "scrape",
+                            "every day", "every week", "every monday", "every morning", "weekly", "daily", "each week", "each month",
+                            "monthly", "recurring", "our sop", "standard operating", "tutorial with", "make a tutorial", "record a tutorial",
+                            "prepare ", "send the", "send a ", "report on", "weekly report", "newsletter", "run our", "using our",
+                            "with our tools", "data collection", "ogni settimana", "ogni giorno", "settimanal", "raccogli", "prepara ", "procedura"]
+    /// Words about the app's own screens: a request full of them is about changing the product, not a task done with it.
+    static let productWords = ["button", "tab", "modal", "screen", "view", "card", "ui", "ux", "layout", "label", "pill", "sheet", "menu",
+                               "toolbar", "top bar", "sidebar", "shortcut", "cmd", "click", "session", "roadmap", "choice", "column",
+                               "overlay", "toast", "notification", "badge", "the app", "steerify", "classif", "triage", "apple intelligence"]
     static let questionWords = ["how ", "why ", "should we", "should i", "which ", "what if", "can we", "is it", "does it",
                                 "come ", "perché", "quale", "dovremmo"]
 
@@ -135,7 +178,7 @@ enum RequestTriage {
         return w
     }
 
-    static func classify(_ text: String, chapters: [(name: String, items: [String])], context: String?) -> Triage {
+    static func classify(_ text: String, chapters: [(name: String, items: [String])], context: String?, lessons: [TriageLessons.Lesson] = []) -> Triage {
         let t = " " + text.lowercased() + " "
         func hits(_ list: [String]) -> [String] {
             let h = list.filter { t.contains($0) }
@@ -143,6 +186,9 @@ enum RequestTriage {
         }
         let fx = hits(fixWords), rf = hits(refineWords), ft = hits(featureWords), qs = hits(questionWords), tk = hits(taskWords)
         var score: [RequestKind: Int] = [.fix: fx.count * 2, .refine: rf.count, .feature: ft.count * 2, .question: qs.count, .task: tk.count * 2]
+        // Talking about the app's own screens = changing the product: a task needs more than one task word to win then.
+        let pw = productWords.filter { w in t.range(of: "\\b" + NSRegularExpression.escapedPattern(for: w), options: .regularExpression) != nil }
+        if !pw.isEmpty { score[.task] = max(0, tk.count * 2 - 2 * min(pw.count, 2)) }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasSuffix("?") { score[.question, default: 0] += 3 }
         let n = words(text).count
@@ -152,7 +198,9 @@ enum RequestTriage {
         var kind = (score[best] ?? 0) == 0 ? RequestKind.refine : best
         if kind == .question && trimmed.hasSuffix("?") == false && (score[.question] ?? 0) < 2 { kind = .refine }
         let quoted: ([String]) -> String = { $0.prefix(3).map { "“\($0.trimmingCharacters(in: .whitespaces))”" }.joined(separator: ", ") }
-        let why: String
+        var why: String
+        let lesson = TriageLessons.match(text, in: lessons)
+        if let l = lesson { kind = l.to }
         switch kind {
         case .fix: why = "Sounds like something broken: " + quoted(fx)
         case .feature: why = ft.isEmpty ? "Long and many-sided: a feature" : "Asks for something new: " + quoted(ft)
@@ -160,6 +208,8 @@ enum RequestTriage {
         case .question: why = trimmed.hasSuffix("?") ? "Ends with a question mark" : "Asks a question: " + quoted(qs)
         case .refine: why = rf.isEmpty ? "Short change to something that exists" : "A change to something that exists: " + quoted(rf)
         }
+        if lesson != nil { why = "Like a request you filed as \(kind.label.lowercased()) before" }
+        else if kind != .task && !tk.isEmpty && !pw.isEmpty { why += " · about the app (\(quoted(pw))), so not a task" }
 
         // Chapter: shared words with each chapter's name (×3) and key results (×1); what you were looking at +4.
         let mine = Set(words(text).map(stem))
@@ -203,7 +253,7 @@ extension AppModel {
     /// File a request: save screenshots + the request, put fixes/refinements on the rolling chapter at once,
     /// then (unless `fileOnly`) start the briefed Claude session. Returns the request id.
     @discardableResult
-    func fileRequest(projectId: String, text: String, kind: RequestKind, chapter: String?, images: [URL],
+    func fileRequest(projectId: String, text: String, kind: RequestKind, guess: RequestKind? = nil, chapter: String?, images: [URL],
                      context: String?, contextTitle: String?, fileOnly: Bool) -> String? {
         guard let p = projects.first(where: { $0.id == projectId }) else { return nil }
         let b = board(for: p)
@@ -231,6 +281,7 @@ extension AppModel {
         }
         RequestLog.edit(p.boardDir, id: id, create: true) { r in
             r["at"] = RequestLog.now(); r["text"] = clean; r["kind"] = kind.rawValue
+            r["guess"] = (guess ?? kind).rawValue      // what Steerify suggested: a different kind is a lesson (TriageLessons)
             r["chapter"] = chapter; r["imgs"] = imgs; r["context"] = context; r["contextTitle"] = contextTitle
             r["status"] = fileOnly ? "filed" : "working"; r["became"] = became; r["area"] = area
         }
@@ -248,9 +299,23 @@ extension AppModel {
         item.title = "Request: " + r.short
         item.area = r.area
         RequestLog.edit(p.boardDir, id: id) { $0["status"] = ($0["status"] as? String) == "filed" ? "working" : $0["status"] }
+        nameRequestSession(r, in: p)
         // Test copies (`--dry-sessions`) print the command instead of starting Claude (and the brief to stderr).
         if CommandLine.arguments.contains("--dry-sessions") { FileHandle.standardError.write(("BRIEF\n" + requestBrief(r, in: p) + "\n").data(using: .utf8)!) }
         start(projectId: p.id, item: item, intent: .intake, dry: CommandLine.arguments.contains("--dry-sessions"), extraBrief: requestBrief(r, in: p), focus: focus)
+    }
+
+    /// A request session is named after what was asked ("New · Tasks tab session label"), never "Request …".
+    /// The words name it at once; Apple Intelligence gives 2–4 better words a moment later, kept in requests.json.
+    func nameRequestSession(_ r: BoardRequest, in p: Project) {
+        guard r.title == nil else { return }
+        let dir = p.boardDir, ref = "request:" + r.id
+        Task { @MainActor in
+            guard let t = await SessionName.requestSubject(r.text) else { return }
+            RequestLog.edit(dir, id: r.id) { if $0["title"] == nil { $0["title"] = t } }
+            for s in sessions where s.projectId == p.id && s.item?.ref == ref { s.title = "New · " + t }
+            persistSessions()
+        }
     }
 
     /// Everything the session needs so it never asks what the request is.

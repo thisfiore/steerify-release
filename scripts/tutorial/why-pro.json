@@ -1,0 +1,80 @@
+{
+ "title": "Steerify for people with 99 terminals",
+ "label": "FOR 99 TERMINALS",
+ "voice": {
+  "provider": "elevenlabs",
+  "source": "ElevenLabs, Frenk's own voice"
+ },
+ "slides": [
+  {
+   "id": "b01",
+   "chapter": "99 terminals",
+   "text": "You run ninety-nine Claude sessions in a terminal. I did too. Here is what replaced my tab bar."
+  },
+  {
+   "id": "b02",
+   "chapter": "The problem is state",
+   "text": "The problem was never speed. It was state. Which session is on what. What it assumed. What is waiting on me. And what is actually done."
+  },
+  {
+   "id": "b03",
+   "chapter": "One board, in your repo",
+   "text": "Steerify keeps that state in one place. A board, stored as plain JSON inside your repo. Choices, requirements, roadmap, deliveries. Sessions read it and write it through a Claude Code skill and an MCP server."
+  },
+  {
+   "id": "b04",
+   "chapter": "It starts as a request",
+   "text": "Everything starts as a request. Command N, type it, drop a screenshot. It is sorted as a fix, a refinement, a feature or a question, and filed under the right chapter."
+  },
+  {
+   "id": "b05",
+   "chapter": "Choices, visually",
+   "text": "If there is a real decision, Claude has to ask before it builds. Options come with a mockup, one is marked as suggested, and you can blend two with a note. A choice only shows as built when a delivery names it."
+  },
+  {
+   "id": "b06",
+   "chapter": "Requirements stay true",
+   "text": "Requirements work the same way. Claude proposes, you confirm. Each delivery lists the requirements it meets, and your OK marks them built, with that delivery as evidence. The spec and the roadmap cannot quietly drift apart."
+  },
+  {
+   "id": "b07",
+   "chapter": "Sessions on the roadmap",
+   "text": "Every roadmap item starts its own session, in the right repo, already briefed. Steerify knows which conversation belongs to which item, and shows its state. Rowing. Your turn. Or done."
+  },
+  {
+   "id": "b08",
+   "chapter": "Git, your way",
+   "text": "You pick how sessions use git, per project. Straight on main. A worktree per feature. Or a branch with a pull request, merged by your OK."
+  },
+  {
+   "id": "b09",
+   "chapter": "Testing, tied to the feature",
+   "text": "Finished work lands in To test. Each test is a cropped picture of the thing to check, one line of what you should see, and a link that has to open the feature itself, on a real test address. Home pages and dead links are refused. You mark it right, or pin a note on the picture, and it goes back to the same session as a new version."
+  },
+  {
+   "id": "b10",
+   "chapter": "Release",
+   "text": "What you approved waits in Release. One click, and the work is committed, pushed, and your deploy command runs. Add a live check, and items turn live by themselves when the deployed commit catches up."
+  },
+  {
+   "id": "b11",
+   "chapter": "Tasks, not code",
+   "text": "And not everything is code. Tasks are outcomes Claude reaches with your tools. A report. A weekly data pull. A tutorial. Once, or on a schedule. A run only counts when Claude hands in a result with its checks, and you say OK, or Redo. No result by the deadline, and Steerify tells you."
+  },
+  {
+   "id": "b12",
+   "chapter": "What now?",
+   "text": "On top of the board, a Next strip shows at most two things to do now, one button each. And when a session delivers, or needs you, it pings you inside the app."
+  },
+  {
+   "id": "b13",
+   "chapter": "Where you left off",
+   "text": "Close the laptop. When you come back, Where you left off shows each chapter. What happened last, what comes next, and a Resume button. Command J jumps to the next thing waiting on you."
+  },
+  {
+   "id": "b14",
+   "chapter": "One board",
+   "text": "So. Ninety-nine sessions is fine. Ninety-nine sessions and one board is better. Steerify. Free, open source, for Mac."
+  }
+ ]
+}

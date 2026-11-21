@@ -95,9 +95,25 @@ enum SessionSummaries {
         return nil
     }
 
+    /// The beginning (first ask) and the end (latest ask, last replies) of a transcript, whole lines only.
+    /// Transcripts reach 160 MB: reading one whole cost ~500 MB of memory for a two-line summary.
+    static func headAndTail(_ url: URL, head: Int = 1 << 20, tail: Int = 4 << 20) -> String? {
+        guard let h = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? h.close() }
+        let size = Int((try? h.seekToEnd()) ?? 0)
+        try? h.seek(toOffset: 0)
+        if size <= head + tail { return (try? h.readToEnd()).flatMap { String(decoding: $0, as: UTF8.self) } }
+        guard var first = try? h.read(upToCount: head) else { return nil }
+        if let cut = first.lastIndex(of: 0x0A) { first = first.prefix(upTo: cut) }                 // drop the cut-off last line
+        try? h.seek(toOffset: UInt64(size - tail))
+        guard var last = try? h.readToEnd() else { return nil }
+        if let cut = last.firstIndex(of: 0x0A) { last = last.suffix(from: last.index(after: cut)) } // drop the cut-off first line
+        return String(decoding: first, as: UTF8.self) + "\n" + String(decoding: last, as: UTF8.self)
+    }
+
     /// What was asked and what Claude said, from a Claude Code transcript (.jsonl), newest last.
     static func extract(_ url: URL) -> (asks: [String], replies: [String])? {
-        guard let data = try? Data(contentsOf: url), let s = String(data: data, encoding: .utf8) else { return nil }
+        guard let s = headAndTail(url) else { return nil }
         var asks: [String] = [], replies: [String] = []
         for line in s.split(separator: "\n") where line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"") {
             guard let o = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
@@ -164,7 +180,8 @@ enum SessionSummaries {
 // MARK: - 2 · Request triage with the on-device model (the word model answers first, this refines it)
 
 extension RequestTriage {
-    static func refine(_ text: String, chapters: [(name: String, items: [String])], context: String?, words: Triage) async -> Triage? {
+    static func refine(_ text: String, chapters: [(name: String, items: [String])], context: String?, words: Triage,
+                       lessons: [TriageLessons.Lesson] = []) async -> Triage? {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard clean.count >= 12, LocalAI.ready else { return nil }
         let list = chapters.filter { $0.name != RequestLog.fixesChapter }.prefix(14)
@@ -173,7 +190,7 @@ extension RequestTriage {
         Chapters:
         \(menu)
 
-        \(context.map { "The user was looking at the chapter: \($0)\n" } ?? "")Request: \(clean.prefix(1500))
+        \(lessons.isEmpty ? "" : "Corrections the user made on this project (follow them):\n" + lessons.prefix(8).map { "- \"\($0.text.replacingOccurrences(of: "\n", with: " ").prefix(140))\" → \($0.to.rawValue), not \($0.from.rawValue)" }.joined(separator: "\n") + "\n\n")\(context.map { "The user was looking at the chapter: \($0)\n" } ?? "")Request: \(clean.prefix(1500))
 
         Answer in exactly this form:
         kind: fix|refine|feature|task|question
@@ -181,19 +198,32 @@ extension RequestTriage {
         why: <max 10 words>
         """
         guard let a = await LocalAI.ask(key: "tri|" + LocalAI.hash(prompt), instructions: """
-            You file requests for a software project.
-            fix = something is broken, wrong or does nothing ("the button does nothing", "crashes when…").
-            refine = a small change to how something that exists looks or reads ("make the tabs smaller", "rename X").
-            feature = a capability that does not exist yet ("let me export…", "add a calendar", "integrate with…").
-            task = work to DO with tools and standards that exist, not code to build: make a tutorial or a report, collect or process data, send something; often repeats ("every Monday").
-            question = the user asks what to do or how something works ("should we…?", "how does…?").
+            You file requests for a software project. Decide in two steps.
+            Step 1: will the answer CHANGE THE PRODUCT (its code, screens, flows)? Then it is fix, refine or feature.
+            Talking about the app's screens, buttons, tabs, sessions, choices, the roadmap or "the process" of using the app is always a product change, never a task.
+            Only when nothing in the product changes and Claude produces something by USING tools: task. Asking without wanting a change: question.
+            Step 2, the kind:
+            fix: \(RequestKind.fix.rule) ("the button does nothing", "wrong link", "crashes when…")
+            refine: \(RequestKind.refine.rule) ("make the tabs smaller", "this double step slows the process", "group these better")
+            feature: \(RequestKind.feature.rule) ("let me export…", "add a calendar", "integrate with…")
+            task: \(RequestKind.task.rule) ("collect last week's leads into a sheet", "make the tutorial with our SOP", "every Monday send the report")
+            question: \(RequestKind.question.rule) ("should we…?", "how does…?", "why do I get…?")
+            When unsure between task and a product kind, pick the product kind.
             Pick the chapter only when the request is clearly about it.
             """, prompt: prompt) else { return nil }
         func field(_ n: String) -> String? {
             a.split(whereSeparator: \.isNewline).map(String.init).first { $0.lowercased().hasPrefix(n + ":") }
                 .map { String($0.dropFirst(n.count + 1)).trimmingCharacters(in: .whitespaces) }
         }
-        guard let k = field("kind")?.lowercased(), let kind = RequestKind.allCases.first(where: { k.hasPrefix($0.rawValue) }) else { return nil }
+        guard let k = field("kind")?.lowercased(), var kind = RequestKind.allCases.first(where: { k.hasPrefix($0.rawValue) }) else { return nil }
+        // The small model over-calls "task" on product talk: it needs a task word ("collect", "every Monday", "our SOP")
+        // or a lesson saying so; otherwise the words' kind stays. A trailing "?" stays a question too.
+        let low = " " + clean.lowercased() + " "
+        let taskSignal = RequestTriage.taskWords.contains { low.contains($0) } || lessons.contains { $0.to == .task && TriageLessons.match(clean, in: [$0]) != nil }
+        let said = kind
+        if kind == .task && !taskSignal { kind = words.kind }
+        if words.kind == .question && clean.hasSuffix("?") && kind != .fix { kind = .question }
+        if kind != said { return nil }      // the standard overrules the model: keep the words' answer and its why
         let why = (field("why") ?? "").trimmingCharacters(in: CharacterSet(charactersIn: ".\"")).prefix(90)
         var t = words
         t.kind = kind
@@ -285,6 +315,85 @@ extension BoardStore {
                                     sure: false, fromCommit: true))
         }
         commitProposals = out
+        sessionProposals = await SessionMatch.proposals(self)
+    }
+}
+
+// MARK: - 3b · Sessions → roadmap: a recent Claude session working on a key result says it started (never done)
+
+enum SessionMatch {
+    /// Sessions that tidy, look or release don't work on a key result.
+    static let working: Set<String> = ["build", "fix", "plan", "resume", "intake", "choose", "check"]
+
+    /// The open key results a session's item points at: road:<slug> directly, a request through what it became
+    /// (or the key result it filed), a choice through the key results that name it.
+    static func items(for ref: String, open: [RoadItem], requests: [[String: Any]]) -> [RoadItem] {
+        let kind = ref.prefix { $0 != ":" }, id = String(ref.drop { $0 != ":" }.dropFirst())
+        func roads(_ r: [String: Any]) -> [String] {
+            (r["became"] as? [String] ?? []).filter { $0.hasPrefix("road:") }.map { String($0.dropFirst(5)) }
+        }
+        switch kind {
+        case "road": return open.filter { $0.id == id }
+        case "request":
+            let became = requests.first { $0["id"] as? String == id }.map(roads) ?? []
+            return open.filter { $0.request == id || became.contains($0.id) }
+        case "choice":
+            let viaReq = requests.filter { ($0["became"] as? [String] ?? []).contains(ref) }.flatMap(roads)
+            return open.filter { $0.text.contains(id) || viaReq.contains($0.id) }
+        default: return []
+        }
+    }
+
+    static func ago(_ d: Date) -> String {
+        let m = Int(Date().timeIntervalSince(d) / 60)
+        return m < 60 ? "\(max(m, 1)) min ago" : m < 1440 ? "\(m / 60) h ago" : "\(m / 1440) d ago"
+    }
+
+    static let judge = """
+        You check a software roadmap against a Claude Code work session. Answer yes only when the session \
+        changed code or files for this exact key result. Answer no when it only mentions it or plans it.
+        """
+
+    @MainActor static func proposals(_ b: BoardStore, days: Double = 7) async -> [RoadProposal] {
+        let open = b.roadmap.filter { r in ["todo", "you"].contains(r.status) && b.chapters.first { $0.name == r.track }?.draft != true }
+        guard !open.isEmpty else { return [] }
+        let requests = RequestLog.raw(b.project.boardDir)
+        var latest: [String: SessionLink] = [:]           // one row per conversation: its newest link
+        for l in b.links where working.contains(l.intent) { latest[l.claudeSession] = l }
+        var out: [String: RoadProposal] = [:]
+        for l in latest.values.sorted(by: { $0.started > $1.started }) {
+            guard let url = SessionSummaries.transcript(l.claudeSession),
+                  let mod = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date,
+                  Date().timeIntervalSince(mod) < days * 86400 else { continue }
+            var hits = items(for: l.item, open: open, requests: requests)
+            var checked = false
+            if hits.isEmpty, l.item.hasPrefix("track:") {
+                // A chapter session: the key results of that chapter it talks about (words first, the model decides).
+                let slug = String(l.item.dropFirst(6))
+                let mine = open.filter { BoardFiles.slug($0.track) == slug }
+                guard !mine.isEmpty, let x = await Task.detached(priority: .utility, operation: { SessionSummaries.extract(url) }).value else { continue }
+                let talk = (x.asks.suffix(4) + x.replies.suffix(4)).joined(separator: "\n")
+                let tw = Set(RequestTriage.words(talk).map(RequestTriage.stem))
+                for it in mine {
+                    let w = Set(RequestTriage.words(it.text).map(RequestTriage.stem))
+                    guard w.count >= 2, Double(w.intersection(tw).count) / Double(w.count) >= 0.6 else { continue }
+                    let prompt = "Key result: \(it.text)\n\nLatest part of the session:\n\(talk.suffix(2500))\n\nDid this session start working on this key result? Answer yes or no."
+                    if let a = await LocalAI.ask(key: "ss1|" + LocalAI.hash(prompt), instructions: judge, prompt: prompt),
+                       a.lowercased().hasPrefix("yes") { hits.append(it) }
+                }
+                checked = true
+            }
+            guard !hits.isEmpty else { continue }
+            let said = await SessionSummaries.summary(l.claudeSession)
+            let line = (said?.text ?? "").split(whereSeparator: \.isNewline).map(String.init).joined(separator: " · ")
+            let name = (l.title ?? l.item).replacingOccurrences(of: "^(Request|Chapter|Consolidate|Build|Fix): ", with: "", options: .regularExpression)
+            for it in hits where out[it.text] == nil {
+                out[it.text] = RoadProposal(item: it.text, from: it.status, to: "wip",
+                    evidence: "session “\(name.prefix(50))” · \(ago(mod))\(checked ? " · Local AI" : "")\(line.isEmpty ? "" : " · “\(line.prefix(110))”")",
+                    sure: false, fromSession: true)
+            }
+        }
+        return Array(out.values)
     }
 }
 
@@ -479,12 +588,18 @@ enum LocalAICheck {
         }
         say("\n== 2 · Request triage")
         let chs = b.chapters.filter { !$0.draft }.map { c in (name: c.name, items: b.roadmap.filter { $0.track == c.name }.map(\.text)) }
+        let lessons = TriageLessons.load(dir)
+        say("lessons from this board: \(lessons.count)")
         for t in ["The Resume button on the To test card does nothing when the conversation was deleted",
                   "Make the session tabs a bit smaller, they take too much space",
                   "Let me export the whole board as a PDF to send to a client",
-                  "Should the landing page show pricing already?"] {
-            let w = RequestTriage.classify(t, chapters: chs, context: nil)
-            let a = await RequestTriage.refine(t, chapters: chs, context: nil, words: w)
+                  "Should the landing page show pricing already?",
+                  "Double step slows process: from the choice I click start and then again in the session",
+                  "I think we should distinguish and group what is okay to release and what is really set aside to build",
+                  "Every Monday collect the new leads from the CRM and send me a report",
+                  "Make the onboarding tutorial for new clients with our SOP"] {
+            let w = RequestTriage.classify(t, chapters: chs, context: nil, lessons: lessons)
+            let a = await RequestTriage.refine(t, chapters: chs, context: nil, words: w, lessons: lessons)
             say("· \(t)\n  words: \(w.kind.rawValue) · \(w.chapter ?? "-") · \(w.kindWhy)\n  AI:    \(a.map { "\($0.kind.rawValue) · \($0.chapter ?? "-") · \($0.kindWhy)" } ?? "(none)")")
         }
         say("\n== 3 · Commits → roadmap")
@@ -495,6 +610,9 @@ enum LocalAICheck {
         await b.refreshCommitProposals(force: true)
         if b.commitProposals.isEmpty { say("· no proposals") }
         for c in b.commitProposals { say("· \(c.item)\n  \(c.from) → \(c.to) · \(c.evidence)") }
+        say("\n== 3b · Sessions → roadmap")
+        if b.sessionProposals.isEmpty { say("· no proposals") }
+        for c in b.sessionProposals { say("· \(c.item)\n  \(c.from) → \(c.to) · \(c.evidence)") }
         say("\n== 4 · Screenshot check")
         for s in b.ships.prefix(6) {
             let i = await ShotCheck.check(s, dir: dir)

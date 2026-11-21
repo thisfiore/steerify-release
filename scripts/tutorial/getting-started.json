@@ -1,0 +1,100 @@
+{
+ "title": "Steerify: getting started, from zero",
+ "label": "GETTING STARTED",
+ "voice": {
+  "provider": "elevenlabs",
+  "source": "ElevenLabs, Frenk's own voice"
+ },
+ "slides": [
+  {
+   "id": "l01",
+   "chapter": "Hello",
+   "text": "Hi, I'm Frenk. Well, a pixelated Frenk. The real one is busy steering. In the next two minutes you go from nothing to your first project in Steerify. No experience needed. I tested this on a friend."
+  },
+  {
+   "id": "l02",
+   "chapter": "What you need",
+   "text": "You need three things. A Mac. Claude Code, the AI that does the building. And Steerify, where you tell it what to build, and check what it did."
+  },
+  {
+   "id": "l03",
+   "chapter": "Install Claude Code",
+   "text": "First, Claude Code. Open the Terminal. Yes, the scary black window. Paste this one line, press Enter, and wait a minute. Then type claude, and sign in with your Claude account. After that, Steerify opens the terminals for you."
+  },
+  {
+   "id": "l04",
+   "chapter": "Install Steerify",
+   "text": "Now Steerify. Go to steerify dot dev, press Download for Mac, open the file, and drag Steerify into Applications. If your Mac complains the first time, go to System Settings, Privacy and Security, and press Open Anyway."
+  },
+  {
+   "id": "l05",
+   "chapter": "Try the demo",
+   "text": "Open it. Not sure where to start? Press Try the demo project. It's a tiny to-do app with a real board, so you can click on everything, and break nothing."
+  },
+  {
+   "id": "l06",
+   "chapter": "Your own project",
+   "text": "Ready for your own? Drag your project folder onto Steerify. Any folder, even an empty one. Then press Set up with Claude. Claude reads your project, and the board fills in while you watch. Then it asks you questions, with pictures. About ten minutes. You can stop any time."
+  },
+  {
+   "id": "l07",
+   "chapter": "How Claude gets inside",
+   "text": "So, how is Claude inside Steerify? No magic. On the right, Steerify opens a real Claude Code terminal, inside your project folder. On the left is the board. Claude reads the board, does the work, and writes back what it did. You never copy and paste between the two."
+  },
+  {
+   "id": "l08",
+   "chapter": "How it knows your project",
+   "text": "And how does Steerify know what you are building? Because you gave it the folder. The board is just a few plain files, saved inside your project, in a folder called dot steerify. Delete Steerify, and it is all still yours."
+  },
+  {
+   "id": "l09",
+   "chapter": "The tabs",
+   "text": "Now, the tabs. They tell one story, left to right. Almost."
+  },
+  {
+   "id": "l10",
+   "chapter": "Choices",
+   "text": "Choices. This is where Claude asks before it builds. Each option is a picture. Pick one, or write your own answer."
+  },
+  {
+   "id": "l11",
+   "chapter": "Requirements",
+   "text": "Requirements. What the thing must do, in plain sentences. Claude proposes them. You confirm, edit, or say later."
+  },
+  {
+   "id": "l12",
+   "chapter": "Roadmap",
+   "text": "Roadmap. The plan, in chapters. Every line has a Start button, and that button opens Claude, already briefed."
+  },
+  {
+   "id": "l13",
+   "chapter": "To test",
+   "text": "To test. Finished work comes back here, as pictures. Looks right? Say OK. Something's off? Say what, and it goes back to be fixed."
+  },
+  {
+   "id": "l14",
+   "chapter": "Release",
+   "text": "Release. Everything you approved, waiting to go live. One button."
+  },
+  {
+   "id": "l14b",
+   "chapter": "Tasks",
+   "text": "Tasks is the newest tab. Things Claude does for you that are not code. A report. A weekly check. It hands in a result, and you say OK, or redo."
+  },
+  {
+   "id": "l15",
+   "chapter": "Ready",
+   "text": "And Ready, the first tab, is the cheat sheet. It only shows what is waiting on you. When in doubt, go there."
+  },
+  {
+   "id": "l16",
+   "chapter": "A new request",
+   "text": "Want something new? Press Request, or Command N, and type it like you would say it to a person. Steerify files it in the right place, and starts Claude."
+  },
+  {
+   "id": "l17",
+   "chapter": "The loop",
+   "text": "That's the whole loop. You say it. You pick. Claude builds. You look. It ships. Lost? Press Command J, and it takes you to the next thing waiting on you. Now go. Someone has to hold the wheel."
+  }
+ ]
+}
