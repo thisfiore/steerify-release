@@ -534,6 +534,7 @@ struct RequestRow: View {
                 Text(whereLine).font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1)
             }
             Spacer(minLength: 6)
+            if r.fromPhone { Image(systemName: "iphone").font(.system(size: S(10.5))).foregroundStyle(Brand.mute).help("Filed from the iPhone") }
             if !r.imgs.isEmpty { Label("\(r.imgs.count)", systemImage: "photo").font(.system(size: S(10.5))).foregroundStyle(Brand.mute) }
             Text(st.0).font(.system(size: S(10.5), weight: .semibold)).foregroundStyle(st.1)
             if r.status == "filed" && model.board(for: project).lastLink("request:" + r.id) == nil {

@@ -271,6 +271,7 @@ struct PreviewOverlay: View {
             let picks = Set((board.verdict(d.id).pick as? [String]) ?? [])
             let chosen = d.multi ? picks.contains(o.id) : board.verdict(d.id).pickString == o.id
             let L = DecisionCard.letter(o, in: d)
+            let noted = !board.pins(d, option: o, picture: img).isEmpty
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     header("OPTION \(L)")
@@ -286,13 +287,13 @@ struct PreviewOverlay: View {
                 Button { choose(o, in: d) } label: {
                     HStack(spacing: 7) {
                         Image(systemName: chosen ? "checkmark.circle.fill" : "hand.point.up.left.fill").font(.system(size: S(12), weight: .bold))
-                        Text(chosen ? (d.multi ? "Picked" : "Your choice") : d.multi ? "Pick \(L)" : "Choose \(L)").font(.system(size: S(13.5), weight: .bold))
+                        Text(DecisionCard.chooseTitle(L, multi: d.multi, chosen: chosen, notes: noted)).font(.system(size: S(13.5), weight: .bold))
                     }
                     .foregroundStyle(chosen ? Brand.amber : Color(hex: 0x1a1200))
                     .frame(maxWidth: .infinity).padding(.vertical, 9)
                     .background(RoundedRectangle(cornerRadius: 8).fill(chosen ? Brand.amberDim : Brand.amber))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.amber, lineWidth: chosen ? 1.5 : 0))
-                }.buttonStyle(SteerButton()).help(chosen ? "Click again to unselect" : "Make this your answer")
+                }.buttonStyle(SteerButton()).help(chosen ? "Click again to unselect" : noted ? "Make this your answer; Claude builds it with your notes" : "Make this your answer")
                 .padding(.top, 4)
             }
         } else {
@@ -428,7 +429,8 @@ struct PreviewOverlay: View {
             board.setChoice(d, pick: "__note", note: v.note, mix: [])
         } else {
             board.setChoice(d, pick: o.id, note: v.note, mix: board.mix(d).filter { $0 != o.id })
-            model.showToast("“\(d.title.prefix(48))” · \(DecisionCard.letter(o, in: d)) chosen")
+            let n = board.pins(d, option: o, picture: img).count
+            model.showToast("“\(d.title.prefix(48))” · \(DecisionCard.letter(o, in: d))" + (n > 0 ? " + \(n) note\(n == 1 ? "" : "s")" : "") + " chosen")
         }
     }
 
@@ -485,7 +487,8 @@ struct PreviewOverlay: View {
     private func saveDraft() {
         guard let d = draft else { return }
         let t = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !t.isEmpty { board.addPin(state.ref, img: img, x: d.x, y: d.y, note: t, version: state.version) }
+        let opt = board.decisions.first { "choice:" + $0.id == state.ref }.flatMap { option($0)?.id }
+        if !t.isEmpty { board.addPin(state.ref, img: img, x: d.x, y: d.y, note: t, version: state.version, option: opt) }
         draft = nil; draftText = ""
     }
 }

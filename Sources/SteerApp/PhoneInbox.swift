@@ -192,7 +192,7 @@ extension AppModel {
             defer { for u in shots { try? FileManager.default.removeItem(at: u) } }
             let chapter = (it["chapter"] as? String).flatMap { c in b.chapters.contains { $0.name == c } ? c : nil }
             guard fileRequest(projectId: p.id, text: note, kind: kind, chapter: chapter, images: shots, context: nil,
-                              contextTitle: "From the iPhone", fileOnly: false) != nil else { return "Couldn't file the request" }
+                              contextTitle: nil, client: "iphone", fileOnly: false) != nil else { return "Couldn't file the request" }
         case "pin":     // a note pinned on a picture (test:<id> or choice:<id>), same shape as BoardStore.addPin
             guard let img = it["img"] as? String, let x = it["x"] as? Double, let y = it["y"] as? Double, !note.isEmpty else { return "Pin without a place or a note" }
             let key = BoardStore.key(for: ref)

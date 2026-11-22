@@ -76,6 +76,8 @@ struct BoardRequest: Identifiable, Hashable {
     let note: String?             // Claude's one line on what happened
     let area: String?
     var title: String? = nil      // 2–4 words naming it (Apple Intelligence), written once when its session starts
+    var client: String? = nil     // where it was filed: "mac" | "iphone" (nil = older requests, from the Mac)
+    var fromPhone: Bool { client == "iphone" || contextTitle == "From the iPhone" }   // older phone requests carried only that label
 
     var short: String {
         let first = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
@@ -99,7 +101,7 @@ enum RequestLog {
                          chapter: r["chapter"] as? String, imgs: r["imgs"] as? [String] ?? [], context: r["context"] as? String,
                          contextTitle: r["contextTitle"] as? String, status: (r["status"] as? String) ?? "filed",
                          became: r["became"] as? [String] ?? [], note: r["note"] as? String, area: r["area"] as? String,
-                         title: r["title"] as? String)
+                         title: r["title"] as? String, client: r["client"] as? String)
         }.sorted { $0.at > $1.at }
     }
 
@@ -311,7 +313,7 @@ extension AppModel {
     /// then (unless `fileOnly`) start the briefed Claude session. Returns the request id.
     @discardableResult
     func fileRequest(projectId: String, text: String, kind: RequestKind, guess: RequestKind? = nil, chapter: String?, images: [URL],
-                     context: String?, contextTitle: String?, fileOnly: Bool) -> String? {
+                     context: String?, contextTitle: String?, client: String = "mac", fileOnly: Bool) -> String? {
         guard let p = projects.first(where: { $0.id == projectId }) else { return nil }
         let b = board(for: p)
         let id = RequestLog.newId()
@@ -341,6 +343,7 @@ extension AppModel {
             r["guess"] = (guess ?? kind).rawValue      // what Steerify suggested: a different kind is a lesson (TriageLessons)
             r["chapter"] = chapter; r["imgs"] = imgs; r["context"] = context; r["contextTitle"] = contextTitle
             r["status"] = fileOnly ? "filed" : "working"; r["became"] = became; r["area"] = area
+            r["client"] = client
         }
         b.reload()
         // Filed for another project (menu bar, ⌃⌥N, the FOR pills): its session starts there, you stay where you are.
@@ -385,6 +388,9 @@ extension AppModel {
         if !r.imgs.isEmpty {
             out.append("Screenshots (open each one): " + r.imgs.map { (p.boardDir as NSString).appendingPathComponent($0) }.joined(separator: " "))
         }
+        out.append(r.fromPhone
+            ? "Filed from: Steerify for iPhone (the iOS app, ios/). Unless the text names the Mac, a bug or UI note is about the iPhone app; say which client you fixed."
+            : "Filed from: the Steerify Mac app. Unless the text names the iPhone, a bug or UI note is about the Mac app.")
         if let c = r.context { out.append("The user was looking at \(c)" + (r.contextTitle.map { " (\"\($0)\")" } ?? "") + ".") }
         if r.kind == .fix || r.kind == .refine, let road = r.became.first(where: { $0.hasPrefix("road:") }),
            let it = b.roadmap.first(where: { "road:" + $0.id == road }) {

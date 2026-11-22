@@ -222,10 +222,12 @@ struct DecisionCard: View {
     private func stageView(_ o: BoardOption) -> some View {
         let chosen = d.multi ? draftPicks.contains(o.id) : draftPick == o.id
         let mixed = !d.multi && draftMix.contains(o.id)
+        let pic = visual(o)
+        let noted = !board.pins(d, option: o, picture: pic).isEmpty
         let i = d.options.firstIndex(of: o) ?? 0
         return HStack(alignment: .top, spacing: 16) {
             Group {
-                if let v = visual(o) {
+                if let v = pic {
                     BoardImage(dir: board.project.boardDir, path: v, height: S(360), fit: true, onOpen: { openPreview(v) })
                 } else if o.mockHTML != nil || o.proto != nil {
                     RoundedRectangle(cornerRadius: 6).fill(Color.black).frame(height: S(360))
@@ -255,7 +257,7 @@ struct DecisionCard: View {
                 Button { choose(o) } label: {
                     HStack(spacing: 7) {
                         Image(systemName: chosen ? "checkmark.circle.fill" : "hand.point.up.left.fill").font(.system(size: S(12), weight: .bold))
-                        Text(chosen ? (d.multi ? "Picked" : "Your choice") : d.multi ? "Pick \(Self.letter(o, in: d))" : "Choose \(Self.letter(o, in: d))").font(.system(size: S(13.5), weight: .bold))
+                        Text(Self.chooseTitle(Self.letter(o, in: d), multi: d.multi, chosen: chosen, notes: noted)).font(.system(size: S(13.5), weight: .bold))
                     }
                     .foregroundStyle(chosen ? Brand.amber : Color(hex: 0x1a1200))
                     .frame(maxWidth: .infinity).padding(.vertical, 9)
@@ -465,6 +467,12 @@ struct DecisionCard: View {
     // MARK: Helpers
 
     private var ref: ItemRef { var r = ItemRef(ref: "choice:" + d.id)!; r.title = d.title; r.area = d.areas.first; return r }
+
+    /// "Choose A", or "Choose A + Notes" when notes are pinned on its picture: they go to Claude with the pick.
+    static func chooseTitle(_ L: String, multi: Bool, chosen: Bool, notes: Bool) -> String {
+        let t = chosen ? (multi ? "Picked" : "Your choice") : multi ? "Pick \(L)" : "Choose \(L)"
+        return notes ? t + " + Notes" : t
+    }
 
     /// "A · Typed blocks" → "A"; labels without a letter get one from their place.
     static func letter(_ o: BoardOption, in d: BoardDecision) -> String {

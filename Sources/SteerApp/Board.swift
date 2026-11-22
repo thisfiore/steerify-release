@@ -749,6 +749,7 @@ enum SessionLinks {
 
 struct Pin: Hashable {
     let img: String; let x: Double; let y: Double; let note: String; let at: String?
+    var opt: String? = nil          // choices: the option whose picture it is on
 }
 
 extension BoardStore {
@@ -764,14 +765,20 @@ extension BoardStore {
         let c = choiceMap[Self.key(for: ref)] ?? [:]
         return (c["pins"] as? [[String: Any]] ?? []).compactMap {
             guard let img = $0["img"] as? String, let x = $0["x"] as? Double, let y = $0["y"] as? Double else { return nil }
-            return Pin(img: img, x: x, y: y, note: $0["note"] as? String ?? "", at: $0["at"] as? String)
+            return Pin(img: img, x: x, y: y, note: $0["note"] as? String ?? "", at: $0["at"] as? String, opt: $0["opt"] as? String)
         }
     }
 
-    func addPin(_ ref: String, img: String, x: Double, y: Double, note: String, version: Int? = nil) {
+    /// Notes pinned on one option of a choice: saved with its id, or on its picture (shot or drawn mockup).
+    func pins(_ d: BoardDecision, option o: BoardOption, picture: String? = nil) -> [Pin] {
+        pins("choice:" + d.id).filter { $0.opt == o.id || $0.img == o.shot || (picture != nil && $0.img == picture) }
+    }
+
+    func addPin(_ ref: String, img: String, x: Double, y: Double, note: String, version: Int? = nil, option: String? = nil) {
         editPins(ref) { list in
             var p: [String: Any] = ["img": img, "x": (x * 1000).rounded() / 1000, "y": (y * 1000).rounded() / 1000, "note": note]
             if let version { p["v"] = version }
+            if let option { p["opt"] = option }
             list.append(p)
         }
     }

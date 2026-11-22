@@ -197,7 +197,7 @@ enum PaletteIndex {
             for q in RequestLog.load(p.boardDir) {
                 let open = !["done", "approved", "discarded"].contains(q.status)
                 let h = PaletteHit(id: "request:\(p.id):\(q.id)", kind: .request, projectId: p.id, projectName: p.name, ref: q.became.first ?? "request:" + q.id,
-                                   title: q.short, context: "\(q.kind.label) · \(ago(q.at))", state: q.status, stateColor: open ? q.kind.color : Brand.mute,
+                                   title: q.short, context: "\(q.kind.label)\(q.fromPhone ? " · iPhone" : "") · \(ago(q.at))", state: q.status, stateColor: open ? q.kind.color : Brand.mute,
                                    rank: open ? 4 : 8, body: [q.text, q.note.map { "Claude: " + $0 } ?? ""].filter { !$0.isEmpty }.joined(separator: "\n\n"),
                                    image: q.imgs.first, boardDir: p.boardDir,
                                    facts: [PaletteFact(label: "About", value: q.chapter ?? q.contextTitle ?? ""),

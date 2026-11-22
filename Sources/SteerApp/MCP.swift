@@ -485,7 +485,20 @@ enum SteerifyMCP {
             guard let d = (b["decisions"] as? [[String: Any]] ?? []).first(where: { $0["id"] as? String == parts[1] }) else { return ("no choice \(parts[1])", true) }
             var slim = d; slim["options"] = (d["options"] as? [[String: Any]] ?? []).map { o in o.filter { $0.key != "mock" } }
             out["choice"] = slim; out["answer"] = dec[parts[1]] ?? NSNull()
-            out["how_to_read_the_answer"] = "pick = the chosen option id (__note = the note is the answer); mix = other option ids to blend into it; note = how (and anything else). Multi-choices: pick is a list."
+            out["how_to_read_the_answer"] = "pick = the chosen option id (__note = the note is the answer); mix = other option ids to blend into it; note = how (and anything else). Multi-choices: pick is a list. pinned_notes = notes the user pinned on an option's picture: open img, look at x/y (0–1 from the top-left); each one on the picked option is a required change, build it and say per note what you did."
+            let opts = d["options"] as? [[String: Any]] ?? []
+            let pins = ((dec[parts[1]] as? [String: Any])?["pins"] as? [[String: Any]]) ?? []
+            if !pins.isEmpty {
+                out["pinned_notes"] = pins.map { p -> [String: Any] in
+                    let img = p["img"] as? String ?? ""
+                    let i = opts.firstIndex { o in (o["id"] as? String) == (p["opt"] as? String) || (!img.isEmpty && (o["shot"] as? String) == img) }
+                    var x: [String: Any] = ["note": p["note"] ?? "", "x": p["x"] ?? 0, "y": p["y"] ?? 0,
+                                            "img": img.hasPrefix("/") ? img : (board as NSString).appendingPathComponent(img)]
+                    if let i { x["option"] = opts[i]["id"] ?? NSNull(); x["letter"] = String(UnicodeScalar(65 + i)!) }
+                    else { x["option"] = NSNull() }
+                    return x
+                }
+            }
         case "req":
             for g in b["requirements"] as? [[String: Any]] ?? [] {
                 if let r = (g["items"] as? [[String: Any]] ?? []).first(where: { $0["id"] as? String == parts[1] }) { out["requirement"] = r; out["group"] = g["h"] }

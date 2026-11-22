@@ -67,8 +67,20 @@ final class MockSnapshots: NSObject, ObservableObject, WKNavigationDelegate {
         return d
     }()
 
+    /// Pictures already found, for 2 s: the Choices tab asks on every redraw while scrolling, and each answer costs a
+    /// folder listing, a date per kit file, a hash and a disk check (the Choices scroll budget, release 0.5.9).
+    private var found: [String: (path: String, at: Date)] = [:]
+
     /// Absolute path of the picture for this option's mockup; nil (and rendering queued) if not there yet.
     func picture(for option: BoardOption, boardDir: String) -> String? {
+        let memo = boardDir + "\u{1}" + (option.proto ?? "") + "\u{1}" + (option.proto == nil ? (option.mockHTML ?? "") : "") + (option.simple ? "\u{1}s" : "")
+        if let f = found[memo], Date().timeIntervalSince(f.at) < 2 { return f.path }
+        let p = lookUp(option, boardDir: boardDir)
+        if let p { found[memo] = (p, Date()) } else { found[memo] = nil }
+        return p
+    }
+
+    private func lookUp(_ option: BoardOption, boardDir: String) -> String? {
         let base = URL(fileURLWithPath: boardDir, isDirectory: true)
         var html: String? = nil, file: URL? = nil, seed = ""
         if let proto = option.proto {
