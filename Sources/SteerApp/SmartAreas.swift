@@ -12,6 +12,8 @@ import FoundationModels
 // of chapters without a feature (Fixes & refinements) need the on-device model, which picks one of the names.
 // Your renames, merges and hides (right-click a chip) are kept apart and always win. Saved in the app's support folder.
 
+extension Notification.Name { static let steerifyAreasPublished = Notification.Name("SteerifyAreasPublished") }
+
 struct SmartAreas: Codable, Equatable {
     struct Area: Codable, Equatable, Hashable { var key: String; var name: String }
     var at: Date
@@ -83,6 +85,7 @@ final class SmartAreaModel: ObservableObject {
     func edit(_ projectId: String, _ change: (inout AreaEdits) -> Void) {
         var e = edits(projectId); change(&e); edits[projectId] = e
         if let d = try? JSONEncoder().encode(e) { try? d.write(to: Self.file(projectId, ".edits"), options: .atomic) }
+        publish(projectId)
     }
     func rename(_ pid: String, _ key: String, to name: String) {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,6 +98,10 @@ final class SmartAreaModel: ObservableObject {
     /// Regroup when the roadmap changed or the last run is older than an hour (or `force`).
     func refresh(_ board: BoardStore, force: Bool = false) async {
         let pid = board.project.id
+        if boardDirs[pid] != board.project.boardDir {
+            boardDirs[pid] = board.project.boardDir
+            publish(pid)                                      // areas grouped before the iPhone could read them
+        }
         let items = board.roadmap.map { (id: $0.id, text: $0.text, chapter: $0.track) }
         let sig = LocalAI.hash(items.map { $0.id + "|" + $0.chapter }.joined(separator: "\n"))
         if !force, raw(pid) != nil, lastSig[pid] == sig, let s = raw(pid), Date().timeIntervalSince(s.at) < Self.every { return }
@@ -112,6 +119,28 @@ final class SmartAreaModel: ObservableObject {
     private func save(_ pid: String, _ s: SmartAreas) {
         byProject[pid] = s
         if let d = try? JSONEncoder().encode(s) { try? d.write(to: Self.file(pid), options: .atomic) }
+        publish(pid)
+    }
+
+    /// The iPhone shows the same area chips on its Roadmap (request r261122-222208): the areas as shown here (with your
+    /// renames, merges and hides) go to `areas.json` in the board folder, key results by their text. Written only
+    /// when they change, so the board's git history gets no churn; the phone sync picks the file up.
+    private var boardDirs: [String: String] = [:]
+    private func publish(_ pid: String) {
+        guard let dir = boardDirs[pid], let s = get(pid) else { return }
+        var items: [String: [String]] = [:]
+        let texts = (BoardFiles.json(dir, "board.json") as? [String: Any])?["tracks"] as? [[String: Any]] ?? []
+        for t in texts { for case let pair as [Any] in t["items"] as? [Any] ?? [] {
+            guard let text = pair.first as? String else { continue }
+            let ks = s.keys(BoardFiles.slug(text)); if !ks.isEmpty { items[text] = ks }
+        } }
+        let out: [String: Any] = ["note": "Roadmap feature areas, written by the Steerify Mac app for the iPhone. Do not edit.",
+                                  "areas": s.areas.map { ["key": $0.key, "name": $0.name] }, "items": items]
+        guard let d = try? JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys]) else { return }
+        let url = URL(fileURLWithPath: dir).appendingPathComponent("areas.json")
+        if (try? Data(contentsOf: url)) == d { return }
+        try? d.write(to: url, options: .atomic)
+        NotificationCenter.default.post(name: .steerifyAreasPublished, object: pid)
     }
 
     /// Keeps a project grouped while its board is open: now, then every hour (the view also calls `refresh` when the

@@ -85,10 +85,11 @@ struct ContentView: View {
         .blackTitleBar()          // black top bar with the Mac's blur (TitleBar.swift)
         .toolbar {
             ToolbarItem(placement: .navigation) { ProjectSwitcher(density: density) }
-            ToolbarItem(placement: .principal) { Wordmark(compact: density > .full) }
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 10) { Wordmark(compact: density > .full); if model.updateReady { RestartToUpdate() } }.fixedSize()
+            }
             ToolbarItem(placement: .primaryAction) { HStack(spacing: 8) { NextUp(density: density); NewRequestButton() }.fixedSize() }
             ToolbarItemGroup(placement: .primaryAction) {
-                if model.updateReady { RestartToUpdate() }
                 Button { model.reloadBoard() } label: { Image(systemName: "arrow.clockwise") }.help("Reload board (⌘R)")
                 if (model.project?.port ?? 0) > 0 {
                     Button { model.openWebBoard() } label: { Image(systemName: "safari") }.help("Open the web board in the browser")
@@ -648,18 +649,19 @@ struct ProjectSwitcher: View {
     }
 }
 
-/// "Restart to update" in the top bar. For a downloaded release, hovering it shows what's new in that version.
+/// "Update" next to the logo in the top bar (green, so it doesn't read as + Request). Hovering it shows what's new
+/// in the downloaded version; clicking it asks first when Claude sessions are at work.
 struct RestartToUpdate: View {
     @EnvironmentObject var model: AppModel
     @State private var open = false
     @State private var hovering = false
     var body: some View {
         let up = AppUpdater.shared
-        Button { model.restartForUpdate() } label: {
-            Label("Restart to update", systemImage: "arrow.triangle.2.circlepath").labelStyle(.titleAndIcon)
-                .foregroundStyle(Color(hex: 0x1a1200)).font(.system(size: S(11.5), weight: .semibold))
+        Button { model.confirmRestartForUpdate() } label: {
+            Label("Update", systemImage: "arrow.triangle.2.circlepath").labelStyle(.titleAndIcon)
+                .foregroundStyle(Color(hex: 0x05210f)).font(.system(size: S(11.5), weight: .semibold))
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(Brand.amber))
+                .background(Capsule().fill(Color(hex: 0x4ade80)))
         }
         .buttonStyle(SteerButton())
         .help(up.readyVersion == nil ? "A new build of Steerify is ready (⌥⌘R). Your sessions come back: Claude conversations resume with their history." : "")
@@ -669,7 +671,7 @@ struct RestartToUpdate: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if hovering { open = true } }
         }
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            WhatsNewPanel(version: up.readyVersion ?? "", titles: up.readyTitles, restart: { model.restartForUpdate() }, close: { open = false })
+            WhatsNewPanel(version: up.readyVersion ?? "", titles: up.readyTitles, restart: { open = false; model.confirmRestartForUpdate() }, close: { open = false })
         }
     }
 }

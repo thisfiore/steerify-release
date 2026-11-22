@@ -105,6 +105,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.terminate(nil)
             }
         }
+        // Test hook: `--press-update [seconds]` (with --background): press Update in the top bar (a click can't reach
+        // the toolbar). With Claude sessions at work it asks first; the restart itself is only logged.
+        if let i = a.firstIndex(of: "--press-update"), a.contains("--background") {
+            let at = (i + 1 < a.count ? Double(a[i + 1]) : nil) ?? 6
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.confirmRestartForUpdate() }
+        }
         // Test hook: `--scroll-bench <out.json> [seconds]`: scroll the board list top → bottom → top in 60 pt steps,
         // timing each frame (layout + draw), then write {frames, avgMs, p95Ms, maxMs} and quit. The roadmap's scroll budget.
         if let i = a.firstIndex(of: "--scroll-bench"), i + 1 < a.count {
@@ -212,6 +218,7 @@ enum SteerifyMain {
             MainActor.assumeIsolated { DeployWakeCheck.run(CommandLine.arguments[i + 1]) }
             exit(0)
         }
+        MainActor.assumeIsolated { MenuBarWatch.clearHiddenFlag() }   // before the menu bar item exists
         SteerApp.main()
     }
 }
@@ -402,7 +409,7 @@ struct SteerApp: App {
                 Divider()
                 ManageProjectsButton()
                 Button("Reload board") { model.reloadBoard() }.keyboardShortcut("r", modifiers: .command)
-                Button("Restart to Update") { model.restartForUpdate() }.keyboardShortcut("r", modifiers: [.command, .option])
+                Button("Restart to Update") { model.confirmRestartForUpdate() }.keyboardShortcut("r", modifiers: [.command, .option])
                 Button("Add project…") { model.addWorkspace() }.keyboardShortcut("o", modifiers: [.command, .shift])
                 Button("Try the Demo Project") { model.openDemo() }
                 Button("Show steerify.json") { if let p = model.project { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p.manifest)]) } }
@@ -452,7 +459,7 @@ struct SteerApp: App {
         .defaultSize(width: 900, height: 600)
         .windowResizability(.contentMinSize)
         // Menu bar: status + what waits on you. Never for test copies (no second icon on the user's bar).
-        MenuBarExtra(isInserted: Binding(get: { menuBarShown && !CommandLine.arguments.contains("--background") },
+        MenuBarExtra(isInserted: Binding(get: { menuBarShown && MenuBarWatch.allowed },
                                          set: { menuBarShown = $0 })) {
             MenuBarPanel().environmentObject(model)
         } label: {

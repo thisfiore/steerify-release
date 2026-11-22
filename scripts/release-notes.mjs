@@ -2,6 +2,7 @@
 // Release notes from the board: To test items you marked OK since the last release.
 //   node scripts/release-notes.mjs <version> [sinceISO]   → Markdown on stdout
 // Only titles + short "what" lines: no screenshots, no private board content.
+// The same Markdown becomes the steerify.dev/releases.html entry + CHANGELOG.md (scripts/changelog.mjs).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,5 +33,5 @@ for (const area of ['mac', 'site', null]) {
   out.push('');
 }
 if (!approved.length) out.push('Small fixes and polish.', '');
-out.push('Full notes: https://steerify.dev/releases.html');
+out.push(`Full notes: https://steerify.dev/releases.html#v${version}`);
 console.log(out.join('\n'));

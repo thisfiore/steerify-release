@@ -51,6 +51,8 @@ pick one, blend two with a note, write your own, or park it. Your answers start 
 
 And this is the real app, on the demo project that comes with it:
 
+<p align="center"><img src="site/assets/shots/marketing/web/hero.jpg" width="820" alt="Steerify on the Mac and on the iPhone, the same board on both"><br><b>Mac + iPhone.</b> The same board on both. Claude builds on the Mac; you review, pick and ask from anywhere.</p>
+
 <p align="center"><img src="site/assets/shots/demo/web/choice-making.jpg" width="820" alt="A choice opened full screen: the option as a picture, one button to choose it"><br><b>Decide.</b> A choice, full screen. The option is a picture; one button chooses it.</p>
 
 <table>
@@ -71,6 +73,10 @@ And this is the real app, on the demo project that comes with it:
     <td width="50%"><img src="site/assets/shots/demo/web/search.jpg" alt="Search"><br><b>Search.</b> One search across sessions, choices, roadmap and requests.</td>
   </tr>
 </table>
+
+On your iPhone (private beta): say a request out loud, Steerify files it.
+
+<p align="center"><img src="site/assets/shots/marketing/web/voice.jpg" width="820" alt="Two iPhones with a new request said out loud, each sorted as a refinement and filed under a chapter"></p>
 
 ## Install
 

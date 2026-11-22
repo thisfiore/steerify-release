@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- Marketing pictures: framed cases (scripts/marketing-shots.sh) + the raw Mac / iPhone shots of both demo boards. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Steerify marketing shots</title><meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Inter+Tight:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#07080a;color:#ece8dc;font:15px/1.5 "Inter Tight",-apple-system,sans-serif;padding:48px max(16px,4vw)}
+h1{font-size:34px;letter-spacing:-.02em;margin:0}
+h2{font:13px Silkscreen,monospace;letter-spacing:.08em;color:#ffb020;margin:48px 0 16px;text-transform:uppercase}
+p{color:#8f8a7d;margin:6px 0 0;max-width:720px}
+code{color:#f2e8cf}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,460px),1fr));gap:20px}
+.g.ph{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+figure{margin:0;background:#111318;border:1px solid #23262e;border-radius:12px;overflow:hidden}
+figure img{display:block;width:100%;height:auto}
+figcaption{padding:10px 14px;font-size:13px;color:#8f8a7d;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+figcaption b{color:#ece8dc;font-weight:600}
+a{color:#ffb020;text-decoration:none}
+</style></head><body>
+<h1>Steerify marketing shots</h1>
+<p>Built from the two demo projects, Tiny Todo and Nonna Says (all data made up). Framed cases are 3200×2000 PNGs, with 1600 px JPEGs in <code>web/</code>.
+Retake everything: <code>scripts/demo-shots.sh</code> and <code>scripts/ios-shots.sh</code> (each with <code>DEMO=tiny-todo</code> and <code>DEMO=nonna-says</code>), then <code>scripts/marketing-shots.sh</code>.</p>
+
+<h2>Framed cases</h2>
+<div class="g" id="cases"></div>
+
+<h2>iPhone · Nonna Says</h2>
+<div class="g ph" id="pn"></div>
+<h2>iPhone · Tiny Todo</h2>
+<div class="g ph" id="pt"></div>
+
+<h2>Mac · Nonna Says</h2>
+<div class="g" id="mn"></div>
+<h2>Mac · Tiny Todo</h2>
+<div class="g" id="mt"></div>
+
+<script>
+const fig = (img, full, name) => `<figure><a href="${full}"><img src="${img}" loading="lazy" alt="${name}"></a><figcaption><b>${name}</b><a href="${full}" download>PNG ↓</a></figcaption></figure>`;
+cases.innerHTML = ['hero', 'decide', 'test', 'mark', 'voice', 'roadmap', 'sessions', 'phone'].map((c) => fig(`web/${c}.jpg`, `${c}.png`, c)).join('');
+pn.innerHTML = ['ready', 'test', 'choice', 'roadmap', 'request'].map((c) => fig(`../demo-nonna/iphone/${c}.png`, `../demo-nonna/iphone/${c}.png`, c)).join('');
+pt.innerHTML = ['ready', 'test', 'choice', 'roadmap', 'request', 'sessions'].map((c) => fig(`../demo/iphone/${c}.png`, `../demo/iphone/${c}.png`, c)).join('');
+const mac = ['ready', 'test', 'test-preview', 'choices', 'choice-making', 'requirements', 'roadmap', 'tasks', 'sessions', 'request-mark'];
+mn.innerHTML = [...mac, 'test-phone'].map((c) => fig(`../demo-nonna/web/${c}.jpg`, `../demo-nonna/${c}.png`, c)).join('');
+mt.innerHTML = [...mac, 'new-request', 'search', 'release'].map((c) => fig(`../demo/web/${c}.jpg`, `../demo/${c}.png`, c)).join('');
+</script></body></html>

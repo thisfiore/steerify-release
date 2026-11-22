@@ -15,11 +15,22 @@ import AppKit
     /// System Settings › Menu Bar (macOS 26; Control Centre on older systems, where the same list lives).
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension")!
 
+    /// Only the app you use puts a wheel in the menu bar. Test copies never do: `--background` runs, the test build
+    /// (`build/test/Steerify.app`: same name and bundle id as yours, so its wheel collides with your wheel) and bare
+    /// executables (`swift run`, `.build/…/SteerApp`, listed by macOS as "SteerApp"), unless started with `--menubar`
+    /// to test the wheel itself. Each copy that adds one gets its own row in System Settings › Menu Bar.
+    static let allowed: Bool = {
+        let args = CommandLine.arguments
+        if args.contains("--menubar") { return true }
+        let path = Bundle.main.bundleURL.path
+        return !args.contains("--background") && path.hasSuffix(".app") && !path.contains("/build/test/")
+    }()
+
     /// `--fake-menubar-hidden`: the strip as it looks when macOS hides the wheel (screenshots of test copies).
     private init() { hidden = CommandLine.arguments.contains("--fake-menubar-hidden") }
 
     func start() {
-        guard !started, !CommandLine.arguments.contains("--background") else { return }
+        guard !started, Self.allowed else { return }
         started = true
         // The status item's window appears a moment after launch; check once it has settled.
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.attach() }
@@ -40,6 +51,30 @@ import AppKit
     }
 
     func openSettings() { NSWorkspace.shared.open(Self.settingsURL) }
+
+    /// macOS 26 remembers a hidden status item per app ("NSStatusItem VisibleCC <name>" = 0 in the app's defaults) and
+    /// creates it off screen from then on; switching the app on in Menu Bar settings does not clear it. Steerify's own
+    /// setting (menuBarShown) decides: when it is on, every saved "hidden" goes back to visible before the item exists.
+    static func clearHiddenFlag() {
+        guard allowed,
+              Prefs.store.object(forKey: "menuBarShown") as? Bool ?? true else { return }
+        let d = UserDefaults.standard
+        for (k, v) in d.dictionaryRepresentation() where k.hasPrefix("NSStatusItem Visible") && (v as? Bool) == false {
+            d.set(true, forKey: k)
+        }
+    }
+
+    /// "Show it": clears the flag and puts the wheel back now (out and in again, so AppKit makes a new, visible item).
+    func showAgain() {
+        Self.clearHiddenFlag()
+        Prefs.store.set(false, forKey: "menuBarShown")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            Prefs.store.set(true, forKey: "menuBarShown")
+            self.hidden = false
+            if let o = self.observer { NotificationCenter.default.removeObserver(o); self.observer = nil }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.attach() }
+        }
+    }
 }
 
 /// A slim strip under the tabs while macOS hides the wheel.
@@ -51,11 +86,11 @@ struct MenuBarHiddenStrip: View {
                 PixelWheel(size: 14)
                 Text("macOS is hiding the Steerify wheel in the menu bar")
                     .font(.system(size: 12.5, weight: .medium)).foregroundStyle(Brand.cream)
-                Text("Menu Bar › Steerify: off, then on (the SteerApp rows are old test copies)")
-                    .font(.system(size: 11.5)).foregroundStyle(Brand.mute).lineLimit(1)
                 Spacer(minLength: 8)
-                Button("Open Menu Bar settings") { watch.openSettings() }
+                Button("Show it") { watch.showAgain() }
                     .buttonStyle(.borderedProminent).controlSize(.small)
+                Button("Menu Bar settings") { watch.openSettings() }
+                    .buttonStyle(.bordered).controlSize(.small)
                 Button("Not now") { watch.dismissed = true }
                     .buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(Brand.mute)
             }

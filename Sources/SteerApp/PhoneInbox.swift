@@ -4,7 +4,7 @@ import Foundation
 // MARK: - What you did on the iPhone, landing on the board (choice mobile-sync: GitHub is the store, our server adds realtime)
 //
 // The phone never writes the Mac's files. It keeps one file of its own on GitHub, `<board>/inbox/<device>.json`:
-//   {"device": "…", "items": [{"id", "kind": verdict|testNote|pick|request|start, "ref", "pick", "note", "test",
+//   {"device": "…", "items": [{"id", "kind": verdict|testNote|pick|request|start|ship|deploy|taskVerdict|taskRun, "ref", "pick", "note", "test",
 //                              "requestKind", "intent", "target", "label", "at"}]}
 // The Mac fetches, applies each new item with the same code as a click on the Mac (setShip / setTest / setChoice /
 // fileRequest / starts.json), and records what it applied in `<board>/inbox-applied.json`, which it commits and pushes:
@@ -212,13 +212,43 @@ extension AppModel {
         case "sessionPin":    // pin = "on" | "off"
             guard !ref.isEmpty else { return "Which session?" }
             _ = applyPhoneLabel(projectId: p.id, boardDir: p.boardDir, claudeId: ref, pinned: pick == "on")
+        case "chapter":       // a draft chapter: pick = "approve" (Add to roadmap) | "discard", same as the Mac's draft panel
+            guard let ch = b.chapters.first(where: { $0.name == ref }) else { return "No chapter \(ref)" }
+            guard ch.draft else { return nil }                    // already approved (or approved twice): nothing to do
+            let approve = pick == "approve"
+            let r = SteerifyMCP.call(approve ? "approve_chapter" : "discard_chapter", ["name": ref], board: p.boardDir)
+            if r.1 { return r.0 }
+            if let id = ch.request {
+                RequestLog.edit(p.boardDir, id: id) { x in
+                    x["status"] = approve ? "approved" : "discarded"
+                    if approve { x["became"] = Array(NSOrderedSet(array: (x["became"] as? [String] ?? []) + ["track:" + BoardFiles.slug(ref)])) }
+                }
+            }
+            b.reload()
+        case "ship":          // Release → "Ship on the Mac": the Release tab's Prepare release (choice ios-release-scope, pick A)
+            guard p.release != nil else { return "No release setup on the Mac yet" }
+            var x = ItemRef(ref: "release:" + p.id)!; x.title = "Release: " + p.name
+            guard start(projectId: p.id, item: x, intent: .ship, focus: false) != nil else { return "Couldn't start the release" }
+        case "deploy":        // ref = the repo: its deploy command, in a shell tab, exactly as the Release tab's Deploy
+            guard let repo = p.repos.first(where: { $0.name == ref }) ?? p.resolveRepo(ref) else { return "No repo \(ref)" }
+            guard let cmd = p.release?.repos[repo.name]?.deploy, !cmd.isEmpty else { return "\(repo.name) has no deploy command" }
+            deploy(repo, in: p)
+        case "taskVerdict":   // ref = run id · pick = ok | redo (Redo runs it again with your note), same as the Tasks tab
+            guard let run = TaskStore.load(p.boardDir).runs.first(where: { $0.id == ref }) else { return "No task run \(ref)" }
+            guard run.status == "done" else { return nil }        // already checked (here or on the Mac)
+            setRunVerdict(projectId: p.id, run: run, ok: pick == "ok", note: note)
+        case "taskRun":       // ref = task id: Run now
+            guard TaskStore.load(p.boardDir).tasks.contains(where: { $0.id == ref }) else { return "No task \(ref)" }
+            if TaskStore.load(p.boardDir).runs.contains(where: { $0.task == ref && $0.status == "running" }) { return nil }   // already running
+            guard runTask(projectId: p.id, taskId: ref, note: note.isEmpty ? nil : note, focus: false) != nil else { return "Couldn't start the task" }
         case "start":
             StartQueue.append(p.boardDir, [
                 "id": it["id"] as? String ?? UUID().uuidString, "ref": ref, "intent": it["intent"] as? String ?? "plan", "note": note,
                 "target": "mac", "at": it["at"] as? String ?? StartQueue.now(), "from": "iphone", "state": "queued",
             ])
         default:
-            return "Unknown kind"
+            // The phone is newer than this Mac build (e.g. "deploy" from a Mac built before it existed, 22 Nov).
+            return "Steerify on this Mac is older than the iPhone app: update it, then tap again"
         }
         return nil
     }
@@ -227,7 +257,7 @@ extension AppModel {
 // MARK: - The board on GitHub stays current (feedback 21 Nov: the phone showed old choices)
 //
 // The phone reads the board from GitHub, so a project with a paired phone (a relay channel in steerify.json) gets its
-// board files committed and pushed ~30 s after they change: board, decisions, requests, starts, delivered, tasks and the
+// board files committed and pushed ~30 s after they change: board, decisions, requests, starts, delivered, tasks, deploys and the
 // pictures. Only those paths (sessions.json, perf.jsonl, decisions.prev.json stay local). Incoming phone commits are taken
 // in first; anything else on the remote is rebased the same way, and a rebase that does not apply cleanly is aborted and
 // tried again on the next change. Then the phone is told to pull (relay).
@@ -248,6 +278,9 @@ extension AppModel {
         c.observing = true
         NotificationCenter.default.addObserver(forName: .steerifyBoardReloaded, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleBoardPublish(); self?.publishStatus() }   // your turn / done depend on the board
+        }
+        NotificationCenter.default.addObserver(forName: .steerifyAreasPublished, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleBoardPublish() }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.scheduleBoardPublish(delay: 1) }
     }
@@ -281,7 +314,7 @@ extension AppModel {
 }
 
 enum BoardPublish {
-    static let files = ["board.json", "decisions.json", "requests.json", "starts.json", "delivered.json", "tasks.json", "inbox-applied.json", "steerify.json", "session-labels.json"]
+    static let files = ["board.json", "decisions.json", "requests.json", "starts.json", "delivered.json", "tasks.json", "inbox-applied.json", "steerify.json", "session-labels.json", "areas.json", "deploys.json"]
 
     /// Commit the board files that changed and push. true = something reached GitHub.
     static func run(boardDir: String) -> Bool {

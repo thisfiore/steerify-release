@@ -67,6 +67,8 @@ for s in $SHOTS; do
   else set -- ${=args}; fi
   H=$HOME; [[ $name == sessions ]] && H=$TMP/home
   HOME=$H STEERIFY_WORKSPACES=$TMP/workspaces.json $BIN --background --project $DEMO "$@" --snapshot $PWD/$OUT/$name.png 6 >/dev/null 2>&1 || true
+  # The session's terminal shows real paths and the launch command: cover it (empty terminal, nothing to read).
+  [[ $name == sessions && -f $OUT/$name.png ]] && swift scripts/blur-region.swift $OUT/$name.png 0.553 0.08 0.874 0.994
   [ -f $OUT/$name.png ] && echo "$name  $(sips -g pixelWidth $OUT/$name.png | awk '/pixelWidth/{print $2}') px" || echo "$name  FAILED"
 done
 rm -rf $TMP

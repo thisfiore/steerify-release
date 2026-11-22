@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- One marketing frame per ?case=<id> (1600×1000, shot at 2× by scripts/marketing-shots.sh). Site palette and fonts. -->
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07080a;--ink:#ece8dc;--mute:#8f8a7d;--cream:#f2e8cf;--amber:#ffb020}
+*{box-sizing:border-box;margin:0}
+html,body{width:1600px;height:1000px;overflow:hidden;background:var(--bg)}
+body{position:relative;color:var(--ink);font-family:"Inter Tight",-apple-system,sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(900px 600px at 78% 30%,#3a2508 0,#0000 70%),radial-gradient(700px 500px at 10% 110%,#1d1f2a 0,#0000 70%),var(--bg)}
+body::after{content:"";position:absolute;inset:0;background-image:radial-gradient(#ffffff0d 1px,transparent 1px);background-size:22px 22px;pointer-events:none}
+.copy{position:absolute;left:84px;top:96px;width:440px;z-index:3}
+.eyebrow{font:13px/1 Silkscreen,monospace;letter-spacing:.1em;color:var(--amber);text-transform:uppercase}
+h1{font:700 60px/1.02 "Inter Tight";letter-spacing:-.035em;margin-top:22px;text-wrap:balance}
+h1 em{font:italic 400 66px/1 "Instrument Serif",serif;color:var(--cream);letter-spacing:-.01em}
+.sub{font-size:21px;line-height:1.45;color:#cfc9ba;margin-top:22px;text-wrap:pretty}
+.brand{position:absolute;left:84px;bottom:72px;display:flex;align-items:center;gap:14px;font:700 22px Silkscreen,monospace;letter-spacing:.02em;z-index:3}
+.brand img{width:44px;height:44px;border-radius:11px}
+.brand span{font:500 15px "Inter Tight";color:var(--mute);letter-spacing:0;margin-left:6px}
+.mac{position:absolute;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px #ffffff1f,0 50px 120px -30px #000,0 30px 60px -30px #ffb02033}
+.mac img{display:block;width:100%}
+.phone{position:absolute;border-radius:62px;padding:13px;background:linear-gradient(145deg,#3b3d42,#151619 40%,#2a2c30);
+  box-shadow:0 0 0 1.5px #5a5d63,0 60px 120px -30px #000,0 0 0 9px #0c0d0f inset}
+.phone .scr{position:relative;border-radius:50px;overflow:hidden;background:#000}
+.phone .scr img{display:block;width:100%}
+.phone .scr::before{content:"";position:absolute;left:50%;top:2.1%;width:31%;height:3.6%;transform:translateX(-50%);background:#000;border-radius:30px;z-index:2}
+.cap{position:absolute;font:italic 400 24px "Instrument Serif",serif;color:var(--cream);opacity:.85;z-index:3}
+</style></head><body>
+<div class="copy"><div class="eyebrow" id="eb"></div><h1 id="h"></h1><p class="sub" id="s"></p></div>
+<div class="brand"><img src="../../icons/icon-256.png">Steerify<span>steerify.dev</span></div>
+<div id="stage"></div>
+<script>
+// m = Mac shot, p = phone shots; layouts: mp (Mac + phone), m (Mac only, wide), pp (two phones)
+const C = {
+  hero:     { eb: 'Mac + iPhone', h: 'Steer Claude Code <em>from a board.</em>', s: 'Claude builds. You review, pick and ask: at your desk or on the sofa.', m: 'demo-nonna/ready', p: ['demo-nonna/iphone/ready'] },
+  decide:   { eb: 'Choices', h: 'Decide by <em>looking,</em> not reading.', s: 'Every open question comes with pictures of each option. Tap the one you want.', m: 'demo-nonna/choices', p: ['demo-nonna/iphone/choice'] },
+  test:     { eb: 'To test', h: 'See what Claude built. <em>Say if it’s right.</em>', s: 'One picture per check, opened on the right page. OK, refine or broken.', m: 'demo-nonna/test-preview', p: ['demo-nonna/iphone/test'] },
+  mark:     { eb: 'Requests', h: 'Point at <em>the problem.</em>', s: 'Drop a pin on a screenshot and say what is off. Claude gets the spot and the words.', m: 'demo/request-mark' },
+  voice:    { eb: 'On your iPhone', h: 'Say it. <em>Steerify files it.</em>', s: 'Hold the mic, talk, done. It picks the kind and the chapter for you.', p: ['demo-nonna/iphone/request', 'demo/iphone/request'] },
+  roadmap:  { eb: 'Roadmap', h: 'Chapters, <em>not tickets.</em>', s: 'Each chapter has a goal and a few key results. You see what moves and what waits.', m: 'demo/roadmap', p: ['demo-nonna/iphone/roadmap'] },
+  sessions: { eb: 'Sessions', h: 'Every Claude session <em>on its item.</em>', s: 'Whose turn it is, what is running, what is done. Tap one to pick it up.', m: 'demo/sessions', p: ['demo/iphone/sessions'] },
+  phone:    { eb: 'Real tests', h: 'Check the phone layout <em>too.</em>', s: 'Deliveries show what you would see, on a laptop and on a phone.', m: 'demo-nonna/test-phone' },
+};
+const id = new URLSearchParams(location.search).get('case') || 'hero', c = C[id];
+eb.textContent = c.eb; h.innerHTML = c.h; s.textContent = c.s;
+const mac = (x, y, w) => `<div class="mac" style="left:${x}px;top:${y}px;width:${w}px"><img src="../${c.m}.png"></div>`;
+const phone = (src, x, y, w, r = 0) => `<div class="phone" style="left:${x}px;top:${y}px;width:${w}px;transform:rotate(${r}deg)"><div class="scr"><img src="../${src}.png"></div></div>`;
+stage.innerHTML = c.m && c.p ? mac(600, 110, 1080) + phone(c.p[0], 560, 300, 300)
+  : c.m ? mac(560, 150, 1120)
+  : phone(c.p[0], 680, 70, 380, -3) + phone(c.p[1], 1110, 130, 380, 3);
+</script></body></html>

@@ -549,8 +549,24 @@ final class AppModel: ObservableObject {
         updateReady = m > launchedAt.addingTimeInterval(2)
     }
 
+    /// "Update" (top bar, ⌥⌘R, What's new): with Claude sessions at work, ask first; otherwise restart at once.
+    func confirmRestartForUpdate() {
+        let working = sessions.filter { $0.kind == .claude && $0.running && $0.status == .working }.count
+        if working > 0 {
+            let a = NSAlert()
+            a.messageText = "\(working) session\(working == 1 ? " is" : "s are") still rowing"
+            a.informativeText = "Updating restarts Steerify and stops \(working == 1 ? "it" : "them") mid-step. Conversations come back with their history, the running step doesn't."
+            a.addButton(withTitle: "Keep working")
+            a.addButton(withTitle: "Update anyway")
+            guard a.runModal() == .alertSecondButtonReturn else { return }
+        }
+        restartForUpdate()
+    }
+
     /// Save the sessions, reopen the app from the new build, quit this one.
     func restartForUpdate() {
+        // Test hook (`--press-update`, test copies only): log the restart instead of doing it.
+        if CommandLine.arguments.contains("--press-update") { FileHandle.standardError.write("[update] restart\n".data(using: .utf8)!); return }
         quittingForUpdate = true
         persistSessions()
         if AppUpdater.shared.installIfReady() { return }   // a downloaded release: Sparkle replaces the app and reopens it

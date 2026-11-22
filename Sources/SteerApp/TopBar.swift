@@ -34,16 +34,16 @@ enum TopBarDensity: Int, Comparable {
     case full, compact, minimal
     static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
 
-    /// `width`: the window's width. `right`: extra right-side items (Restart to update, the web board button).
+    /// `width`: the window's width. `updateReady`: Update sits next to the logo. `webBoard`: the web board button.
     static func of(width: CGFloat, name: String, updateReady: Bool, webBoard: Bool) -> TopBarDensity {
         let nameW = (name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: S(13), weight: .semibold)]).width
         // Left: traffic lights + switcher (avatar, name, progress, %, chevron). Right: Next for you, + Request, icons.
         let lights: CGFloat = 86
         let left = { (d: TopBarDensity) in lights + nameW + S(d == .full ? 172 : 100) }
         let right = { (d: TopBarDensity) in
-            S(d == .minimal ? 120 : 290) + S(100) + S(webBoard ? 116 : 80) + (updateReady ? S(160) : 0) + 24
+            S(d == .minimal ? 120 : 290) + S(100) + S(webBoard ? 116 : 80) + 24
         }
-        let centre = { (d: TopBarDensity) in d == .full ? S(176) : S(30) }
+        let centre = { (d: TopBarDensity) in (d == .full ? S(176) : S(30)) + (updateReady ? S(90) : 0) }
         // The centre item stays centred, so each side gets half of what it leaves.
         func fits(_ d: TopBarDensity) -> Bool { width >= centre(d) + 2 * max(left(d), right(d)) + 16 }
         return fits(.full) ? .full : fits(.compact) ? .compact : .minimal

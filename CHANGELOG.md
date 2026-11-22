@@ -1,0 +1,287 @@
+# Changelog
+
+Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
+
+## 0.5.12 · 2026-11-22
+
+### In the app
+
+- **Update: green, next to the logo** — Green Update next to the logo · Copy is just "Update" · Asks first if sessions work
+- **Recipes: start a book build, fill files, set up** — New project from a recipe · Picture of what you get · Files checklist, ✓ as you fill · Skills copied into the project
+- **iPhone top bar: long project name → logo only** — Long name: icon only · Name shows in full · Short name: unchanged
+- **iPhone: Release on Ready, Review and Tasks tabs** — Release card on Ready · Ship / Deploy: the Mac runs it · Review = To test + Choices · Tasks tab: OK, Redo, Run
+
+### On steerify.dev
+
+- **Changelogs updated on every release** — Website What's new: auto entry · CHANGELOG.md in the public repo · Same notes as GitHub Release · Backfilled 0.5.7–0.5.11
+- **Steerify web: the board page** — All 7 tabs, like the Mac · Preview: zoom, arrows, pins · Projects, settings, text size · Ready on Linux: tested
+- **Marketing shots: iPhone + 8 framed cases** — iPhone shots, both demo boards · 8 framed Mac + iPhone cases · Folder index with downloads · Terminal covered in sessions shot
+
+## 0.5.11 · 2026-11-22
+
+### In the app
+
+- **iPhone focus mode, zoom + pins, real choices** — Pictures zoom in place, no extra tap · Dark gray behind pictures · Logic choices: big list · Text size setting, bigger default
+- **Rename + pin a session (Mac and iPhone)** — Right-click a session: Rename, Pin · Pinned stay on top · Same names and pins on iPhone · Hold a row on iPhone
+- **iPhone: pixel loading blocks for sessions** — Loading rows after a project switch · Pixel icon builds, light runs · Real sessions replace them
+- **Apple Silicon only: no Intel code in the app** — Sparkle now Apple Silicon only · App 1.2 MB smaller · Build stops on Intel code
+- **Menu bar wheel: one app for macOS** — Rebuilds stay the same app · Menu Bar toggle now sticks · Banner: off, then on
+- **iPhone: Resume chapter on the Roadmap** — Resume chapter on every chapter · Same as the Mac's resume · Shows queued once sent
+- **Top bar: compact when the window is narrow** — Narrow window: wheel alone in centre · Progress bar hides, % stays · Very narrow: Next shows tag only · Project name always whole
+
+### On steerify.dev
+
+- **Tiny Todo: Warm paper look + new Mac shots** — Tiny Todo redesigned: Warm paper · Italian jokes in the todos · 13 Mac shots retaken
+- **Nonna Says: the recipe demo + its shots** — Second demo: Nonna Says · Big hand-drawn dish illustrations · Phone layout with tab bar · 11 Mac shots of its board
+
+## 0.5.10 · 2026-11-22
+
+### In the app
+
+- **Choices scroll: 35 → 8 ms** — Choices scrolls smoothly again · Speed check: 8 ms (limit 35) · Answered cards look the same
+- **Choices: copy the text** — Select text on a choice · Title, why, option, points · ⌘C copies it
+- **To test: every note reaches Claude, OK or Refine** — Test it stays on top · Looks right | To refine under note · "N notes for Claude" by the verdicts · Claude gets every note, OK too
+- **Speed: board stops recomputing, roadmap in small lazy rows** — App changes: 150–215 ms → 20 ms · Switch project: 220–450 ms → 105 ms · Roadmap lazy again, no tall cards · Jump to a key result lands on it
+- **iPhone: On your Mac like the Mac list** — Grouped: your turn, working, idle · Mac's icon, tag, next step · Test → / Answer → open here · Done sessions fold away
+- **iPhone request: mark your screenshots** — Tap a screenshot: it opens big · Tap = dot, drag = area · ① ② go into your text · Board gets the marked picture
+- **iPhone: choices without pictures as a list** — No picture: vertical list · No more empty swipe card · Mac sends prototypes to phone
+- **To test: design, on your Mac, or stage / prod** — Kind pill on every card · Line: what OK does · After release filter · Stage/prod rides the release
+- **iPhone To test: answered cards fold away** — Answered cards leave the main list · Folded under "Answered · N" · One line: OK · waiting to sync
+- **iPhone: typing a note keeps the buttons in view** — Note stays above the keyboard · OK / Refine / Broken visible · Button to hide the keyboard · Same on Choices
+- **Request sheet: chapter suggestion you can trust** — Wrong chapters: 19 → 7 in 44 · Says "no chapter" when unsure · Closest 3 first in the menu · CMD+N matches ⌘N
+- **Menu bar wheel: Steerify says when macOS hides it** — Strip when macOS hides the wheel · Button opens Menu Bar settings · Not now hides it till relaunch
+- **Black top bar, clickable counts, chip padding** — Top bar black, Mac blur · Counts open their tab · Room under area chips
+- **Roadmap areas = feature names** — Chips name your features · Right-click: rename, merge, hide · 12 chips, rest under + more
+
+### On steerify.dev
+
+- **Landing: new iPhone shots + menu** — Big iPhone rotates 5 screens · Row of 4 phones removed · Same menu on every page
+- **Steerify HQ: sign-ups CMS (pixel)** — HQ live at relay.steerify.dev/hq · Site forms now land there · Stats, people, invites in one place · Pixel style, works on the phone
+- **HQ Traffic: anonymous visits and sources** — Traffic tab in HQ · Visitors, pages, sources, campaigns · Downloads and sign-ups per source · No cookies, no IP kept
+
+## 0.5.9 · 2026-11-22
+
+### In the app
+
+- **iPhone keyboard basics + requests tagged iPhone** — Done above every keyboard · Bars hide while you type · Note box scrolls into view · Requests marked as from iPhone
+- **Choose A + Notes** — Button says "Choose A + Notes" · Same on iPhone: PICK … + NOTES · Claude gets notes per option
+- **iPhone roadmap: Start or Resume, a button on every row** — Start chapter until something moved · Smaller chapter button · In review rows: Test → · Waiting on you: Answer →
+
+## 0.5.8 · 2026-11-22
+
+### In the app
+
+- **Setup: pixel voyage + answers reach Claude** — Pixel harbour on setup screen · Boat sails as setup moves · Answers resume setup automatically · Send now when Claude idles
+- **Your answers reach the session: the typed line now runs** — Typed line now runs by itself · Picks, Set sail, deploy wake · Go on: same fix
+- **Writing a test note keeps the item in To test** — Notes no longer trigger Refine · Item stays while you write · Refine only when you press it
+- **⌘N: type at once** — ⌘N: cursor already in the text · First keys no longer hit Claude
+- **Pixel loader when switching project** — Pixel wheel loader, centre screen · Mac: keeps turning during the switch · iPhone: same card, project menu
+- **iPhone: Sync now first, Disconnect out of the way** — Sync now: one big button · Disconnect small, apart, in red · Disconnect asks before it acts
+- **Start from the iPhone: Mac queue + cloud** — ▶ Start on the phone · Mac starts it when it sees it · Cloud start, set up once · Queued / Retry on each item
+- **Steerify for iPhone: first build** — iPhone app, Mac look + pixel art · Works offline, syncs later · Requests and notes by voice · Review, pick, roadmap on phone
+- **Since you left: pixel header (back in port)** — Pixel harbour on top of the brief · Boat sails home, docks · One lamp per chapter moved · Amber lamp blinks: waiting on you
+
+### On steerify.dev
+
+- **Landing: iPhone companion beta + TestFlight invite** — Headline changes every 3 s · Pixel Frenk laughs each time · TestFlight invite form
+- **Steerify HQ: sign-ups CMS (pixel)** — HQ live at relay.steerify.dev/hq · Site forms now land there · Stats, people, invites in one place · Pixel style, works on the phone
+- **Landing: the pixel voyage, top to bottom** — Day passes as you scroll · Morning, noon, sunset strips · Footer: harbour at night · Boat sails further each time
+- **Windows waitlist (site + HQ)** — Windows waitlist under Mac download · FAQ: Is there a Windows version? · HQ: Windows tile, filter, tag
+
+## 0.5.7 · 2026-11-21
+
+### In the app
+
+- **New request: clicking the newest screenshot works** — Newest screenshot always attaches · New shots show up reliably
+- **Resume says something: next step, else state of the art** — Resume now types a message · Uses the next step it named · Else the chapter's next key result · Else: state of the art, go on
+- **Roadmap: fold chapters, smoother scrolling** — Fold a chapter: it folds · Click the line: it opens · Roadmap scrolls about 2× smoother
+- **Task results: report drawn by Steerify** — Card: headline, KPI tiles, checks · Click opens the report · Steps, bars, ≤ 3 key points · Claude fills one standard
+- **iPhone: mic in one spot, pair from the Mac, sessions in Claude** — Pixel-round mic, same spot · Pair with a scan from the Mac · Several projects on the phone · Sessions open in the Claude app
+- **Realtime: Steerify relay (iPhone ↔ Mac)** — Phone changes reach the Mac in seconds · Phone updates when the Mac applies · Mac awake / away on the phone
+- **iPhone ↔ board through GitHub** — Phone reads the board from GitHub · Your answers reach the Mac · Works offline, sends later · Mac applies, phone sees it
+- **Performance check before every release** — Release times the key areas first · Slower than budget: release stops · Every run's numbers kept
+- **Phone icon + pairing window, AI triage on the phone** — Phone icon in the tab bar · Green while the iPhone is connected · Connect your iPhone window · Phone suggests kind + chapter
+- **iPhone roadmap like the Mac's** — Active / Done / All · Area tags · Chapters fold, done folded · Core apart from extras
+- **iPhone: dictation keeps going after a pause** — Pausing no longer stops dictation · Words before a pause stay · Tap or let go to stop
+- **Labels in the pixel font (Silkscreen)** — Labels now in Silkscreen · Same font as the site · Tabs, headers, small caps
+- **Pixel harbour on the Set up welcome** — Harbour at dawn on top · Lighthouse, gull, rising sun · Boat sails out on press · Still when app is inactive
+
+## 0.5.6 · 2026-11-21
+
+### In the app
+
+- **Simple choices: one list, no empty picture** — Simple choices show one list · Radio bullet per option · Steps drawn as chips · Visual choices unchanged
+- **New request: mark the picture** — Attached picture shown big on top · ⌘-click adds a numbered dot · Drag draws a marked area · ① ② go into the text
+- **Roadmap + requirements: pictures and tests stay with each feature** — Key results show their pictures · Design first, then test shots · Test buttons stay on the row · Chapter header: its pictures too
+- **Open on the roadmap / Go work from every tab** — Open on the roadmap always jumps · Go always jumps · Works from Ready, Tasks, Release
+- **Session list: hover no longer rewraps the card** — Hover never moves the card · Close button space always kept · SHIP label stays on one line
+- **Task requests: own session, real name** — Task requests tagged TASK · Project shown, not a repo · Session named after your words
+- **Empty tabs explain themselves; READY holds where you left off** — Own pixel scene per tab · What it's for + examples · Where you left off → READY · Waiting on you, grouped
+- **Roadmap: core released vs extras** — Core progress is the headline · Extras tagged, apart, quieter · Core released banner with date · Right-click a row: change kind
+- **Roadmap: small picture column, one delivery grouped** — Pictures smaller, in their own column · Same delivery: rows grouped together · Pictures and tests shown once
+- **Roadmap: area tags, folded Done, compact chapters** — Areas as tags under Active · Done row folded by default · Fold a chapter to one line · Draft box lists what it adds
+- **Deploy wakes the waiting session** — Deploy tells the waiting session · It then updates the board · Several deploys: one message
+- **Roadmap: busiest chapter on top** — Last active chapter on top · Drafts still first · Every status change counts
+- **No Test it when the link leads nowhere** — No Test it on dead links · Looks right stays · Real links keep Test it
+- **Triage: Task vs code, clearer + learns** — Task only for work done with tools · App talk never becomes Task · Learns from every kind you change · Kind pills explain themselves
+- **Picks go straight to the session that asked** — Pick reaches the asking session · No Set sail step · Waits for sibling choices · One ping for all
+- **Ready: release apart from build** — One release card, a tick each · Tip follows main / PRs · Release note for Claude · Rocket to release, boat to sail
+- **Roadmap: areas grouped by local AI** — Local AI names the areas · Every key result gets one · Regroups by itself hourly
+
+### On steerify.dev
+
+- **LinkedIn reply: hooks, not terminal** — Technical reply, 4 points · Links the 99-terminals video · Ends with the Mac beta link · Ready to paste
+
+## 0.5.5 · 2026-11-20
+
+### In the app
+
+- **Tasks: work Claude does for you, not code** — New Tasks tab · Task as a request kind · Runs end only with a result · Schedules, catch-up, No result alerts
+- **Sessions: rowing, your turn and done look different** — Rowing is blue · Your turn: violet + Test / Answer · Done: grey with a tick · Waiting sessions no longer closed
+- **Test it always opens the feature** — Home-page test links refused · Dead links (404) refused · Old vague links marked amber
+- **One start: Set up with Claude, then the board fills in live** — One centered Set up button · No session pane before setup · Board fills in while Claude works · Past Claude chats linked
+- **Drop a folder into Steerify to start a project** — Folder on Dock icon: new project · On the window: new, or add · Welcome screen: new project · Already steered: just opens it
+- **Next strip: 1–2 things to do now** — Next strip on top of board · At most 2 steps · One button each · Gone when nothing waits
+
+## 0.5.4 · 2026-11-20
+
+### In the app
+
+- **Request for another project: you stay where you are** — Window keeps your project · Request lands in the picked one · Its Claude session starts there · Toast names that project
+- **Sessions with a long brief start again** — Long briefs no longer cut · Claude starts every time · Fixed for every session, not just requests
+- **New request: your latest screenshots, one click** — Strip of latest 5 screenshots · Click attaches, click again removes · New screenshots appear live · More… opens older ones
+- **New request guesses the project** — ✦ pill follows what you type · Your click always wins · Button names the project · Unsure: stays on your project
+- **Where to test: links only to real addresses** — Where to test card on Release · Addresses editable in the setup · Wrong test hosts get refused
+- **⌘K: cursor lands in the search field** — ⌘K focuses the search field · Even from a terminal · Just type, no click
+- **Restart: deploy shells stay closed** — Deploy shells not reopened · Your own shells still return · Claude sessions unchanged
+- **Choices show the result, never a diagram** — Schemes and wireframes accepted · Only words in a box refused · Retouch Eraser: before/after pictures
+
+## 0.5.3 · 2026-11-20
+
+### In the app
+
+- **Hover Restart to update: what's new in it** — Hover Restart to update · See the new version's features · Restart now from the panel · Landing: updates itself
+- **First setup asks with choices, not a chat** — Claude runs the app, screenshot on board,"Did I get it right?" snapshot choice · Questions as choices with roadmap previews · Welcome screen says so
+- **No keychain prompt on test builds** — Test builds: ad-hoc, no key · Releases: Developer ID (--dmg) · One-time keychain fix script
+
+### On steerify.dev
+
+- **Demo project Tiny Todo + one-command screenshots** — Tiny Todo: demo with real board · Try the demo project in app · 10 key screens, one command · Same picture every run
+
+## 0.5.2 · 2026-11-20
+
+### In the app
+
+- **Roadmap cards: compact header + done visible** — Title + objective full width · Progress + actions on one line · Done section in every card · Done list folds with one click
+- **⌘J: only what really waits on you, and it says why** — Why it happened: your Refine on the multi-shot test (18 Nov 15:33) was taken by a fix session 4 s later.
+- **Idle sessions: done when nothing is left outside the board** — Done: nothing open, or on board · Done: newer session took it · Open: question or next step · Go on sends the next step
+- **Session cards in column mode: name gets the full width** — Verb + tag on own row · Name gets full width · Name wraps to 2 lines · Tabs mode unchanged
+- **New project: welcome screen** — Empty project opens on welcome · One button starts Claude setup · Switcher says NOT SET UP · Start empty skips it
+- **Project icons from the favicon** — Favicon found in the repos · Pixelated on brand-colour tile · Everywhere: top bar, ⌘K, lists · Initials / Picture / colours in ⇧⌘P
+- **In-app updates + What's new on the version badge** — Updates download by themselves · Restart to update in top bar · Click version: what's new · Opens once after updating
+
+## 0.5.1 · 2026-11-19
+
+### In the app
+
+- **Steerify: Settings (text size presets, layout), ⌘B sidebar, tab shortcuts, ⌘-click notes, remembered** — Settings (⌘,) with visual presets Small / Medium / Large shown at their real size (board + terminal), a layout diagram with the terminal share (30% by default, drag the divider or the slider; double-click the divider = back to 30%) and the sidebar switch.
+- **Steerify: each item keeps its Claude conversation + picture preview with notes pinned on the image** — Start on an item never asks: the session gets the item id, its title as the session name and a brief saying 'work on this item, don't ask'.
+- **Steerify: ⌘K search sessions and items, open the combo (item + its session)** — ⌘K searches every project: live sessions, To test, choices, roadmap, requirements.
+- **Steerify: the board really refreshes itself + new builds via 'Restart to update' with sessions coming back** — Fixed: the board did reload on file changes but cards did not redraw when an item changed without a new version (title, status, notes).
+- **Steerify: start a Claude session from a board item (+ built-in steerify skill, steerify.json)** — A link like steerify://start?project=sb&item=test:<id>&intent=fix opens a Claude Code session already briefed on that item, in the item's repo.
+- **Steerify v0.1: board + terminals + projects in one Mac app** — A native Mac app with the pixel-wheel icon.
+- **Steerify: pixel logo + 'Next for you' (⌘J) in the top bar, ⌘1–4 tabs, Resume this chapter** — Top bar: the pixel wheel + STEERIFY · project on the left; in the middle 'NEXT FOR YOU' with the next thing that waits on you and how many (items to test, open choices, open questions, roadmap items waiting on you).
+- **Steerify: To test shows only what waits on you (re-tests marked, refine → Waiting on Claude) + sharp pictures** — v2 after your note ("Originally we used: To test 11 / Refine 2 / Broken 0 / OK 60 / All 73"): the filters are back to To test · Refine · Broken · OK · All, each with its count (and counts on every tab: Open / Decided / Parked, To review / Agreed, Active / Done).
+- **Steerify: visuals first (big hero + filmstrip, choice mockups as pictures) + clear hover and pointers** — v2 after your note ("A bit too much the yellow border"): hover is now a thin soft cream outline, the selected filmstrip thumbnail too, and the ⌘K flash is thinner.
+- **Steerify v0.2: the board rebuilt natively in Swift, wired to the terminals** — v2 after your note on test 4 ("Roadmap to be more OKR UI style"): each roadmap track is an OBJECTIVE with a progress ring (% of key results done), a bar split by status and a legend (done · in review · in progress · waiting on you · to do); items are key results with a status mark, done ones struck through.
+- **Steerify: tests as visual chapters (Test it · Looks right) + drop screenshots into the terminal** — Each test is a small visual chapter: its picture first (numbered), a short title, one 👁 line of what you should see, and one row: Test it ↗ · ✓ Looks right · ✎ note.
+- **Steerify in the menu bar: who's rowing, what waits on you** — Pixel wheel in the menu bar with a count when it's your turn (a dot while Claude works).
+- **Steerify MCP: Claude updates the board and your Steerify window directly, and everything refreshes by itself** — Every Claude session Steerify starts now has a 'steerify' MCP server: board_summary, get_item (verdict, notes, pins), deliver, ask_choice, set_roadmap_status, set_release_config and notify.
+- **Steerify: sessions know their state, your answers move them forward, Release tab, smart ⌘J** — Each Claude session reports working / idle / needs you / ended (Claude Code hooks, no polling).
+- **Consolidate chapters: the roadmap catches up with what is really done** — Each roadmap chapter has Consolidate.
+- **Fix: Steerify MCP hung on board writes ("Connection closed")** — Board writes from Claude (set_roadmap_status, deliver, ask_choice, set_requirement_status) hung forever, then Claude closed the connection.
+- **New request (⌘N): from an idea to the right place** — A '+ Request ⌘N' button next to Next for you.
+- **"Ready to build": compact, one line per topic** — The "Ready to build" overlay was two big cards (~470 px) above every tab.
+- **To test as a grid: verdict under the picture** — Built from choice kit-demo (A).
+- **Prototype kit: live prototypes in the project's own look**
+- **"Since you left": what moved while you were away** — When you open Steerify, come back to it, or switch to a project after 2 h or more away, a brief shows what moved, per chapter, in 2 lines: what happened (written on this Mac by Apple Intelligence, plain facts when it is off) and what waits on you or what is next.
+- **Local AI helpers: session summaries, request triage, commits → roadmap, picture check** — Your four picks, built on Apple Intelligence's on-device model (free, private, no Claude tokens).
+- **New request stays in the project you opened it in** — ⌘N / + Request now pins the sheet to the project on screen when you open it.
+- **Menu bar: compact, + New request (⌃⌥N from any app)** — The menu bar panel is about half as tall and ordered by priority: what waits on you, + New request, next for you, sessions, projects.
+- **Ready to build: one request → one row, one session**
+- **⌘K finds choices by their content ("cashflow" → the cash in / out choice)** — ⌘K used to search only a choice's title, id and area.
+- **Sessions: active first, done ones to close, one feature = one conversation** — Session tabs now sort by what needs you: needs you → rowing → idle → shells → done.
+- **Choices as a guided decision; test pictures big and on the feature** — Choices are no longer a gallery of tiles: one option at a time on a big stage, tabs A/B/C, Choose, Blend, Done.
+- **Release tab updates itself after Deploy** — After you press Deploy, the Release tab refreshes on its own: repos re-read, approved items that are now shipped leave the list, the count at the top drops.
+- **New request from anywhere: pick the project** — Opened with ⌃⌥N or from the menu bar, the request sheet asks which project it is for (one click, FOR pills).
+- **Tabs across the window, sessions follow the tab**
+- **Full-screen preview: notes and actions on the right** — The full-screen picture view (tests and choices) now has a side panel on the right: what this picture is, the notes pinned on it, and the item's actions.
+- **READY: its own tab, first**
+- **Branches and releases: 3 flows, per project** — Pick a flow in Release setup · Main, worktree or pull request · Settings default: on main · Features get their own folder
+- **Top bar: project left, Steerify center, actions right** — Left: project avatar, full name, progress · Center: wheel + Steerify + beta v0.5 · Right: compact Jump (⌘J) + Request (⌘N) · Jump shows a short name, like sessions
+- **Fresh public repo: live on GitHub** — steerify-release is public · Private board + history left out · Internal names cleaned, leak check · MIT licence detected by GitHub
+- **Projects window: order, hide, remove, rename, folders** — Projects window, ⇧⌘P · Drag to reorder, ⌥⌘ follows · Hide or remove a project · Rename, folders: Clone / Locate
+- **Deploy = one release script (DMG + GitHub Release)** — Deploy runs scripts/release.sh · DMG + GitHub Release every time · Notes from your OK'd items · Same path for /steerify ship
+- **Toast: top right of the tab bar** — Toast in the tab bar · Top right, above sessions · One line, never over terminal · Long text cut with …
+- **Full-screen preview: test & actions always there** — Panel opens on every preview · Hiding it lasts one preview · Typing never hides it · Hidden: labelled button to reopen
+- **To test v2: one row per test** — Short header: title + bullets · No gallery on top · One row per test, 65/35 · Note box always open
+- **Requirements: approve chapter = agreed, OK = built** — Add to roadmap agrees requirements · OK on delivery marks them built · Old proposals cleaned up · Why it is settled, shown inline
+
+### On steerify.dev
+
+- **Site: benefits + pixel infographics, What's new (v0.1→v0.4), narrated tutorial, 30 s pixel teaser** — Landing with benefits and three animated pixel infographics, What's new (v0.1→v0.4), Tutorial (7 narrated chapters) with the teaser.
+- **Landing v4: less stuff, better examples (one story in 4 shots)** — Your note 'better examples, less stuff but more effective': the page is about 40% shorter (7 sections, was 12).
+- **Beta emails go to Formspree**
+
+## 0.5.0 · 2026-11-19
+
+### In the app
+
+- **Steerify: Settings (text size presets, layout), ⌘B sidebar, tab shortcuts, ⌘-click notes, remembered** — Settings (⌘,) with visual presets Small / Medium / Large shown at their real size (board + terminal), a layout diagram with the terminal share (30% by default, drag the divider or the slider; double-click the divider = back to 30%) and the sidebar switch.
+- **Steerify: each item keeps its Claude conversation + picture preview with notes pinned on the image** — Start on an item never asks: the session gets the item id, its title as the session name and a brief saying 'work on this item, don't ask'.
+- **Steerify: ⌘K search sessions and items, open the combo (item + its session)** — ⌘K searches every project: live sessions, To test, choices, roadmap, requirements.
+- **Steerify: the board really refreshes itself + new builds via 'Restart to update' with sessions coming back** — Fixed: the board did reload on file changes but cards did not redraw when an item changed without a new version (title, status, notes).
+- **Steerify: start a Claude session from a board item (+ built-in steerify skill, steerify.json)** — A link like steerify://start?project=sb&item=test:<id>&intent=fix opens a Claude Code session already briefed on that item, in the item's repo.
+- **Steerify v0.1: board + terminals + projects in one Mac app** — A native Mac app with the pixel-wheel icon.
+- **Steerify: pixel logo + 'Next for you' (⌘J) in the top bar, ⌘1–4 tabs, Resume this chapter** — Top bar: the pixel wheel + STEERIFY · project on the left; in the middle 'NEXT FOR YOU' with the next thing that waits on you and how many (items to test, open choices, open questions, roadmap items waiting on you).
+- **Steerify: To test shows only what waits on you (re-tests marked, refine → Waiting on Claude) + sharp pictures** — v2 after your note ("Originally we used: To test 11 / Refine 2 / Broken 0 / OK 60 / All 73"): the filters are back to To test · Refine · Broken · OK · All, each with its count (and counts on every tab: Open / Decided / Parked, To review / Agreed, Active / Done).
+- **Steerify: visuals first (big hero + filmstrip, choice mockups as pictures) + clear hover and pointers** — v2 after your note ("A bit too much the yellow border"): hover is now a thin soft cream outline, the selected filmstrip thumbnail too, and the ⌘K flash is thinner.
+- **Steerify v0.2: the board rebuilt natively in Swift, wired to the terminals** — v2 after your note on test 4 ("Roadmap to be more OKR UI style"): each roadmap track is an OBJECTIVE with a progress ring (% of key results done), a bar split by status and a legend (done · in review · in progress · waiting on you · to do); items are key results with a status mark, done ones struck through.
+- **Steerify: tests as visual chapters (Test it · Looks right) + drop screenshots into the terminal** — Each test is a small visual chapter: its picture first (numbered), a short title, one 👁 line of what you should see, and one row: Test it ↗ · ✓ Looks right · ✎ note.
+- **Steerify in the menu bar: who's rowing, what waits on you** — Pixel wheel in the menu bar with a count when it's your turn (a dot while Claude works).
+- **Steerify MCP: Claude updates the board and your Steerify window directly, and everything refreshes by itself** — Every Claude session Steerify starts now has a 'steerify' MCP server: board_summary, get_item (verdict, notes, pins), deliver, ask_choice, set_roadmap_status, set_release_config and notify.
+- **Steerify: sessions know their state, your answers move them forward, Release tab, smart ⌘J** — Each Claude session reports working / idle / needs you / ended (Claude Code hooks, no polling).
+- **Consolidate chapters: the roadmap catches up with what is really done** — Each roadmap chapter has Consolidate.
+- **Fix: Steerify MCP hung on board writes ("Connection closed")** — Board writes from Claude (set_roadmap_status, deliver, ask_choice, set_requirement_status) hung forever, then Claude closed the connection.
+- **New request (⌘N): from an idea to the right place** — A '+ Request ⌘N' button next to Next for you.
+- **"Ready to build": compact, one line per topic** — The "Ready to build" overlay was two big cards (~470 px) above every tab.
+- **To test as a grid: verdict under the picture** — Built from choice kit-demo (A).
+- **Prototype kit: live prototypes in the project's own look**
+- **"Since you left": what moved while you were away** — When you open Steerify, come back to it, or switch to a project after 2 h or more away, a brief shows what moved, per chapter, in 2 lines: what happened (written on this Mac by Apple Intelligence, plain facts when it is off) and what waits on you or what is next.
+- **Local AI helpers: session summaries, request triage, commits → roadmap, picture check** — Your four picks, built on Apple Intelligence's on-device model (free, private, no Claude tokens).
+- **New request stays in the project you opened it in** — ⌘N / + Request now pins the sheet to the project on screen when you open it.
+- **Menu bar: compact, + New request (⌃⌥N from any app)** — The menu bar panel is about half as tall and ordered by priority: what waits on you, + New request, next for you, sessions, projects.
+- **Ready to build: one request → one row, one session**
+- **⌘K finds choices by their content ("cashflow" → the cash in / out choice)** — ⌘K used to search only a choice's title, id and area.
+- **Sessions: active first, done ones to close, one feature = one conversation** — Session tabs now sort by what needs you: needs you → rowing → idle → shells → done.
+- **Choices as a guided decision; test pictures big and on the feature** — Choices are no longer a gallery of tiles: one option at a time on a big stage, tabs A/B/C, Choose, Blend, Done.
+- **Release tab updates itself after Deploy** — After you press Deploy, the Release tab refreshes on its own: repos re-read, approved items that are now shipped leave the list, the count at the top drops.
+- **New request from anywhere: pick the project** — Opened with ⌃⌥N or from the menu bar, the request sheet asks which project it is for (one click, FOR pills).
+- **Tabs across the window, sessions follow the tab**
+- **Full-screen preview: notes and actions on the right** — The full-screen picture view (tests and choices) now has a side panel on the right: what this picture is, the notes pinned on it, and the item's actions.
+- **READY: its own tab, first**
+- **Branches and releases: 3 flows, per project** — Pick a flow in Release setup · Main, worktree or pull request · Settings default: on main · Features get their own folder
+- **Top bar: project left, Steerify center, actions right** — Left: project avatar, full name, progress · Center: wheel + Steerify + beta v0.5 · Right: compact Jump (⌘J) + Request (⌘N) · Jump shows a short name, like sessions
+- **Fresh public repo: live on GitHub** — steerify-release is public · Private board + history left out · Internal names cleaned, leak check · MIT licence detected by GitHub
+- **Projects window: order, hide, remove, rename, folders** — Projects window, ⇧⌘P · Drag to reorder, ⌥⌘ follows · Hide or remove a project · Rename, folders: Clone / Locate
+- **Deploy = one release script (DMG + GitHub Release)** — Deploy runs scripts/release.sh · DMG + GitHub Release every time · Notes from your OK'd items · Same path for /steerify ship
+- **Toast: top right of the tab bar** — Toast in the tab bar · Top right, above sessions · One line, never over terminal · Long text cut with …
+- **Full-screen preview: test & actions always there** — Panel opens on every preview · Hiding it lasts one preview · Typing never hides it · Hidden: labelled button to reopen
+- **To test v2: one row per test** — Short header: title + bullets · No gallery on top · One row per test, 65/35 · Note box always open
+- **Requirements: approve chapter = agreed, OK = built** — Add to roadmap agrees requirements · OK on delivery marks them built · Old proposals cleaned up · Why it is settled, shown inline
+
+### On steerify.dev
+
+- **Site: benefits + pixel infographics, What's new (v0.1→v0.4), narrated tutorial, 30 s pixel teaser** — Landing with benefits and three animated pixel infographics, What's new (v0.1→v0.4), Tutorial (7 narrated chapters) with the teaser.
+- **Landing v4: less stuff, better examples (one story in 4 shots)** — Your note 'better examples, less stuff but more effective': the page is about 40% shorter (7 sections, was 12).
+- **Beta emails go to Formspree**

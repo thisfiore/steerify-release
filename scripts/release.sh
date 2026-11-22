@@ -3,8 +3,9 @@
 # Deploy button and Claude's /steerify ship both run it.
 #   scripts/release.sh             release
 #   scripts/release.sh --dry-run   everything local (version, DMG, notes, public copy), nothing pushed or published
-# Steps: checks → performance check (scripts/perf-check.sh) → version (bumps the patch if this one is already released) → push private main (site deploys)
-#        → notes (bundled as "What's new") → DMG (notarized when the Developer ID cert + notary profile exist) + appcast.xml (Sparkle in-app updates)
+# Steps: checks → performance check (scripts/perf-check.sh) → version (bumps the patch if this one is already released)
+#        → notes (bundled as "What's new") + changelogs (steerify.dev/releases.html, CHANGELOG.md; scripts/changelog.mjs)
+#        → push private main (site deploys) → DMG (notarized when the Developer ID cert + notary profile exist) + appcast.xml (Sparkle in-app updates)
 #        → public repo sync → GitHub Release with the DMG on the public repo → tag v<version> in both repos.
 set -e
 cd "$(dirname "$0")/.."
@@ -37,13 +38,21 @@ say "Steerify $VERSION"
 PREV=$(gh release list -R $PUBLIC_SLUG --limit 1 --json publishedAt -q '.[0].publishedAt' 2>/dev/null)
 SINCE=${PREV:-2026-11-18}   # first release: everything approved since the v0.5 notes
 
-# 3. Private main pushed first (steerify.dev deploys from it).
-[ $DRY = 1 ] && say "would push private main" || git push -q origin main
-SHA=$(git rev-parse --short HEAD)
-
-# 4b. Notes from the board, before the build: the app bundles them for its "What's new" panel.
+# 3. Notes from the board, before the build (the app bundles them for its "What's new" panel), and the
+#    changelogs from the same notes: steerify.dev/releases.html + CHANGELOG.md (public repo), committed here.
+mkdir -p build
 NOTES=build/release-notes-$VERSION.md
 node scripts/release-notes.mjs $VERSION $SINCE > $NOTES
+if [ $DRY = 1 ]; then node scripts/changelog.mjs $VERSION $NOTES --out build/changelog-preview
+else
+  node scripts/changelog.mjs $VERSION $NOTES
+  git add site/releases.html site/llms.txt site/sitemap.xml CHANGELOG.md
+  git diff --cached --quiet || git commit -q -m "Changelog $VERSION"
+fi
+
+# 3b. Private main pushed (steerify.dev deploys from it, with the new "What's new" entry).
+[ $DRY = 1 ] && say "would push private main" || git push -q origin main
+SHA=$(git rev-parse --short HEAD)
 
 # 4. DMG.
 [ $DRY = 1 ] && [ -n "$(git status --porcelain VERSION)" ] && trap 'git checkout -q VERSION' EXIT

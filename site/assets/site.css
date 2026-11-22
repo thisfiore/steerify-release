@@ -433,3 +433,6 @@ dialog.teaser button { position: absolute; top: 8px; right: 8px; font: 700 12px 
 @media (max-width: 860px) { .app-strip { grid-template-columns: 1fr 1fr } }
 @media (prefers-reduced-motion: reduce) { .info * { animation: none !important } }
 .app-strip img { aspect-ratio: 16 / 10; object-fit: cover; object-position: left top }
+/* Release entries written by scripts/changelog.mjs: no picture, the groups side by side */
+.rel-body.solo { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)) }
+.rel-group h4 { font: 700 11px var(--f-pix); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: 0 0 12px }
