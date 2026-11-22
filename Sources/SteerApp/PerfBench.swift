@@ -76,6 +76,50 @@ enum PerfBench {
         step()
     }
 
+    /// What using the app costs while the board is on screen: the app's shared state changes (a session moves, a toast,
+    /// a nudge) and the mouse moves over the list. Each change is timed until the window has laid out and drawn again.
+    static func churn(_ w: NSWindow, _ m: AppModel, out: String) {
+        var model: [Double] = [], hover: [Double] = []
+        var n = 0
+        let cv = w.contentView!
+        func frame(_ change: () -> Void) -> Double {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            change()
+            w.contentView?.layoutSubtreeIfNeeded()
+            w.displayIfNeeded()
+            return (CFAbsoluteTimeGetCurrent() - t0) * 1000
+        }
+        func move(_ p: NSPoint) {
+            if let e = NSEvent.mouseEvent(with: .mouseMoved, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) { w.sendEvent(e) }
+        }
+        func step() {
+            if n < 120 {
+                model.append(frame { m.objectWillChange.send() })
+            } else if n < 180 {
+                // Down the board list, 12 pt at a time: rows light up and go dark under the pointer.
+                let y = cv.bounds.height - 220 - CGFloat(n - 120) * 12
+                hover.append(frame { move(NSPoint(x: 300, y: y)) })
+            } else { finish(); return }
+            n += 1
+            DispatchQueue.main.async { step() }
+        }
+        func stats(_ t: [Double]) -> [String: Any] {
+            let s = t.sorted(); let avg = t.reduce(0, +) / Double(max(t.count, 1))
+            return ["avgMs": (avg * 10).rounded() / 10, "p95Ms": ((s.isEmpty ? 0 : s[min(s.count - 1, Int(Double(s.count) * 0.95))]) * 10).rounded() / 10,
+                    "maxMs": ((s.last ?? 0) * 10).rounded() / 10]
+        }
+        func finish() {
+            let a = stats(model), b = stats(hover)
+            let r: [String: Any] = ["modelAvgMs": a["avgMs"]!, "modelP95Ms": a["p95Ms"]!, "modelMaxMs": a["maxMs"]!,
+                                    "hoverAvgMs": b["avgMs"]!, "hoverP95Ms": b["p95Ms"]!, "hoverMaxMs": b["maxMs"]!]
+            if let d = try? JSONSerialization.data(withJSONObject: r, options: [.sortedKeys]) { try? d.write(to: URL(fileURLWithPath: out)) }
+            NSLog("churn-bench: \(r)")
+            NSApp.terminate(nil)
+        }
+        step()
+    }
+
     static func click(_ w: NSWindow, x: Double, y: Double) {
         guard let cv = w.contentView else { return }
         let p = NSPoint(x: x, y: cv.bounds.height - y)          // content coords are bottom-up
@@ -108,7 +152,12 @@ final class ChapterFolds {
         return s
     }
     func isFolded(_ project: String, _ slug: String) -> Bool { load(project).contains(slug) }
+    /// How many times this chapter's fold was set in this run: a row keeps its own click only while this has not moved
+    /// (a jump to a key result opens its chapter from outside the row).
+    private var revs: [String: Int] = [:]
+    func rev(_ project: String, _ slug: String) -> Int { revs[project + "/" + slug] ?? 0 }
     func set(_ project: String, _ slug: String, folded on: Bool) {
+        revs[project + "/" + slug, default: 0] += 1
         var s = load(project)
         if on { s.insert(slug) } else { s.remove(slug) }
         folded[project] = s

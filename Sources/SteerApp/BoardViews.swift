@@ -99,16 +99,32 @@ struct BoardScreen: View {
     }()
     @AppStorage(Prefs.testLayout, store: Prefs.store) private var testLayout = "list"
     @State private var pendingScroll: AppModel.FocusRequest? = nil
+    /// The roadmap item last asked for: stays open (chapter, Done) after the scroll, until the tab changes.
+    @State private var revealRef: String? = nil
     @ObservedObject private var smart = SmartAreaModel.shared
     /// Roadmap areas regrouped by the local AI (choice smart-areas), when it has run for this project.
     private var smartAreas: SmartAreas? { tab == .road ? smart.get(board.project.id) : nil }
     private var areaList: [(key: String, name: String)] { smartAreas.map { $0.areas.map { (key: $0.key, name: $0.name) } } ?? board.areas }
     private func roadArea(_ r: RoadItem) -> String { smartAreas.map { $0.items[r.id] ?? "" } ?? r.area }
 
+    /// The chapter of a roadmap ref ("road:<id>" or "track:<slug>").
+    private func roadTrack(of ref: String) -> String? {
+        ref.hasPrefix("road:") ? board.roadmap.first { "road:" + $0.id == ref }?.track
+        : ref.hasPrefix("track:") ? board.roadmap.first { "track:" + BoardFiles.slug($0.track) == ref }?.track : nil
+    }
     private func scroll(_ proxy: ScrollViewProxy) {
         guard let f = pendingScroll else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            withAnimation { proxy.scrollTo(f.ref, anchor: .top) }
+            // The lazy list finds rows it has not built yet by the identity of its ForEach (chapter name, "road:<id>"),
+            // not by an .id() inside them: go to the chapter first, then to the key result inside it.
+            if tab == .road, let track = roadTrack(of: f.ref) {
+                proxy.scrollTo(track, anchor: .top)
+                if f.ref.hasPrefix("road:") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { withAnimation { proxy.scrollTo(f.ref, anchor: .center) } }
+                }
+            } else {
+                withAnimation { proxy.scrollTo(f.ref, anchor: .top) }
+            }
             if pendingScroll == f { pendingScroll = nil }
         }
     }
@@ -129,10 +145,12 @@ struct BoardScreen: View {
                       regroup: LocalAI.ready && tab == .road ? { Task { await smart.refresh(board, force: true) } } : nil)
             ScrollViewReader { proxy in
                 ScrollView {
-                    // The roadmap is not lazy: a chapter card is taller than the window, and the lazy list got stuck
-                    // re-placing it for ever (21 Nov 13:17: main thread 100%, +15 MB a second, app frozen).
+                    // The roadmap is lazy again, but in small rows: an open chapter is no longer one card taller than the
+                    // window (the lazy list got stuck re-placing such a card for ever, 21 Nov 13:17: main thread 100%,
+                    // +15 MB a second). Each chapter is a header, one row per key result and a footer (ChapterPiece),
+                    // so only what is on screen is built and a change in the app redraws only that.
                     Group {
-                        if tab == .road { VStack(spacing: 10) { list } } else { LazyVStack(spacing: 10) { list } }
+                        if tab == .road { LazyVStack(spacing: 0) { list } } else { LazyVStack(spacing: 10) { list } }
                     }
                     .padding(12)
                 }
@@ -151,11 +169,19 @@ struct BoardScreen: View {
             let kind = String(f.ref.split(separator: ":").first ?? "")
             if let t = BoardTab(rawValue: kind == "track" ? "road" : kind == "reqs" ? "req" : kind) { tab = t }
             // After the tab switch (which resets the filter): show everything so the item is in the list.
-            DispatchQueue.main.async { area = nil; state = "all"; pendingScroll = f }
+            DispatchQueue.main.async {
+                area = nil; state = "all"
+                // A key result or a chapter: open its chapter first (it may be folded to one line), then scroll.
+                if let track = roadTrack(of: f.ref) { ChapterFolds.shared.set(board.project.id, BoardFiles.slug(track), folded: false) }
+                revealRef = f.ref
+                pendingScroll = f
+            }
         }
-        .onChange(of: tab) { _, _ in state = "open"; area = nil }
+        .onChange(of: tab) { _, _ in state = "open"; area = nil; revealRef = nil }
         // The local AI regroups this project's roadmap now if due, then every hour while it is open.
         .task(id: board.project.id) { await smart.keepFresh(board) }
+        // Once per roadmap visit (it was a task on every chapter).
+        .task(id: "\(board.project.id)|\(tab.rawValue)") { if tab == .road { await board.refreshCommitProposals() } }
     }
 
     @ViewBuilder private var list: some View {
@@ -190,9 +216,9 @@ struct BoardScreen: View {
                     }
                 }
                 .padding(10).background(RoundedRectangle(cornerRadius: 8).fill(Brand.amberDim.opacity(0.7)))
+                .padding(.bottom, 10)
             }
-            ForEach(roadTracks, id: \.self) { t in RoadTrackView(board: board, track: t, items: road.filter { $0.track == t }) }
-                .task { await board.refreshCommitProposals() }
+            ForEach(roadTracks, id: \.self) { t in RoadTrackView(board: board, track: t, items: road.filter { $0.track == t }, reveal: revealRef) }
             if road.isEmpty { EmptyBoard(projectId: board.project.id, title: "ROADMAP CLEAR", line: "Either everything is done or nobody wrote it down.", kind: .road) }
         }
     }
@@ -213,6 +239,7 @@ struct BoardScreen: View {
             case "refine": return x == .waiting && pick == "refine"
             case "broken": return x == .waiting && pick == "broken"
             case "ok": return x == .ok
+            case "after": return x == .afterRelease
             default: return true
             }
         }
@@ -333,7 +360,7 @@ struct TabBar: View {
         case .req: return board.requirements.filter { $0.status == "question" && board.isOpen($0) }.count
         case .road: return 0
         case .task: return TaskStore.load(board.project.boardDir).runs.filter { $0.status == "done" || $0.status == "noresult" }.count
-        case .release: return board.ships.filter { board.shipState($0) == .ok && $0.status != "live" }.count
+        case .release: return board.ships.filter { board.goesInRelease($0) }.count
         }
     }
 }
@@ -354,7 +381,7 @@ struct FilterBar: View {
 
     static func states(_ tab: BoardTab) -> [(String, String)] {
         switch tab {
-        case .test: [("open", "To test"), ("refine", "Refine"), ("broken", "Broken"), ("ok", "OK"), ("all", "All")]
+        case .test: [("open", "To test"), ("after", "After release"), ("refine", "Refine"), ("broken", "Broken"), ("ok", "OK"), ("all", "All")]
         case .choice: [("open", "Open"), ("decided", "Decided"), ("parked", "Parked"), ("all", "All")]
         case .req: [("open", "Open"), ("decide", "To decide"), ("confirm", "To confirm"), ("agreed", "Settled"), ("all", "All")]
         case .road: [("open", "Active"), ("done", "Done"), ("all", "All")]
@@ -520,6 +547,38 @@ struct Card<Content: View>: View {
             .background(RoundedRectangle(cornerRadius: 9).fill(Brand.panel))
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(highlight ?? Brand.line))
     }
+}
+
+private extension Array where Element == RoadItem {
+    /// A row group's identity in the list: the ref of its first key result.
+    var ref: String { "road:" + (first?.id ?? "") }
+}
+
+/// One row of an open roadmap chapter. The chapter looks like one card (same fill, one frame around it) but is laid
+/// out as separate rows of the lazy list: a header (`.top`), its lines (`.middle`), a footer (`.bottom`).
+struct ChapterPiece: ViewModifier {
+    enum Part { case top, middle, bottom }
+    let part: Part
+    func body(content: Content) -> some View {
+        let r: CGFloat = 9
+        let shape = UnevenRoundedRectangle(topLeadingRadius: part == .top ? r : 0, bottomLeadingRadius: part == .bottom ? r : 0,
+                                           bottomTrailingRadius: part == .bottom ? r : 0, topTrailingRadius: part == .top ? r : 0)
+        content
+            .padding(.horizontal, 12)
+            .padding(.top, part == .top ? 12 : 4).padding(.bottom, part == .bottom ? 8 : 4)   // 8 pt between lines, as in a Card
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(shape.fill(Brand.panel))
+            // The frame: this row's share of it. The outline is drawn taller than the row where the chapter goes on,
+            // and cut at the row's edge, so only the sides (and the rounded end) show and the rows join without a seam.
+            .overlay(
+                shape.stroke(Brand.line)
+                    .padding(.top, part == .top ? 0 : -12).padding(.bottom, part == .bottom ? 0 : -12)
+                    .mask(Rectangle().padding(.horizontal, -1).padding(.top, part == .top ? -1 : 0).padding(.bottom, part == .bottom ? -1 : 0))
+            )
+    }
+}
+extension View {
+    func piece(_ part: ChapterPiece.Part = .middle) -> some View { modifier(ChapterPiece(part: part)) }
 }
 
 /// Note field that saves on Return or when focus leaves.
@@ -719,7 +778,9 @@ struct ShipCard: View {
                 case .retest: Pill(text: "re-test", color: Brand.blue)
                 case .waiting: Pill(text: (board.effectivePick(item) ?? "refine") + " · waiting on Claude", color: board.effectivePick(item) == "broken" ? Brand.red : Brand.amber)
                 case .ok: Pill(text: "ok", color: Brand.green)
+                case .afterRelease: Pill(text: "after release", color: Brand.amber)
                 }
+                KindPill(kind: item.kind)
                 if item.status != "local" { Pill(text: item.status.replacingOccurrences(of: "-", with: " "), color: item.status == "live" ? Brand.green : Brand.mute) }
                 Text("\(board.areaName(item.area)) · v\(item.version)").font(.system(size: S(11))).foregroundStyle(Brand.mute).fixedSize()
                 SessionChip(projectId: board.project.id, ref: "test:" + item.id)
@@ -740,6 +801,7 @@ struct ShipCard: View {
                     }
                 }
             }.help(BoardText.plain(item.what))
+            KindLine(kind: item.kind, waits: state == .afterRelease, live: item.status == "live")
 
             if state == .toTest || state == .retest { ShotIssues(board: board, item: item) }
             let pinCount = board.pins("test:" + item.id).count
@@ -813,8 +875,8 @@ struct ShipCard: View {
                 if state == .waiting {
                     ActionButton(title: "Fix my notes", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .fix) }
                 }
-                if pick == "ok" && item.status != "live" {
-                    ActionButton(title: "Release", icon: "ship", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .release) }
+                if (pick == "ok" && item.status != "live" && item.releases) || state == .afterRelease {
+                    ActionButton(title: state == .afterRelease ? "Release to test" : "Release", icon: "ship", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .release) }
                 }
                 ClaudeButton(title: "Open with Claude") { model.start(projectId: board.project.id, item: ref, intent: .look) }
             }
@@ -869,6 +931,38 @@ struct ShipCard: View {
 
 /// Grid card (choice kit-demo, option A): the picture, the title, what to check, and the verdict right under it.
 /// OK is final; Refine / Broken open the full card so the note goes with it.
+/// Design / on your Mac / on stage-prod: what kind of test a card is (request r261121-235412).
+struct KindPill: View {
+    let kind: TestKind
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: kind.icon).font(.system(size: S(9.5)))
+            Text(kind.label.uppercased()).font(Brand.label(8.5)).tracking(0.6)
+        }
+        .foregroundStyle(kind.color)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(kind.color.opacity(0.12)))
+        .overlay(Capsule().stroke(kind.color.opacity(0.35)))
+        .fixedSize()
+        .help(kind.okDoes)
+    }
+}
+
+/// One line under the bullets: what your OK does, or that the card waits for the release.
+struct KindLine: View {
+    let kind: TestKind
+    var waits = false
+    var live = false
+    var body: some View {
+        let text = waits ? TestKind.waitsLine : kind == .online && live ? "Live now · test it there · OK closes it" : kind.okDoes
+        HStack(spacing: 7) {
+            Image(systemName: waits ? "hourglass" : "arrow.right.circle").font(.system(size: S(10.5)))
+            Text(text).font(.system(size: S(11.5)))
+        }
+        .foregroundStyle(waits ? Brand.amber : kind.color.opacity(0.9))
+    }
+}
+
 struct ShipTile: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var board: BoardStore
@@ -892,6 +986,7 @@ struct ShipTile: View {
                 }.buttonStyle(SteerButton()).help("Open the full card")
                 statePill(state)
             }
+            KindPill(kind: item.kind)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "eye").font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
                 Text(checkLine).font(.system(size: S(11.5))).foregroundStyle(Brand.ink.opacity(0.85)).lineLimit(2, reservesSpace: true)
@@ -920,6 +1015,7 @@ struct ShipTile: View {
         case .retest: Pill(text: "re-test", color: Brand.blue)
         case .waiting: Pill(text: board.effectivePick(item) ?? "refine", color: board.effectivePick(item) == "broken" ? Brand.red : Brand.amber)
         case .ok: Pill(text: "ok", color: Brand.green)
+        case .afterRelease: Pill(text: "after release", color: Brand.amber)
         }
     }
     private func verdict(_ k: String, _ title: String, _ c: Color, _ pick: String?) -> some View {
@@ -1156,15 +1252,24 @@ struct RoadTrackView: View {
     /// Chapters folded to one line, remembered per project (your focus: what you keep open stays open).
     /// The click flips this view's own state (what redraws the row); ChapterFolds only remembers it. Driving the fold from
     /// outside the view (@AppStorage, then a shared store) saved it but the roadmap list never redrew the row (21 Nov).
-    @State private var foldedNow: Bool? = nil
-    init(board: BoardStore, track: String, items: [RoadItem]) {
-        self.board = board; self.track = track; self.items = items
+    @State private var foldedNow: (on: Bool, rev: Int)? = nil
+    /// The item the board was asked to show (⌘K, a link from another tab): its chapter opens, and so does Done or the
+    /// archive when the item is in there, so the list can scroll to it.
+    let reveal: String?
+    init(board: BoardStore, track: String, items: [RoadItem], reveal: String? = nil) {
+        self.board = board; self.track = track; self.items = items; self.reveal = reveal
     }
-    private var collapsed: Bool { foldedNow ?? ChapterFolds.shared.isFolded(board.project.id, BoardFiles.slug(track)) }
+    private var collapsed: Bool {
+        let slug = BoardFiles.slug(track)
+        if let f = foldedNow, f.rev == ChapterFolds.shared.rev(board.project.id, slug) { return f.on }
+        return ChapterFolds.shared.isFolded(board.project.id, slug)
+    }
     private func setCollapsed(_ on: Bool) {
-        foldedNow = on
-        ChapterFolds.shared.set(board.project.id, BoardFiles.slug(track), folded: on)
+        let slug = BoardFiles.slug(track)
+        ChapterFolds.shared.set(board.project.id, slug, folded: on)
+        foldedNow = (on, ChapterFolds.shared.rev(board.project.id, slug))
     }
+    private var revealed: RoadItem? { reveal.flatMap { r in items.first { "road:" + $0.id == r } } }
     @ObservedObject private var snaps = MockSnapshots.shared
     private var info: Chapter? { board.chapters.first { $0.name == track } }
     private func media(_ r: RoadItem) -> FeatureMedia { board.media(road: r, snaps: snaps.version) }
@@ -1187,8 +1292,9 @@ struct RoadTrackView: View {
 
     @ViewBuilder private func rowList(_ rows: [RoadItem]) -> some View {
         let slot = picColumn
-        ForEach(groups(rows), id: \.first!.id) { g in
-            if g.count == 1 { row(g[0], slot: slot) } else { group(g, slot: slot) }
+        // Identity = the ref the board scrolls to ("road:<id>"): see BoardScreen.scroll.
+        ForEach(groups(rows), id: \.ref) { g in
+            if g.count == 1 { row(g[0], slot: slot).piece() } else { group(g, slot: slot).piece() }
         }
     }
 
@@ -1278,12 +1384,12 @@ struct RoadTrackView: View {
         let all = board.roadmap.filter { $0.track == track }
         let done = all.filter { $0.status == "done" }.count
         let prog = ChapterProgress(all)
-        // One container with the scroll id: each branch carrying the same .id kept the lazy list showing the open card
-        // after a fold (21 Nov, "collapse chapter is not working").
-        VStack(spacing: 0) {
-            if collapsed { compact(all, prog) } else { full(all, done: done, prog) }
-        }
-        .id("track:" + BoardFiles.slug(track)).flash("track:" + BoardFiles.slug(track))
+        let ref = "track:" + BoardFiles.slug(track)
+        // The scroll id sits on its own anchor, above both shapes of the chapter: each branch carrying the same .id
+        // kept the lazy list showing the open card after a fold (21 Nov, "collapse chapter is not working").
+        Color.clear.frame(height: 0).id(ref)
+        // Several rows of the lazy list, not one card: see ChapterPiece.
+        if collapsed { compact(all, prog).flash(ref).padding(.bottom, 10) } else { full(all, done: done, prog) }
     }
 
     /// The chapter on one line: icon, title, progress, what is moving. Click to open it again.
@@ -1317,7 +1423,6 @@ struct RoadTrackView: View {
     }
 
     @ViewBuilder private func full(_ all: [RoadItem], done: Int, _ prog: ChapterProgress) -> some View {
-        Card {
             // Header: icon + title + objective get the full width; progress and actions share one line below.
             HStack(alignment: .top, spacing: 12) {
                 AutoIcon(title: track, size: S(30), tile: true)
@@ -1336,36 +1441,39 @@ struct RoadTrackView: View {
                         .padding(5).contentShape(Rectangle())
                 }.buttonStyle(SteerButton()).help("Fold this chapter to one line (remembered)")
             }
+            .piece(.top).flash("track:" + BoardFiles.slug(track))
             HStack(alignment: .center, spacing: 14) {
                 okrHeader(prog)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 SessionChip(projectId: board.project.id, ref: "track:" + BoardFiles.slug(track))
                 if info?.draft != true { actions(all, done: done) }
             }
-            if prog.coreReleased && !rolling && info?.draft != true { releasedBanner(prog) }
-            if !rolling { kindsPanel(all) }
-            if info?.draft == true { draftPanel(all) }
-            if consolidating { consolidatePanel(all).task { await board.refreshCommitProposals(force: true) } }
+            .piece()
+            if prog.coreReleased && !rolling && info?.draft != true { releasedBanner(prog).piece() }
+            if !rolling { kindsPanel(all).piece() }
+            if info?.draft == true { draftPanel(all).piece() }
+            if consolidating { consolidatePanel(all).task { await board.refreshCommitProposals(force: true) }.piece() }
             // A draft lists what it adds inside its green box; nothing else of it is on the roadmap yet.
             if info?.draft != true {
-            Divider().overlay(Brand.line)
+            Divider().overlay(Brand.line).piece()
             let open = items.filter { $0.status != "done" }
             if rolling || prog.extras.isEmpty {
                 rowList(open)
             } else {
                 let openCore = open.filter(\.isCore), openExtras = open.filter { !$0.isCore }
                 if !openCore.isEmpty {
-                    sectionHeader("CORE · \(prog.coreDone)/\(prog.core.count)", color: Brand.cream)
+                    sectionHeader("CORE · \(prog.coreDone)/\(prog.core.count)", color: Brand.cream).piece()
                     rowList(openCore)
                 }
                 if !openExtras.isEmpty {
-                    sectionHeader("EXTRAS · \(prog.extrasDone)/\(prog.extras.count) · TESTS, TUTORIALS, ENHANCEMENTS, LATER", color: Brand.mute)
+                    sectionHeader("EXTRAS · \(prog.extrasDone)/\(prog.extras.count) · TESTS, TUTORIALS, ENHANCEMENTS, LATER", color: Brand.mute).piece()
                     rowList(openExtras.sorted { Self.kindOrder($0.kind) < Self.kindOrder($1.kind) })
                 }
             }
             doneSection(all)
             }
-        }
+            // Footer: closes the frame, then the gap to the next chapter.
+            Color.clear.frame(height: 0).piece(.bottom).padding(.bottom, 10)
     }
 
     /// OKR header: the core is the headline (ring + bar); extras sit below, thinner and quieter, never holding the chapter back.
@@ -1535,8 +1643,10 @@ struct RoadTrackView: View {
     @ViewBuilder private func doneSection(_ all: [RoadItem]) -> some View {
         let doneItems = all.filter { $0.status == "done" }
         let old = doneItems.filter(archived)
+        let wanted = revealed.flatMap { $0.status == "done" ? $0 : nil }
+        let showArchived = self.showArchived || wanted.map(archived) == true
         let shown = doneItems.filter { showArchived || !archived($0) }
-        let showDone = self.showDone ?? !items.contains { $0.status != "done" }
+        let showDone = wanted != nil || (self.showDone ?? !items.contains { $0.status != "done" })
         if !doneItems.isEmpty {
             Button { withAnimation(.easeOut(duration: 0.15)) { self.showDone = !showDone } } label: {
                 HStack(spacing: 6) {
@@ -1546,13 +1656,14 @@ struct RoadTrackView: View {
                 }.foregroundStyle(Brand.green).contentShape(Rectangle())
             }.buttonStyle(.plain).pointerStyle(.link).padding(.top, 4)
                 .help(showDone ? "Fold what is done" : "Show what is done")
+                .piece()
             if showDone {
                 rowList(shown)
                 if !old.isEmpty {
-                    Button { showArchived.toggle() } label: {
+                    Button { self.showArchived.toggle() } label: {
                         Text(showArchived ? "Hide archived" : "\(old.count) archived · done more than a week ago")
                             .font(.system(size: S(11))).foregroundStyle(Brand.mute)
-                    }.buttonStyle(.plain).pointerStyle(.link)
+                    }.buttonStyle(.plain).pointerStyle(.link).piece()
                 }
             }
         }
@@ -1641,7 +1752,7 @@ struct RoadTrackView: View {
     /// A chapter Claude drafted from a feature request: nothing is on the roadmap until you say so.
     @ViewBuilder private func draftPanel(_ all: [RoadItem]) -> some View {
         let reqs = board.requirements.filter { $0.group == track }
-        let req = info?.request.flatMap { id in RequestLog.load(board.project.boardDir).first { $0.id == id } }
+        let req = info?.request.flatMap { id in RequestLog.cached(board.project.boardDir).first { $0.id == id } }
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("DRAFTED BY CLAUDE").font(Brand.label(8.5)).tracking(0.8).foregroundStyle(Brand.green)
@@ -1745,7 +1856,8 @@ struct RoadTrackView: View {
 extension BoardStore {
     /// Latest activity per chapter (ISO or date strings, compared as text): key results' status changes,
     /// deliveries linked to them, sessions started on the chapter or one of its key results.
-    func chapterActivity() -> [String: String] {
+    func chapterActivity() -> [String: String] { memoized("chapterActivity", durable: true) { computeChapterActivity() } }
+    private func computeChapterActivity() -> [String: String] {
         var out: [String: String] = [:]
         func bump(_ t: String, _ s: String?) { if let s, !s.isEmpty, s > out[t] ?? "" { out[t] = s } }
         var trackOf: [String: String] = [:]

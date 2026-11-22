@@ -91,6 +91,8 @@ enum RequestLog {
         (BoardFiles.json(dir, "requests.json") as? [String: Any])?["items"] as? [[String: Any]] ?? []
     }
 
+    /// The file is read and parsed once per draw: "is this request finished" asks for it per session, per row.
+    @MainActor static func cached(_ dir: String) -> [BoardRequest] { TurnMemo.get("requests:" + dir) { load(dir) } }
     static func load(_ dir: String) -> [BoardRequest] {
         raw(dir).map { r in
             BoardRequest(id: s(r["id"]), at: s(r["at"]), text: s(r["text"]), kind: RequestKind(rawValue: s(r["kind"])) ?? .refine,
@@ -136,6 +138,16 @@ struct Triage: Equatable {
     var chapter: String?
     var chapterWhy: String
     var ai = false             // refined by Apple Intelligence (LocalAI.swift)
+    var options: [String] = [] // closest chapters by words, best first (the menu lists them first; the model picks among them)
+}
+
+/// A chapter as triage sees it: its name, key results, and objective (for the model).
+typealias TriageChapter = (name: String, items: [String], about: String)
+
+extension BoardStore {
+    var triageChapters: [TriageChapter] {
+        chapters.filter { !$0.draft }.map { c in (name: c.name, items: roadmap.filter { $0.track == c.name }.map(\.text), about: c.objective ?? "") }
+    }
 }
 
 enum RequestTriage {
@@ -178,7 +190,7 @@ enum RequestTriage {
         return w
     }
 
-    static func classify(_ text: String, chapters: [(name: String, items: [String])], context: String?, lessons: [TriageLessons.Lesson] = []) -> Triage {
+    static func classify(_ text: String, chapters: [TriageChapter], context: String?, lessons: [TriageLessons.Lesson] = []) -> Triage {
         let t = " " + text.lowercased() + " "
         func hits(_ list: [String]) -> [String] {
             let h = list.filter { t.contains($0) }
@@ -211,23 +223,68 @@ enum RequestTriage {
         if lesson != nil { why = "Like a request you filed as \(kind.label.lowercased()) before" }
         else if kind != .task && !tk.isEmpty && !pw.isEmpty { why += " · about the app (\(quoted(pw))), so not a task" }
 
-        // Chapter: shared words with each chapter's name (×3) and key results (×1); what you were looking at +4.
-        let mine = Set(words(text).map(stem))
-        var bestCh: (String, Int, [String])? = nil
-        for c in chapters where c.name != RequestLog.fixesChapter {
-            let nameW = Set(words(c.name).map(stem)), itemW = Set(c.items.flatMap(words).map(stem))
-            let inName = mine.intersection(nameW), inItems = mine.intersection(itemW).subtracting(inName)
-            var sc = inName.count * 3 + inItems.count
-            if c.name == context { sc += 4 }
-            if sc > (bestCh?.1 ?? 0) { bestCh = (c.name, sc, Array(inName) + Array(inItems)) }
+        let (chapter, chWhy, options) = pickChapter(text, chapters: chapters, context: context)
+        return Triage(kind: kind, kindWhy: why, chapter: chapter, chapterWhy: chWhy, options: options)
+    }
+
+    // MARK: Chapter by words
+    // Measured on 44 real requests of this board (r261121-233830): the old count of shared words was wrong 19 times
+    // ("can", "area", "work" matched anything; big chapters won by size; "you were looking at it" alone was enough).
+    // Now: rare words weigh more (a word every chapter has weighs ~0), chatter is dropped, ⌘N = CMD+N, and a chapter
+    // is named only when it clearly beats the next one. Otherwise: no chapter, with the closest ones offered.
+
+    /// Words that say nothing about which feature a request is about.
+    static let chatter: Set<String> = ["can", "need", "want", "like", "very", "bit", "more", "less", "now", "you", "new", "app", "steerify",
+        "claude", "work", "never", "after", "before", "first", "right", "start", "open", "keep", "see", "get", "got", "one", "two", "way",
+        "thing", "stuff", "case", "lot", "much", "really", "nice", "better", "good", "think", "maybe", "probably", "sure", "always", "still",
+        "even", "here", "its", "our", "let", "lets", "use", "using", "used", "don", "dont", "why", "how", "which", "who", "will", "been",
+        "being", "same", "other", "every", "each", "give", "put", "take", "show", "shown", "look", "looking", "goes", "doing", "done",
+        "about", "over", "under", "via", "per", "out", "off", "yes", "time", "pretty", "please", "because", "these", "those", "something"]
+    /// Different words, one topic (prefix → topic).
+    static let sameTopic: [(String, String)] = [("iphone", "phone"), ("ios", "phone"), ("mobile", "phone"), ("testflight", "phone"),
+        ("screenshot", "shot"), ("screencapture", "shot"), ("pictur", "shot"), ("image", "shot"),
+        ("lag", "slow"), ("slow", "slow"), ("perf", "slow"), ("fast", "slow"), ("instant", "slow"),
+        ("suggest", "triag"), ("guess", "triag"), ("classif", "triag"), ("intellig", "triag"), ("triag", "triag")]
+
+    /// The words of a text that can tell features apart: stemmed, chatter out, shortcuts as one word ("CMD+N" = "⌘N" = kbdn).
+    static func topicWords(_ s: String) -> Set<String> {
+        let low = s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).lowercased()
+            .replacingOccurrences(of: "⌘", with: " ⌘")
+            .replacingOccurrences(of: #"(?:cmd|command|⌘)\s*\+?\s*([a-z0-9])\b"#, with: " kbd$1 ", options: .regularExpression)
+        var out = Set<String>()
+        for raw in low.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        where (raw.count >= 3 || raw.hasPrefix("kbd")) && !stop.contains(raw) && !chatter.contains(raw) {
+            var w = stem(raw)
+            if chatter.contains(w) { continue }
+            if let t = sameTopic.first(where: { w.hasPrefix($0.0) }) { w = t.1 }
+            out.insert(w)
         }
-        var chapter: String? = nil, chWhy = "No chapter matches: Claude will place it"
-        if let b = bestCh, b.1 >= 3 {
-            chapter = b.0
-            let w = b.2.prefix(3).map { "“\($0)”" }.joined(separator: ", ")
-            chWhy = b.0 == context ? "You were looking at it" + (w.isEmpty ? "" : " · \(w) match") : "\(b.2.count) word\(b.2.count == 1 ? "" : "s") match: \(w)"
+        return out
+    }
+
+    /// The chapter a request is about, why, and the closest chapters (best first, up to 3).
+    static func pickChapter(_ text: String, chapters: [TriageChapter], context: String?) -> (String?, String, [String]) {
+        let chs = chapters.filter { $0.name != RequestLog.fixesChapter }
+        let vocab = chs.map { c in (c.name, topicWords(c.name), topicWords(c.items.joined(separator: " \n "))) }
+        var df: [String: Int] = [:]
+        for v in vocab { for w in v.1.union(v.2) { df[w, default: 0] += 1 } }
+        let n = Double(chs.count + 1)
+        func weight(_ w: String) -> Double { log(n / Double(df[w] ?? 1)) }
+        let mine = topicWords(text)
+        let scored = vocab.map { (name, inName, inItems) -> (name: String, score: Double, words: [String]) in
+            let a = mine.intersection(inName), b = mine.intersection(inItems).subtracting(a)
+            var sc = a.reduce(0) { $0 + 2 * weight($1) } + b.reduce(0) { $0 + weight($1) }
+            if sc > 0 && name == context { sc += 1 }      // what you were looking at helps a chapter that matches, never alone
+            return (name, sc, a.union(b).sorted { weight($0) > weight($1) })
+        }.sorted { $0.score > $1.score }
+        let options = scored.prefix(3).filter { $0.score > 0 }.map(\.name)
+        guard let best = scored.first, best.score > 0 else { return (nil, "No chapter matches: Claude will place it", []) }
+        let second = scored.count > 1 ? scored[1].score : 0
+        let shown = best.words.prefix(3).map { "“\($0.hasPrefix("kbd") ? "⌘" + $0.dropFirst(3).uppercased() : $0)”" }.joined(separator: ", ")
+        if best.score >= 2.5 && best.score - second >= 1.5 {
+            return (best.name, best.name == context ? "You were looking at it · \(shown) match" : "Its words: \(shown)", options)
         }
-        return Triage(kind: kind, kindWhy: why, chapter: chapter, chapterWhy: chWhy)
+        return (nil, "No clear chapter: Claude will place it (or pick one)", options)
     }
 }
 

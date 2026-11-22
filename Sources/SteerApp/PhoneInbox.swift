@@ -241,7 +241,7 @@ extension AppModel {
         guard !c.observing else { return }
         c.observing = true
         NotificationCenter.default.addObserver(forName: .steerifyBoardReloaded, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.scheduleBoardPublish() }
+            MainActor.assumeIsolated { self?.scheduleBoardPublish(); self?.publishStatus() }   // your turn / done depend on the board
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.scheduleBoardPublish(delay: 1) }
     }
@@ -286,7 +286,7 @@ enum BoardPublish {
         let rel = String(realBoard.dropFirst(realRoot.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         func path(_ f: String) -> String { rel.isEmpty ? f : rel + "/" + f }
         let paths = files.map(path).filter { FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent($0)) }
-            + [path("img")].filter { FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent($0)) }
+            + [path("img"), path("protos"), path("kit")].filter { FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent($0)) }
         _ = Git.run(root, ["add", "--"] + paths)
         let staged = (Git.run(root, ["diff", "--cached", "--name-only", "--"] + paths) ?? "").isEmpty == false
         if staged { _ = Git.run(root, ["commit", "-q", "-m", "Board: synced for the iPhone", "--"] + paths) }

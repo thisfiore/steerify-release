@@ -132,6 +132,7 @@ enum PaletteIndex {
                 let (word, color, rank): (String, Color, Int) = switch st {
                 case .toTest: ("to test", Brand.blue, 1); case .retest: ("re-test", Brand.blue, 1)
                 case .waiting: ("waiting", Brand.amber, 4); case .ok: (s.status == "live" ? "live" : "ok", Brand.green, 6)
+                case .afterRelease: ("after release", Brand.amber, 5)
                 }
                 let h = PaletteHit(id: "test:\(p.id):\(s.id)", kind: .test, projectId: p.id, projectName: p.name, ref: "test:" + s.id,
                                    title: s.title, context: "\(b.areaName(s.area)) · v\(s.version)", state: word, stateColor: color, rank: rank,

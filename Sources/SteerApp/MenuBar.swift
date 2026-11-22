@@ -179,7 +179,8 @@ struct MenuBarPanel: View {
             let st = s.kind == .claude ? s.status : (s.running ? .working : .ended)
             switch st { case .waiting: return 0; case .working: return 1; case .starting: return 2; case .idle: return 3; case .ended: return 4 }
         }
-        return Array(model.sessions.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }.map(\.element).prefix(4))
+        return Array(model.sessions.enumerated().map { (rank($0.element), $0.offset, $0.element) }
+            .sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2).prefix(4))
     }
 
     private var sessionsList: some View {

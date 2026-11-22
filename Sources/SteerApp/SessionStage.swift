@@ -27,7 +27,7 @@ extension BoardStore {
         if refs.contains(where: { $0.hasPrefix("task:") }) { return .task }                // a task run lives on Tasks
         // A request filed as a Task (or that became one) is about Tasks, not the roadmap.
         let reqIds = refs.filter { $0.hasPrefix("request:") }.map { String($0.dropFirst(8)) }
-        if !reqIds.isEmpty, RequestLog.load(project.boardDir).contains(where: { r in
+        if !reqIds.isEmpty, RequestLog.cached(project.boardDir).contains(where: { r in
             reqIds.contains(r.id) && (r.kind == .task || r.became.contains { $0.hasPrefix("task:") })
         }) { return .task }
         var all = Set<String>()

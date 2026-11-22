@@ -95,7 +95,7 @@ extension AppModel {
 
     /// A request filed in any project (a request can be filed in one project and worked on another's board).
     func findRequest(_ id: String) -> BoardRequest? {
-        for p in projects { if let r = RequestLog.load(p.boardDir).first(where: { $0.id == id }) { return r } }
+        for p in projects { if let r = RequestLog.cached(p.boardDir).first(where: { $0.id == id }) { return r } }
         return nil
     }
 
@@ -309,7 +309,7 @@ extension AppModel {
     func releasable(_ projectId: String) -> [ShipItem] {
         guard let p = projects.first(where: { $0.id == projectId }) else { return [] }
         let b = board(for: p)
-        return b.ships.filter { b.shipState($0) == .ok && $0.status != "live" }
+        return b.ships.filter { b.goesInRelease($0) }
             .sorted { (b.verdict("ship:" + $0.id).at ?? "") < (b.verdict("ship:" + $1.id).at ?? "") }
     }
 

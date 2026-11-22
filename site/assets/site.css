@@ -333,16 +333,27 @@ video.teaser { width: 100%; margin-top: 18px; border-radius: 12px; border: 1px s
 
 /* v5 landing (19 Nov): promise as headline, four moves with real screens, never lost, real beta action. */
 .hero2 { padding-block: clamp(40px, 6vw, 80px) 30px }
-/* hero background: the onboarding's pixel harbour at dawn (harbour.js); dimmed under the text, clear on the right */
-.hero2 { position: relative; isolation: isolate }
-.hero2 > .wrap { position: relative; z-index: 1 }
+/* the voyage (harbour.js): the onboarding's pixel harbour at dawn behind the hero, the day going by in strips
+   between sections, the harbour at night behind the footer; always dimmed where text sits */
+.hero2, footer { position: relative; isolation: isolate }
+.hero2 > .wrap, footer > .wrap { position: relative; z-index: 1 }
 .hero2 .herovid { margin-top: 128px }
-.harbour { position: absolute; inset: 0 0 auto; z-index: 0; overflow: hidden; pointer-events: none }
+.harbour { overflow: hidden; pointer-events: none; position: relative }
 .harbour canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; opacity: .9 }
-.harbour::after { content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, rgba(7, 8, 10, .88) 0%, rgba(7, 8, 10, .72) 40%, rgba(7, 8, 10, .2) 62%, rgba(7, 8, 10, 0) 78%),
-              linear-gradient(180deg, rgba(7, 8, 10, .5) 0%, rgba(7, 8, 10, 0) 30%, rgba(7, 8, 10, 0) 88%, var(--bg) 100%) }
-@media (max-width: 720px) { .harbour::after { background: linear-gradient(180deg, rgba(7, 8, 10, .55) 0%, rgba(7, 8, 10, .82) 30%, rgba(7, 8, 10, .8) 70%, rgba(7, 8, 10, .1) 86%, var(--bg) 100%) } }
+.harbour::after { content: ""; position: absolute; inset: 0 }
+.hz-hero, .hz-night { position: absolute; inset: 0 0 auto; z-index: 0 }
+.hz-hero::after { background: linear-gradient(90deg, rgba(7, 8, 10, .88) 0%, rgba(7, 8, 10, .72) 40%, rgba(7, 8, 10, .2) 62%, rgba(7, 8, 10, 0) 78%),
+                  linear-gradient(180deg, rgba(7, 8, 10, .5) 0%, rgba(7, 8, 10, 0) 30%, rgba(7, 8, 10, 0) 88%, var(--bg) 100%) }
+.hz-strip { height: clamp(130px, 14vw, 200px) }
+.hz-strip::after { background: linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 10, .2) 30%, rgba(7, 8, 10, 0) 72%, var(--bg) 100%) }
+.hz-night { inset: 0 }
+.hz-night::after { background: linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 10, .55) 22%, rgba(7, 8, 10, .1) 70%, rgba(7, 8, 10, 0) 100%),
+                   linear-gradient(90deg, rgba(7, 8, 10, .6) 0%, rgba(7, 8, 10, .35) 45%, rgba(7, 8, 10, 0) 70%) }
+footer:has(.hz-night) { border-top: 0; padding-block: 140px 150px }
+@media (max-width: 720px) {
+  .hz-hero::after { background: linear-gradient(180deg, rgba(7, 8, 10, .55) 0%, rgba(7, 8, 10, .82) 30%, rgba(7, 8, 10, .8) 70%, rgba(7, 8, 10, .1) 86%, var(--bg) 100%) }
+  .hz-night::after { background: linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 10, .8) 20%, rgba(7, 8, 10, .7) 70%, rgba(7, 8, 10, .2) 100%) }
+}
 .hero2 .kicker { display: flex; align-items: center; gap: 10px; font: 700 12px var(--f-pix); color: var(--mute); letter-spacing: .06em }
 .hero2 .kicker [data-wheel] { width: 22px; height: 22px; display: block }
 .hero2 h1 { font: 700 clamp(38px, 6.4vw, 88px)/1 var(--f-pix); color: var(--cream); letter-spacing: .005em; margin-top: 18px }
@@ -372,6 +383,7 @@ video.teaser { width: 100%; margin-top: 18px; border-radius: 12px; border: 1px s
 .course .mb { background: #050608 }
 .beta { border: 1px solid var(--line2); border-radius: 14px; background: var(--bg2); padding: clamp(24px, 4vw, 44px); display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: center }
 .beta [data-wheel] { width: 64px; height: 64px; display: block }
+.beta > div { min-width: 0 }   /* the long brew line must not widen the column on phones */
 .beta h2 { margin-top: 16px } .beta .lead { margin-top: 10px } .beta .aside { margin-top: 8px }
 .beta form { display: flex; flex-wrap: wrap; gap: 14px 12px; align-items: center }
 .beta input[type=email] { flex: 1 1 220px; min-width: 0; border: 1px solid var(--line2); border-radius: 8px; padding: 15px 14px; background: var(--panel); color: var(--ink); font: 15px var(--f-mono) }
@@ -379,6 +391,10 @@ video.teaser { width: 100%; margin-top: 18px; border-radius: 12px; border: 1px s
 .beta .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden }
 .beta .msg { flex-basis: 100%; font: 13px var(--f-mono); color: var(--mute); min-height: 1.2em } .beta .msg.ok { color: var(--green) } .beta .msg.err { color: var(--red) }
 .beta .fine { font-size: 12.5px; color: var(--mute); margin-top: 6px }
+.beta form.win { margin-top: 22px; padding: 16px 18px; border: 1px dashed var(--line2); border-radius: 12px; background: var(--panel); gap: 10px }
+.beta form.win input[type=email] { background: var(--bg2) } .beta form.win .msg:empty { display: none }
+.beta form.win .win-l { flex-basis: 100%; font-size: 14px; color: var(--cream); scroll-margin-top: 120px }
+.beta form.win input[type=email] { padding: 11px 12px; font-size: 14px } .beta form.win .btn { padding: 11px 14px }
 dialog.teaser { padding: 0; border: 1px solid var(--line2); border-radius: 12px; background: #000; width: min(960px, 94vw); color: var(--ink) }
 dialog.teaser::backdrop { background: rgba(0, 0, 0, .78) }
 dialog.teaser video { display: block; width: 100%; height: auto }

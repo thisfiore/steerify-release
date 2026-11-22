@@ -1,12 +1,15 @@
-// Beta sign-up ("Ask for the build") → Formspree, + the 30-second teaser dialog.
-// The form id lives in index.html: <form id="beta-form" data-formspree="xxxxxxxx"> (or a full URL).
-// Empty id = "Sign-ups open very soon", nothing is sent.
+// Sign-ups → Steerify HQ (relay.steerify.dev/v1/signup, the CMS at /hq), + the 30-second teaser dialog.
+// HQ down? The same sign-up goes to Formspree instead (the form id in index.html: data-formspree="xxxxxxxx"),
+// so nobody is lost; import Formspree's CSV in HQ later.
 (function () {
-  // Every sign-up form: the Mac updates list (#beta-form) and the iPhone TestFlight invite (#ios-form, data-kind="testflight").
+  // Served locally (python -m http.server 18780 in site/): post to the local HQ (PORT=18767), never the live list.
+  const HQ = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://127.0.0.1:18767/v1/signup' : 'https://relay.steerify.dev/v1/signup';
+  // Every sign-up form: the Mac updates list (#beta-form), the iPhone TestFlight invite (#ios-form, data-kind="testflight")
+  // and the Windows waitlist (#win-form, data-kind="windows").
   document.querySelectorAll('form[data-formspree]').forEach((f) => {
     const msg = f.querySelector('.msg'), btn = f.querySelector('button[type=submit]'), email = f.querySelector('input[type=email]');
-    const tf = f.dataset.kind === 'testflight';
-    const done = tf ? "Asked. The invite comes from TestFlight, by email." : "Done. We'll write when a new version is out.";
+    const kind = ['testflight', 'windows'].includes(f.dataset.kind) ? f.dataset.kind : 'newsletter', tf = kind === 'testflight';
+    const done = tf ? "Asked. The invite comes from TestFlight, by email." : kind === 'windows' ? "You're on the list. One email if Windows happens." : "Done. We'll write when a new version is out.";
     const say = (t, cls) => { msg.textContent = t; msg.className = 'msg' + (cls ? ' ' + cls : ''); };
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -15,11 +18,18 @@
       if (f.elements._gotcha.value) { say(done, 'ok'); return; }
       const id = (f.dataset.formspree || '').trim();
       const url = !id ? '' : /^https?:/.test(id) ? id : 'https://formspree.io/f/' + id;
-      if (!url) { say('Sign-ups open very soon. Come back tomorrow?', 'err'); return; }
       btn.disabled = true; say('Sending…');
+      try {
+        const r = await fetch(HQ, { method: 'POST', signal: AbortSignal.timeout(6000), headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: v, kind, page: location.href, ref: document.referrer }) });
+        if (r.status === 422) { say('That email looks off. Try again?', 'err'); email.focus(); btn.disabled = false; return; }
+        if (r.ok) { f.reset(); say(done, 'ok'); btn.disabled = false; return; }
+      } catch (_) {}
+      if (!url) { say("Couldn't send it. Try again in a minute?", 'err'); btn.disabled = false; return; }
       try {
         const body = tf
           ? { email: v, source: 'steerify.dev', kind: 'testflight-ios', _subject: 'Steerify iPhone TestFlight invite: ' + v }
+          : kind === 'windows' ? { email: v, source: 'steerify.dev', kind: 'windows', _subject: 'Steerify Windows waitlist: ' + v }
           : { email: v, source: 'steerify.dev', _subject: 'Steerify updates: ' + v };
         const r = await fetch(url, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (!r.ok) {

@@ -169,6 +169,10 @@ extension BoardStore {
 extension AppModel {
     /// What an idle Claude session still needs (nil: not idle, not Claude, or no reply to read).
     func outlook(_ s: TerminalSession) -> SessionOutlook? {
+        // One look at the transcript per session per draw (it was asked 5–10 times: chips, order, menu bar, tab counts).
+        TurnMemo.get("outlook:\(s.id)") { readOutlook(s) }
+    }
+    private func readOutlook(_ s: TerminalSession) -> SessionOutlook? {
         guard s.kind == .claude, s.running, s.status == .idle else { return nil }
         if let item = s.item, let p = projects.first(where: { $0.id == s.projectId }),
            let l = board(for: p).takenOver(item: item.ref, claudeId: s.claudeId) {

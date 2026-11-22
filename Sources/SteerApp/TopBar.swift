@@ -63,7 +63,8 @@ struct NextStep: Identifiable {
 extension AppModel {
     /// Smart order: live sessions that need you, your answers without a session, fresh things to test,
     /// stuck refines, recent choices, active chapters. Old things sink (and do not count as "now").
-    func nextSteps(_ p: Project) -> [NextStep] {
+    func nextSteps(_ p: Project) -> [NextStep] { TurnMemo.get("next:" + p.id) { computeNextSteps(p) } }
+    private func computeNextSteps(_ p: Project) -> [NextStep] {
         let b = board(for: p)
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let day = DateFormatter(); day.dateFormat = "yyyy-MM-dd"

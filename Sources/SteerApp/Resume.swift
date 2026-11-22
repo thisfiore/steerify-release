@@ -11,23 +11,40 @@ struct ChapterResume: Identifiable {
     let next: String?
 }
 
+/// The last thing that happened on a chapter.
+struct ChapterTouch { let at: Date; let what: String }
+
 extension AppModel {
     func whereYouLeftOff(_ p: Project, limit: Int = 3) -> [ChapterResume] {
-        let b = board(for: p)
-        let iso = AppModel.iso, plain = ISO8601DateFormatter()
-        func date(_ s: String?) -> Date? { s.flatMap { iso.date(from: $0) ?? plain.date(from: $0) } }
-        let tracks = Dictionary(grouping: b.roadmap, by: \.track)
-        func trackOf(ref: String, title: String?) -> String? { chapterOf(ref: ref, title: title, in: b) }
-        var last: [String: (Date, String)] = [:]
-        func note(_ t: String?, _ d: Date?, _ what: String) {
-            guard let t, let d else { return }
-            if d > (last[t]?.0 ?? .distantPast) { last[t] = (d, what) }
+        Array(TurnMemo.get("left:" + p.id) { computeLeftOff(p) }.prefix(limit))
+    }
+    /// Last activity per chapter from the board alone (session links, deliveries): parsed once per board change,
+    /// not on every draw (hundreds of dates and titles).
+    private func boardActivity(_ b: BoardStore) -> [String: ChapterTouch] {
+        b.memoized("leftOff:board", durable: true) {
+            let iso = AppModel.iso, plain = ISO8601DateFormatter()
+            func date(_ s: String?) -> Date? { s.flatMap { iso.date(from: $0) ?? plain.date(from: $0) } }
+            var last: [String: ChapterTouch] = [:]
+            func note(_ t: String?, _ d: Date?, _ what: @autoclosure () -> String) {
+                guard let t, let d else { return }
+                if d > (last[t]?.at ?? .distantPast) { last[t] = ChapterTouch(at: d, what: what()) }
+            }
+            for l in b.links { note(chapterOf(ref: l.item, title: l.title, in: b), date(l.started), SessionName.short(l.title ?? l.item, intent: l.intent)) }
+            for s in b.ships { note(chapterOf(ref: "test:" + s.id, title: s.title, in: b), date(s.updated), "delivered “\(s.title.prefix(40))\(s.title.count > 40 ? "…" : "")”") }
+            return last
         }
-        for l in b.links { note(trackOf(ref: l.item, title: l.title), date(l.started), SessionName.short(l.title ?? l.item, intent: l.intent)) }
-        for s in sessions where s.projectId == p.id { if let r = s.item?.ref { note(trackOf(ref: r, title: s.item?.title), s.statusAt ?? Date(), s.title + " · " + s.moodWord) } }
-        for s in b.ships { note(trackOf(ref: "test:" + s.id, title: s.title), date(s.updated), "delivered “\(s.title.prefix(40))\(s.title.count > 40 ? "…" : "")”") }
+    }
+    private func computeLeftOff(_ p: Project) -> [ChapterResume] {
+        let b = board(for: p)
+        let tracks: [String: [RoadItem]] = b.memoized("leftOff:tracks", durable: true) { Dictionary(grouping: b.roadmap, by: \.track) }
+        var last = boardActivity(b)
+        func note(_ t: String?, _ d: Date?, _ what: @autoclosure () -> String) {
+            guard let t, let d else { return }
+            if d > (last[t]?.at ?? .distantPast) { last[t] = ChapterTouch(at: d, what: what()) }
+        }
+        for s in sessions where s.projectId == p.id { if let r = s.item?.ref { note(chapterOf(ref: r, title: s.item?.title, in: b), s.statusAt ?? Date(), s.title + " · " + s.moodWord) } }
         // Chapters with work in progress count too, a little behind real activity.
-        for (t, items) in tracks where items.contains(where: { $0.status == "wip" }) && last[t] == nil {
+        for (t, items) in tracks where last[t] == nil && items.contains(where: { $0.status == "wip" }) {
             note(t, Date().addingTimeInterval(-3 * 86400), "in progress: " + (items.first { $0.status == "wip" }?.text.prefix(40) ?? ""))
         }
         let order = ["wip": 0, "you": 1, "review": 2, "todo": 3]
@@ -37,14 +54,17 @@ extension AppModel {
             let core = ChapterProgress(items)          // progress = the core; extras never make it look behind
             let done = core.coreDone
             let next = items.filter { $0.status != "done" }.sorted { (order[$0.status] ?? 9) < (order[$1.status] ?? 9) }.first?.text
-            return ChapterResume(track: t, area: items.first?.area ?? "", done: done, total: core.core.count, lastAt: v.0, lastWhat: v.1, next: next)
+            return ChapterResume(track: t, area: items.first?.area ?? "", done: done, total: core.core.count, lastAt: v.at, lastWhat: v.what, next: next)
         }
         .sorted { ($0.lastAt ?? .distantPast) > ($1.lastAt ?? .distantPast) }
-        .prefix(limit).map { $0 }
     }
 
     /// The roadmap chapter a board item belongs to (track ref, key result, delivery's road, or the session title).
     func chapterOf(ref: String, title: String?, in b: BoardStore) -> String? {
+        // Depends only on the board: kept until the board changes (it was matched word by word on every draw).
+        b.memoized("chapterOf:" + ref + "|" + (title ?? ""), durable: true) { findChapter(ref: ref, title: title, in: b) }
+    }
+    private func findChapter(ref: String, title: String?, in b: BoardStore) -> String? {
         let parts = ref.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return nil }
         switch parts[0] {

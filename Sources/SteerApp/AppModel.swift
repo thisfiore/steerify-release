@@ -10,12 +10,14 @@ final class AppModel: ObservableObject {
         didSet {
             if let id = selectedProjectId { Prefs.store.set(id, forKey: Prefs.lastProject) }
             if oldValue != selectedProjectId { nextIndex = 0 }
+            // From one project to another: the pixel loader covers the time the new board takes to build.
+            if oldValue != nil, oldValue != selectedProjectId, let p = project { SwitchLoader.shared.show(p.name) }
         }
     }
     @Published var sidebarVisible: Bool = Prefs.store.object(forKey: Prefs.sidebarVisible) as? Bool ?? true {
         didSet { Prefs.store.set(sidebarVisible, forKey: Prefs.sidebarVisible) }
     }
-    @Published var sessions: [TerminalSession] = []
+    @Published var sessions: [TerminalSession] = [] { didSet { TurnMemo.watch(sessions: sessions, boards: Array(boards.values), model: self) } }
     @Published var selectedSession: [String: UUID] = [:]   // per project
     @Published var boardState: [String: BoardState] = [:]
     /// The image preview open over the window (nil = closed).
@@ -224,6 +226,7 @@ final class AppModel: ObservableObject {
         if let b = boards[p.id] { return b }
         let b = BoardStore(project: p)
         boards[p.id] = b
+        TurnMemo.watch(sessions: sessions, boards: Array(boards.values), model: self)
         return b
     }
 

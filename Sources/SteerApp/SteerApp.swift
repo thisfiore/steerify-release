@@ -47,8 +47,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         testWindow = w
         // `--snapshot <file.png> [seconds]`: render the window (titlebar + toolbar included) to a PNG, then quit.
         let a = CommandLine.arguments
-        if a.contains("--snapshot") {
-            // Snapshot runs render without ever showing: transparent, click-through (cacheDisplay still draws it).
+        if a.contains("--snapshot") || a.contains("--scroll-bench") || a.contains("--churn-bench") || a.contains("--switch-bench") {
+            // Snapshot and speed runs render without ever showing: transparent, click-through (the window still lays
+            // out and draws, so the timings hold; nothing appears over what you are doing).
             w.alphaValue = 0
             w.ignoresMouseEvents = true
         }
@@ -113,6 +114,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = a.firstIndex(of: "--switch-bench"), i + 2 < a.count {
             let out = a[i + 1], other = a[i + 2], at = (i + 3 < a.count ? Double(a[i + 3]) : nil) ?? 6
             DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.switchProjects(w, m, to: other, out: out) }
+        }
+        // Test hook: `--churn-bench <out.json> [seconds]`: 120 changes of the app's shared state, then the mouse down the
+        // board list, each timed until the window has drawn again. What the board costs while you work beside it.
+        if let i = a.firstIndex(of: "--churn-bench"), i + 1 < a.count {
+            let out = a[i + 1], at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 6
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.churn(w, m, out: out) }
+        }
+        // Test hook: `--hold-switch-loader <project name> [seconds]`: show the switch loader and keep it (for --shot).
+        if let i = a.firstIndex(of: "--hold-switch-loader"), i + 1 < a.count {
+            let name = a[i + 1], at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 4
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { SwitchLoader.shared.show(name, hold: true) }
         }
         SteerApp.applyTestArgs(m)
         m.startAutomation()
@@ -213,6 +225,26 @@ struct SteerApp: App {
             let f = a[i + 1]
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { m.dropFolders([f]) }
         }
+        // Test hook: `--cmd-n-type <text> [seconds]`: ⌘N while the keyboard is where it is (the terminal, usually), then
+        // the text lands wherever the keyboard went, as typing would (only into a text view: never into a terminal).
+        if let i = a.firstIndex(of: "--cmd-n-type"), i + 1 < a.count {
+            let text = a[i + 1], at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 5
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                let w = { NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.identifier?.rawValue == "main-test" } }
+                NSLog("cmd-n-type: before ⌘N the keyboard is in \(w()?.firstResponder.map { String(describing: type(of: $0)) } ?? "nothing")")
+                m.requestOpen = true
+                for t in [0.02, 0.05, 0.1, 0.2] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+                        NSLog("cmd-n-type: \(Int(t * 1000)) ms after ⌘N the keyboard is in \(w()?.firstResponder.map { String(describing: type(of: $0)) } ?? "nothing")")
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    let r = w()?.firstResponder
+                    NSLog("cmd-n-type: after ⌘N the keyboard is in \(r.map { String(describing: type(of: $0)) } ?? "nothing")")
+                    (r as? NSTextView)?.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+                }
+            }
+        }
         // `--test-persist`: sessions saved / restored in the test settings, as a real restart does (test windows skip the main window's onAppear).
         if a.contains("--test-persist") { m.restoreSessions() }
         // Test hook: `--add-folder <path>` adds any folder as a project, as Add project… does after the panel.
@@ -256,6 +288,11 @@ struct SteerApp: App {
         // `--request-pick` opens it as ⌃⌥N does (project pills); `--request-for <id>` picks another project 1.5 s in.
         if a.contains("--request-pick") { m.requestPickProject = true }
         if let i = a.firstIndex(of: "--request-for"), i + 1 < a.count { let id = a[i + 1]; DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { m.requestProjectId = id } }
+        // Test hook: `--show-item <ref> [seconds]`: the board goes to that item (tab, scroll, flash); no session is opened.
+        if let i = a.firstIndex(of: "--show-item"), i + 1 < a.count, let p = m.project {
+            let at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 3
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.focusItem(projectId: p.id, ref: a[i + 1]) }
+        }
         if let i = a.firstIndex(of: "--focus"), i + 1 < a.count, let p = m.project {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { m.openCombo(projectId: p.id, ref: a[i + 1], startNew: false) }
         }

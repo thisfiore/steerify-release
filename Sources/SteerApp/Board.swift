@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import CoreServices
 
 // MARK: - Models (read loosely: current and older board formats both decode)
@@ -80,6 +81,10 @@ struct ShipItem: Identifiable, Hashable {
     var reqs: [String] = []
     /// Feature crops: image path → the part of the picture to show in the list (0–1 rect, from `focus` on a test or shot).
     var focus: [String: CGRect] = [:]
+    /// What kind of test this is (request r261121-235412): a design to approve, a test on your Mac, or one on stage / prod.
+    var kind: TestKind = .local
+    /// The delivery said its kind (not guessed from the links).
+    var kindSaid = false
     let version: Int
     let updated: String?
     var stamp: Int = 0
@@ -87,7 +92,45 @@ struct ShipItem: Identifiable, Hashable {
     func hash(into h: inout Hasher) { h.combine(id); h.combine(version); h.combine(stamp) }
 }
 
+/// Where a To test item is tested, and so what your OK does (request r261121-235412).
+enum TestKind: String {
+    case design, local, online
+    /// `kind` from the delivery ("design" | "local" | "stage" | "prod"), else guessed from the test links:
+    /// a prototype → design; a real host (not localhost) → stage / prod; anything else → on your Mac.
+    static func of(_ raw: String?, urls: [String]) -> TestKind {
+        switch raw?.lowercased() {
+        case "design", "mockup", "proto": return .design
+        case "local", "mac": return .local
+        case "stage", "staging", "prod", "production", "live", "online": return .online
+        default: break
+        }
+        if urls.contains(where: { $0.contains("protos/") }) { return .design }
+        let online = urls.contains { u in
+            guard let url = URL(string: u), let sch = url.scheme, sch.hasPrefix("http"), let h = url.host else { return false }
+            return !(h == "localhost" || h == "127.0.0.1" || h.hasSuffix(".local"))
+        }
+        return online ? .online : .local
+    }
+    var label: String { switch self { case .design: "design"; case .local: "on your Mac"; case .online: "on stage / prod" } }
+    var icon: String { switch self { case .design: "paintpalette"; case .local: "laptopcomputer"; case .online: "globe" } }
+    var color: Color { switch self { case .design: Brand.cream; case .local: Brand.blue; case .online: Brand.amber } }
+    /// What the OK does, one line on the card.
+    var okDoes: String {
+        switch self {
+        case .design: "OK approves the look · Claude builds it, nothing to release"
+        case .local: "OK sends it to the release"
+        case .online: "Already out there · OK closes it"
+        }
+    }
+    /// The card can only be tested once it is released.
+    static let waitsLine = "Testable after the release · it goes out with the next one, then comes back here"
+}
+
 extension ShipItem {
+    /// Tested on stage / prod and not out yet: the delivery said stage / prod, or its status is needs-deploy.
+    var waitsForRelease: Bool { kind == .online && status != "live" && (kindSaid || status == "needs-deploy") }
+    /// Nothing to ship: an approved design is built, not released.
+    var releases: Bool { kind != .design }
     /// The card header: 2–4 short bullets. `what` as lines ("- a\n- b") or a list; older prose → its sentences (max 3).
     var bullets: [String] {
         let plain = BoardText.plain(what)
@@ -268,6 +311,8 @@ final class BoardStore: ObservableObject {
             si.choices = (it["choices"] as? [String] ?? []).map { $0.hasPrefix("choice:") ? String($0.dropFirst(7)) : $0 }
             si.reqs = (it["reqs"] as? [String] ?? []).map { $0.hasPrefix("req:") ? String($0.dropFirst(4)) : $0 }
             si.roads = (it["road"] as? [String]) ?? ((it["road"] as? String).map { [$0] } ?? [])
+            si.kind = TestKind.of(it["kind"] as? String, urls: si.tests.compactMap(\.url))
+            si.kindSaid = !((it["kind"] as? String) ?? "").isEmpty
             for x in (it["shots"] as? [[String: Any]] ?? []) + (it["tests"] as? [[String: Any]] ?? []) {
                 if let img = x["img"] as? String, let r = BoardFiles.focusRect(x["focus"]) { si.focus[img] = r }
             }
@@ -371,7 +416,8 @@ final class BoardStore: ObservableObject {
     func shipNote(_ s: ShipItem) -> String { verdict("ship:" + s.id).note }
 
     /// Where an item stands for YOU.
-    enum ShipState { case toTest, retest, waiting, ok }
+    /// afterRelease: tested on stage / prod, not released yet, no verdict: it waits for the release, not for you.
+    enum ShipState { case toTest, retest, waiting, ok, afterRelease }
 
     /// Per-test feedback on the current version: index → (ok, note).
     func testFeedback(_ s: ShipItem) -> [Int: (ok: Bool, note: String)] {
@@ -397,8 +443,19 @@ final class BoardStore: ObservableObject {
         switch effectivePick(s) {
         case "ok": return .ok
         case "refine", "broken": return .waiting
-        default: return previousVerdict(s) != nil ? .retest : .toTest
+        default:
+            // Only when the delivery says so: a guessed stage / prod item may already be out there (status not kept up).
+            if s.waitsForRelease { return .afterRelease }
+            return previousVerdict(s) != nil ? .retest : .toTest
         }
+    }
+
+    /// What the next release takes: approved (OK) items, and stage / prod tests that can only be tried once out.
+    /// Approved designs are built, never released.
+    func goesInRelease(_ s: ShipItem) -> Bool {
+        guard s.status != "live", s.releases else { return false }
+        let st = shipState(s)
+        return st == .ok || st == .afterRelease
     }
 
     // MARK: Writing (decisions.json only, same shape as the web board)
@@ -520,6 +577,9 @@ final class BoardStore: ObservableObject {
 
     /// The roadmap chapter a requirements chapter is about (same words in the names), with its progress.
     func roadChapter(for group: String) -> (name: String, done: Int, total: Int)? {
+        memoized("roadChapter:" + group, durable: true) { findRoadChapter(for: group) }
+    }
+    private func findRoadChapter(for group: String) -> (name: String, done: Int, total: Int)? {
         let gw = Self.words(group.replacingOccurrences(of: "\\(.*?\\)", with: "", options: .regularExpression))
         guard !gw.isEmpty else { return nil }
         var best: (String, Double)? = nil
@@ -669,6 +729,16 @@ enum SessionLinks {
 
     /// Is this Claude Code conversation still on this Mac (~/.claude/projects/*/<id>.jsonl)?
     static func resumable(_ id: String) -> Bool {
+        // Asked per conversation on every draw of the empty session pane: one look at the disk per id every 30 s.
+        resumeLock.lock(); defer { resumeLock.unlock() }
+        if let hit = resumeCache[id], Date().timeIntervalSince(hit.at) < 30 { return hit.ok }
+        let ok = onDisk(id)
+        resumeCache[id] = (ok, Date())
+        return ok
+    }
+    private static let resumeLock = NSLock()
+    nonisolated(unsafe) private static var resumeCache: [String: (ok: Bool, at: Date)] = [:]
+    private static func onDisk(_ id: String) -> Bool {
         let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
         guard let dirs = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { return false }
         return dirs.contains { FileManager.default.fileExists(atPath: root.appendingPathComponent("\($0)/\(id).jsonl").path) }
@@ -736,9 +806,15 @@ struct RoadProposal: Identifiable, Hashable {
 extension BoardStore {
     private static let stop: Set<String> = ["the", "and", "for", "with", "from", "this", "that", "via", "new", "now", "into", "only", "also", "when", "what"]
     static func words(_ s: String) -> Set<String> {
+        // The same titles are split into words in loops (every chapter against every title): each text once.
+        if let hit = wordCache.object(forKey: s as NSString) { return hit.words }
         let f = s.lowercased().folding(options: .diacriticInsensitive, locale: nil)
-        return Set(f.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 && !stop.contains($0) })
+        let out = Set(f.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 && !stop.contains($0) })
+        wordCache.setObject(WordSet(out), forKey: s as NSString)
+        return out
     }
+    private final class WordSet { let words: Set<String>; init(_ w: Set<String>) { words = w } }
+    private static let wordCache: NSCache<NSString, WordSet> = { let c = NSCache<NSString, WordSet>(); c.countLimit = 5_000; return c }()
 
     /// Status the roadmap item should have, from its linked To test deliveries.
     func consolidation(track: String) -> [RoadProposal] {

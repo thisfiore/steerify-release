@@ -185,7 +185,12 @@ from their first words ("Later: …", "Tutorial …"). Keep the core small and h
    `ask_choice` refuses a mock that is only words in a box on a choice that is not `simple`.
 3. **Build and test it yourself** (the project's real tests, the real UI for anything visible).
 4. **Deliver** with `deliver.mjs`: honest `tested[]`, one direct link per test (the exact page / record / item under test, opened on the state to check: never a home page, a bare `steerify://` or a repo front page; `deliver` refuses those and 404s), screenshots taken after testing,
-   known `issues[]`. Same id = new version of the same item. **Every picture full size** (≥1400 px wide, shots and
+   known `issues[]`. **Say what kind of test it is** with `kind` (Steerify shows it on the card, with what the OK does): `design` (a
+   mockup / prototype to approve: OK = build it, nothing to release), `local` (on the user's Mac or a local server: OK =
+   it goes in the release), `stage` / `prod` (only testable once released: the card waits in "After release", rides the
+   next release untested, and comes back to To test when live). Not set → guessed from the links (protos/ → design, a
+   real host → stage / prod, else local).
+   Same id = new version of the same item. **Every picture full size** (≥1400 px wide, shots and
    per-test `img` alike, never pre-shrunk thumbnails): Steerify shows them big and makes its own thumbnails.
    **Focused on the feature:** each test picture shows the thing under test, never the whole window: crop it to the
    feature at 2× (a Retina capture of that region), or add `"focus": [x, y, w, h]` (0–1 from the top-left) on the test

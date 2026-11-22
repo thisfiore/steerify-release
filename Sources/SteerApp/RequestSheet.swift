@@ -226,8 +226,17 @@ struct RequestSheet: View {
                 Spacer()
                 Menu {
                     Button("No chapter (Claude places it)") { chapterSet = .some(nil) }
+                    if !triage.options.isEmpty {
+                        Section("Closest") {
+                            ForEach(triage.options, id: \.self) { o in
+                                Button { chapterSet = .some(o) } label: {
+                                    if o == chapter { Label(o, systemImage: "checkmark") } else { Text(o) }
+                                }
+                            }
+                        }
+                    }
                     Divider()
-                    ForEach(board.chapters.filter { !$0.draft && $0.name != RequestLog.fixesChapter }.reversed()) { c in
+                    ForEach(board.chapters.filter { !$0.draft && $0.name != RequestLog.fixesChapter && !triage.options.contains($0.name) }.reversed()) { c in
                         Button { chapterSet = .some(c.name) } label: {
                             if c.name == chapter { Label(c.name, systemImage: "checkmark") } else { Text(c.name) }
                         }
@@ -312,7 +321,7 @@ struct RequestSheet: View {
     private func setUp() {
         text = model.requestSeed; model.requestSeed = ""
         if let k = model.requestKindSeed { kindSet = k; model.requestKindSeed = nil }
-        focused = true
+        grabFocus()
         lookContext()
         recent = Array(RequestLog.load(project.boardDir).prefix(5))
         let pb = NSPasteboard.general
@@ -340,6 +349,21 @@ struct RequestSheet: View {
         if let i = a.firstIndex(of: "--request-send"), i + 1 < a.count {
             let fileOnly = a[i + 1] == "file"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { send(fileOnly: fileOnly) }
+        }
+    }
+
+    /// ⌘N while the terminal (an AppKit view) holds the keyboard: SwiftUI won't take focus from it while the sheet is
+    /// still being laid out. Release it, then focus the text on the next turns (as the ⌘K palette does), so you can type at once.
+    private func grabFocus() {
+        let win = { NSApp.keyWindow ?? NSApp.mainWindow }
+        win()?.makeFirstResponder(nil)
+        focused = true
+        for delay in [0.0, 0.05, 0.15, 0.35] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard model.requestOpen else { return }
+                if !(win()?.firstResponder is NSTextView) { win()?.makeFirstResponder(nil) }
+                focused = true
+            }
         }
     }
 
@@ -390,7 +414,7 @@ struct RequestSheet: View {
     }
 
     private func retriage() {
-        let chs = board.chapters.filter { !$0.draft }.map { c in (name: c.name, items: board.roadmap.filter { $0.track == c.name }.map(\.text)) }
+        let chs = board.triageChapters
         let ctx = model.chapter(of: context, in: project)
         let lessons = TriageLessons.load(project.boardDir)
         let words = RequestTriage.classify(text, chapters: chs, context: ctx, lessons: lessons)
@@ -401,7 +425,9 @@ struct RequestSheet: View {
         refining = Task {
             try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled, asked == text else { return }
-            if let better = await RequestTriage.refine(asked, chapters: chs, context: ctx, words: words, lessons: lessons), asked == text { triage = better }
+            var t = await RequestTriage.refine(asked, chapters: chs, context: ctx, words: words, lessons: lessons) ?? words
+            if let c = await RequestTriage.refineChapter(asked, chapters: chs, words: t) { t = c }
+            if asked == text && t != words { triage = t }
         }
     }
 

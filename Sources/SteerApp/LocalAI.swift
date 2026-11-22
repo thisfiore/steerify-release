@@ -180,7 +180,7 @@ enum SessionSummaries {
 // MARK: - 2 · Request triage with the on-device model (the word model answers first, this refines it)
 
 extension RequestTriage {
-    static func refine(_ text: String, chapters: [(name: String, items: [String])], context: String?, words: Triage,
+    static func refine(_ text: String, chapters: [TriageChapter], context: String?, words: Triage,
                        lessons: [TriageLessons.Lesson] = []) async -> Triage? {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard clean.count >= 12, LocalAI.ready else { return nil }
@@ -228,13 +228,36 @@ extension RequestTriage {
         var t = words
         t.kind = kind
         t.kindWhy = why.isEmpty ? words.kindWhy : String(why)
-        // The words' chapter stays when there is one (it was the better guess in tests); the model fills the gap.
-        // …and only when the request shares at least one word with that chapter (no home is better than a wrong one).
-        if words.chapter == nil, let n = field("chapter").flatMap({ Int($0.prefix { $0.isNumber }) }), n >= 1 && n <= list.count {
-            let c = Array(list)[n - 1]
-            let mine = Set(RequestTriage.words(clean).map(RequestTriage.stem))
-            let theirs = Set((RequestTriage.words(c.name) + c.items.flatMap(RequestTriage.words)).map(RequestTriage.stem))
-            if let w = mine.intersection(theirs).first { t.chapter = c.name; t.chapterWhy = "Closest chapter by meaning · “\(w)”" }
+        // The chapter is not taken from this answer: picking among every chapter it was wrong 33–36 times in 44
+        // (r261121-233830). refineChapter asks again, among the closest three only.
+        t.ai = true
+        return t
+    }
+
+    /// The chapter, by meaning, among the closest ones by words (Triage.options): the small model is good at "which of
+    /// these 3, or none" (23 right · 6 wrong · 15 none in 44 real requests) and bad at "which of 19" (8–11 right).
+    static func refineChapter(_ text: String, chapters: [TriageChapter], words: Triage) async -> Triage? {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cand = words.options.compactMap { o in chapters.first { $0.name == o } }
+        guard clean.count >= 12, !cand.isEmpty, LocalAI.ready else { return nil }
+        func short(_ n: String) -> String { n.replacingOccurrences(of: #"\s*\([^)]*\)\s*$"#, with: "", options: .regularExpression) }
+        let menu = cand.enumerated().map { i, c in
+            "\(i + 1). \(short(c.name))" + (c.about.isEmpty ? "" : ": \(c.about.prefix(140))") + " — covers: " + String(c.items.prefix(6).joined(separator: "; ").prefix(320))
+        }.joined(separator: "\n")
+        let prompt = "Chapters:\n\(menu)\n\nRequest: \(clean.prefix(1200))\n\nAnswer in exactly this form:\nchapter: <number, or 0 if none fits>"
+        guard let a = await LocalAI.ask(key: "trich|" + LocalAI.hash(prompt), instructions: """
+            You sort a user's request about a Mac app into the roadmap chapter whose feature it talks about. \
+            Judge by what the request is about (which screen, which feature), not by shared common words. \
+            Answer 0 when none of them is about that feature.
+            """, prompt: prompt, temperature: 0) else { return nil }
+        let n = Int(a.components(separatedBy: "chapter:").last?.trimmingCharacters(in: .whitespaces).prefix { $0.isNumber } ?? "") ?? 0
+        var t = words
+        if n >= 1 && n <= cand.count {
+            t.chapter = cand[n - 1].name
+            t.chapterWhy = "About this feature (read by Apple Intelligence)"
+        } else {
+            t.chapter = nil
+            t.chapterWhy = "No chapter is about it: Claude will place it (or pick one)"
         }
         t.ai = true
         return t
@@ -587,9 +610,24 @@ enum LocalAICheck {
             say("· \(l.title ?? l.item)\n  \(s.map { ($0.ai ? "[AI] " : "[plain] ") + $0.text } ?? "(no transcript)")  (\(String(format: "%.1f", Date().timeIntervalSince(t0)))s)")
         }
         say("\n== 2 · Request triage")
-        let chs = b.chapters.filter { !$0.draft }.map { c in (name: c.name, items: b.roadmap.filter { $0.track == c.name }.map(\.text)) }
+        let chs = b.triageChapters
         let lessons = TriageLessons.load(dir)
         say("lessons from this board: \(lessons.count)")
+        // `--triage-set <file>`: {"cases":[{"text","want":[chapter names]}]} → how often the chapter is right / none / wrong.
+        if let i = CommandLine.arguments.firstIndex(of: "--triage-set"), i + 1 < CommandLine.arguments.count,
+           let d = FileManager.default.contents(atPath: CommandLine.arguments[i + 1]),
+           let cases = (try? JSONSerialization.jsonObject(with: d) as? [String: Any])?["cases"] as? [[String: Any]] {
+            var tally = ["words": [0, 0, 0], "final": [0, 0, 0]]
+            func mark(_ k: String, _ got: String?, _ want: [String]) { tally[k]![got == nil ? 1 : want.contains(got!) ? 0 : 2] += 1 }
+            for c in cases {
+                let text = c["text"] as? String ?? "", want = c["want"] as? [String] ?? []
+                let w = RequestTriage.classify(text, chapters: chs, context: nil, lessons: [])
+                let f = await RequestTriage.refineChapter(text, chapters: chs, words: w) ?? w
+                mark("words", w.chapter, want); mark("final", f.chapter, want)
+                if f.chapter.map({ !want.contains($0) }) ?? false { say("  wrong: \(text.prefix(60)) → \(f.chapter!)") }
+            }
+            for k in ["words", "final"] { say("chapter \(k): right \(tally[k]![0]) · none \(tally[k]![1]) · wrong \(tally[k]![2]) of \(cases.count)") }
+        }
         for t in ["The Resume button on the To test card does nothing when the conversation was deleted",
                   "Make the session tabs a bit smaller, they take too much space",
                   "Let me export the whole board as a PDF to send to a client",
@@ -599,7 +637,8 @@ enum LocalAICheck {
                   "Every Monday collect the new leads from the CRM and send me a report",
                   "Make the onboarding tutorial for new clients with our SOP"] {
             let w = RequestTriage.classify(t, chapters: chs, context: nil, lessons: lessons)
-            let a = await RequestTriage.refine(t, chapters: chs, context: nil, words: w, lessons: lessons)
+            var a = await RequestTriage.refine(t, chapters: chs, context: nil, words: w, lessons: lessons)
+            if let c = await RequestTriage.refineChapter(t, chapters: chs, words: a ?? w) { a = c }
             say("· \(t)\n  words: \(w.kind.rawValue) · \(w.chapter ?? "-") · \(w.kindWhy)\n  AI:    \(a.map { "\($0.kind.rawValue) · \($0.chapter ?? "-") · \($0.kindWhy)" } ?? "(none)")")
         }
         say("\n== 3 · Commits → roadmap")

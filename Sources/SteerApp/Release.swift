@@ -101,7 +101,7 @@ struct ReleaseScreen: View {
     @State private var editing = false
 
     private var project: Project { model.projects.first { $0.id == board.project.id } ?? board.project }
-    private var ready: [ShipItem] { board.ships.filter { board.shipState($0) == .ok && $0.status != "live" } }
+    private var ready: [ShipItem] { board.ships.filter { board.goesInRelease($0) } }
 
     var body: some View {
         ScrollView {
@@ -128,7 +128,7 @@ struct ReleaseScreen: View {
             PixelIcon(name: "ship", size: S(22)).foregroundStyle(Brand.amber)
             VStack(alignment: .leading, spacing: 3) {
                 Text("RELEASE").font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.mute)
-                Text("\(ready.count) approved item\(ready.count == 1 ? "" : "s") ready to ship").font(.system(size: S(15), weight: .semibold)).foregroundStyle(.white)
+                Text("\(ready.count) item\(ready.count == 1 ? "" : "s") ready to ship").font(.system(size: S(15), weight: .semibold)).foregroundStyle(.white)
             }
             Spacer()
             Button { editing = true } label: {
@@ -155,7 +155,7 @@ struct ReleaseScreen: View {
     private var readyCard: some View {
         Card {
             HStack {
-                Text("APPROVED, NOT LIVE YET").font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.green)
+                Text("GOES IN THE RELEASE").font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.green)
                 Spacer()
                 if ready.count > 1 {
                     Button("Mark all \(ready.count) live") {
@@ -168,12 +168,17 @@ struct ReleaseScreen: View {
             }
             Text("They turn live by themselves once their repo is committed and pushed (or deployed, for repos with a live check).")
                 .font(.system(size: S(11))).foregroundStyle(Brand.mute)
-            if ready.isEmpty { Text("Nothing approved is waiting. OK a To test item to see it here.").italic().font(.system(size: S(12))).foregroundStyle(Brand.mute) }
+            if ready.isEmpty { Text("Nothing approved is waiting. OK a To test item (or deliver one tested on stage / prod) to see it here.").italic().font(.system(size: S(12))).foregroundStyle(Brand.mute) }
             ForEach(ready) { s in
                 HStack(spacing: 10) {
-                    Image(systemName: "checkmark.square.fill").foregroundStyle(Brand.green)
+                    let after = board.shipState(s) == .afterRelease
+                    Image(systemName: after ? "hourglass" : "checkmark.square.fill").foregroundStyle(after ? Brand.amber : Brand.green)
+                        .help(after ? "Tested on stage / prod: it goes out untested, then comes back to To test" : "Approved")
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(s.title).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(Brand.ink).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(s.title).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(Brand.ink).lineLimit(1)
+                            if after { Text("test after release").font(.system(size: S(10.5))).foregroundStyle(Brand.amber).fixedSize() }
+                        }
                         Text("\(board.areaName(s.area)) · \(s.status.replacingOccurrences(of: "-", with: " ")) · \(s.repos.joined(separator: ", "))")
                             .font(.system(size: S(11))).foregroundStyle(Brand.mute).lineLimit(1)
                     }
@@ -499,7 +504,7 @@ extension AppModel {
         guard AppModel.mayWriteBoards else { return }   // test copies never write the board
         gitCache = [:]
         let b = board(for: p)
-        let ready = b.ships.filter { b.shipState($0) == .ok && $0.status != "live" && (shipCheck($0, in: p)?.live ?? false) }
+        let ready = b.ships.filter { b.goesInRelease($0) && (shipCheck($0, in: p)?.live ?? false) }
         guard !ready.isEmpty else { return }
         deployTick += 1
         setLive(ready, in: p, live: true)

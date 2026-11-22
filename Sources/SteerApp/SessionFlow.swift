@@ -25,7 +25,7 @@ extension BoardStore {
         case "test": return Set(ships.first { $0.id == id }?.roads.compactMap(roadRef) ?? [])
         case "choice": return Set(ships.filter { $0.choices.contains(id) }.flatMap { $0.roads.compactMap(roadRef) })
         case "request":
-            let became = RequestLog.load(project.boardDir).first { $0.id == id }?.became ?? []
+            let became = RequestLog.cached(project.boardDir).first { $0.id == id }?.became ?? []
             var out = Set(became.filter { $0.hasPrefix("road:") })
             for b in became where !b.hasPrefix("road:") && !b.hasPrefix("track:") { out.formUnion(roads(of: b)) }
             if let r = roadmap.first(where: { $0.request == id }) { out.insert("road:" + r.id) }
@@ -80,7 +80,7 @@ extension BoardStore {
             let built = ships.filter { $0.choices.contains(id) }
             return !built.isEmpty && built.allSatisfy { $0.status == "live" }
         case "request":
-            guard let r = RequestLog.load(project.boardDir).first(where: { $0.id == id }) else { return false }
+            guard let r = RequestLog.cached(project.boardDir).first(where: { $0.id == id }) else { return false }
             if ["done", "discarded"].contains(r.status) { return true }
             let roads = r.became.filter { $0.hasPrefix("road:") }
             return !roads.isEmpty && roads.allSatisfy(isFinished)
@@ -101,6 +101,10 @@ extension AppModel {
     /// Finished: the process ended, Claude is idle and every item it covers is through its cycle, or (SessionOutlook.swift)
     /// it is idle with nothing open outside the board: no question, no next step, or a newer session took its work.
     func isWrapped(_ s: TerminalSession) -> Bool {
+        // Asked for every session by the tab bar, the session list, the menu bar and their sort orders, in one draw.
+        TurnMemo.get("wrapped:\(s.id)") { computeWrapped(s) }
+    }
+    private func computeWrapped(_ s: TerminalSession) -> Bool {
         if !s.running { return true }
         if yourTurn(s) != nil { return false }      // waits on you on the board: not done
         if outlook(s)?.isDone == true { return true }
@@ -118,9 +122,11 @@ extension AppModel {
             if s.kind != .claude { return 5 }
             switch s.status { case .waiting: return 0; case .working: return 1; case .starting: return 2; case .idle: return 3; case .ended: return 9 }
         }
-        return sessions(of: projectId).enumerated()
-            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
-            .map(\.element)
+        // Each session is ranked once (not on every comparison of the sort), and the order once per draw.
+        return TurnMemo.get("ordered:" + projectId) {
+            sessions(of: projectId).enumerated().map { (rank($0.element), $0.offset, $0.element) }
+                .sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
+        }
     }
 
     func wrappedSessions(of projectId: String) -> [TerminalSession] { sessions(of: projectId).filter(isWrapped) }

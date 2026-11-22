@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Foundation
 
 // MARK: - Steerify relay (realtime between the iPhone and this Mac; server in relay/server.mjs)
@@ -117,15 +118,49 @@ extension AppModel {
             hub.statusPending = false
             for p in self.projects {
                 guard let cfg = RelayConfig.of(p) else { continue }
-                let list: [[String: String]] = self.sessions.filter { $0.projectId == p.id && $0.kind == .claude && $0.status != .ended }.map {
-                    ["title": $0.title, "item": $0.item?.ref ?? "", "state": $0.status.rawValue, "project": p.name, "remote": $0.remoteURL ?? ""]
+                let list: [[String: String]] = self.orderedSessions(of: p.id).filter { $0.kind == .claude && $0.status != .ended }.map {
+                    self.phoneRow($0, project: p)
                 }
-                let sig = list.map { $0["item"]! + $0["state"]! + $0["title"]! + $0["remote"]! }.joined(separator: "|")
+                let sig = list.map { row in row.keys.sorted().map { k in k + "=" + row[k]! }.joined(separator: ",") }.joined(separator: "|")
                 if !force && hub.lastStatus[p.id] == sig { continue }
                 hub.lastStatus[p.id] = sig
                 self.relayPost(cfg, "status", ["sessions": list])
             }
         }
+    }
+
+    /// One session as the phone draws it: the same signals as the Mac's session row (choice iphone-session-list).
+    /// The Mac works them out (icon, outlook, your turn, done); the phone only draws (requirement ios-sessions-one-source).
+    func phoneRow(_ s: TerminalSession, project p: Project) -> [String: String] {
+        let turn = isWrapped(s) ? nil : yourTurn(s)
+        let outlook = outlook(s)
+        let wrapped = isWrapped(s)
+        let parts = s.title.components(separatedBy: " · ")
+        let hasVerb = parts.count > 1 && SessionName.verbs.values.contains(parts[0])
+        let iconTitle = s.item?.title ?? s.title
+        let iconName = PixelArt.cached(iconTitle) ?? PixelArt.pick(iconTitle)
+        let icon = PixelArt.icons[iconName] ?? PixelArt.icons["sparkle"]!
+        let group: String
+        if wrapped { group = "done" }
+        else if turn != nil || s.status == .waiting { group = "turn" }
+        else if case .ask? = outlook { group = "turn" }
+        else if s.status == .working || s.status == .starting { group = "working" }
+        else { group = "idle" }
+        let line: String
+        if wrapped { line = outlook?.line ?? "done" }
+        else if let turn { line = "your turn · " + turn.tab.title.capitalized.replacingOccurrences(of: "To Test", with: "To test") }
+        else if let outlook { line = outlook.line }
+        else { line = s.moodWord + (s.status == .idle ? " · " + s.repo.name : "") }
+        return ["title": s.title, "item": s.item?.ref ?? "", "state": s.status.rawValue, "project": p.name, "remote": s.remoteURL ?? "",
+                "verb": hasVerb ? parts[0] : "", "name": hasVerb ? parts.dropFirst().joined(separator: " · ") : s.title,
+                "stage": wrapped ? "" : (stage(of: s)?.rawValue ?? ""), "line": line, "group": group,
+                "turn": turn?.verb ?? "", "turnRef": turn?.ref ?? "",
+                "icon": icon.rows.joined(separator: "/"), "iconColor": Self.hex(icon.color)]
+    }
+
+    private static func hex(_ c: Color) -> String {
+        guard let n = NSColor(c).usingColorSpace(.sRGB) else { return "ffd27a" }
+        return String(format: "%02x%02x%02x", Int(n.redComponent * 255), Int(n.greenComponent * 255), Int(n.blueComponent * 255))
     }
 
     private func relayPost(_ cfg: RelayConfig.Config, _ what: String, _ body: [String: Any]) {

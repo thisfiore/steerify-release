@@ -172,6 +172,11 @@ struct SinceYouLeftSheet: View {
         ZStack {
             Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { since.close() }
             VStack(alignment: .leading, spacing: 0) {
+                BackInPort(lamps: brief.chapters.filter { $0.total > 0 }.map { $0.waiting ? .waiting : $0.done >= $0.total ? .done : .moved },
+                           key: brief.id)
+                    .aspectRatio(190.0 / 33.0, contentMode: .fit).frame(maxWidth: .infinity)
+                    .overlay(alignment: .bottom) { LinearGradient(colors: [.clear, Brand.bg], startPoint: .top, endPoint: .bottom).frame(height: S(30)) }
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14))
                 header
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
@@ -269,5 +274,89 @@ struct SinceYouLeftSheet: View {
         if m < 120 { return "\(max(m, 1)) min away" }
         if m < 48 * 60 { return "\(m / 60) h away" }
         return "\(m / 1440) days away"
+    }
+}
+
+// MARK: - Header art (choice since-header A, request r261121-234027)
+
+/// "Back in port": the HarbourDawn world at dusk. The boat sails home from the right and docks at the pier; one pier
+/// lamp per chapter that moved (amber blinking = waiting on you, green = chapter complete, cream = moved). Same palette
+/// and pixel grid as the Set up welcome. ~10 frames/s while the window is active; a still, docked frame with Reduce
+/// Motion or in the background, so it costs nothing there.
+struct BackInPort: View {
+    enum Lamp { case waiting, done, moved }
+    let lamps: [Lamp]
+    var key: String = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.controlActiveState) private var active
+    @State private var start = Date()
+
+    private static let cols = 190, rows = 33, horizon = 22
+    private static let boat = ["......#.......", "......##......", "......###.....", "......####....", "......#####...", "......#.......",
+                               "##############", ".############.", "..##########.."]
+
+    var body: some View {
+        let still = reduceMotion || active == .inactive
+        TimelineView(.animation(minimumInterval: 0.1, paused: still)) { tl in
+            Canvas { ctx, size in draw(ctx, size, still ? 60 : tl.date.timeIntervalSince(start)) }
+        }
+        .onChange(of: key) { _, _ in start = Date() }
+        .accessibilityHidden(true)
+    }
+
+    private func draw(_ ctx: GraphicsContext, _ size: CGSize, _ t: Double) {
+        let cols = Self.cols, hz = Self.horizon
+        let px = size.width / CGFloat(cols)
+        let rows = Int((size.height / px).rounded(.up))
+        var ctx = ctx
+        // Keep the sea line where it is when the frame is shorter than the scene: crop the sky.
+        let over = CGFloat(Self.rows) * px - size.height
+        if over > 0 { ctx.translateBy(x: 0, y: -over) }
+        func dot(_ x: Int, _ y: Int, _ c: Color, _ a: Double = 1) {
+            guard x >= 0, x < cols, y >= 0, y < max(rows, Self.rows) else { return }
+            ctx.fill(Path(CGRect(x: CGFloat(x) * px, y: CGFloat(y) * px, width: px + 0.3, height: px + 0.3)), with: .color(c.opacity(a)))
+        }
+        let phase = Int(t / 0.6) % 8
+        // dusk sky, banded
+        let bands: [Color] = [Color(hex: 0x120e24), Color(hex: 0x1a1430), Color(hex: 0x2a1a3a), Color(hex: 0x40223e), Color(hex: 0x5e2c40), Color(hex: 0x7f3a42)]
+        for (i, c) in bands.enumerated() {
+            let y0 = hz * i / bands.count, y1 = hz * (i + 1) / bands.count
+            ctx.fill(Path(CGRect(x: 0, y: CGFloat(y0) * px, width: size.width, height: CGFloat(y1 - y0) * px + 0.5)), with: .color(c))
+        }
+        for (x, y) in [(12, 3), (40, 6), (66, 2), (90, 8), (120, 4), (150, 7), (164, 2)] {
+            dot(x, y, Brand.cream, (x + phase) % 3 == 0 ? 0.9 : 0.4)
+        }
+        for y in -3...3 { for x in -3...3 where x * x + y * y <= 9 { dot(30 + x, 6 + y, Brand.cream, 0.85) } }   // moon
+        // sea
+        ctx.fill(Path(CGRect(x: 0, y: CGFloat(hz) * px, width: size.width, height: CGFloat(Self.rows - hz) * px + over + 1)), with: .color(Color(hex: 0x0d1020)))
+        for r in 0..<3 { for x in 0..<cols where (x + phase * (r + 1) + r * 3) % 7 < 4 { dot(x, hz + 2 + r * 3, r == 0 ? Brand.blue : Brand.line2, r == 0 ? 0.6 : 0.9) } }
+        // pier, long enough for the lamps
+        let shown = Array(lamps.prefix(12))
+        let pierEnd = max(40, 6 + shown.count * 8 + 2)
+        let wood = Color(hex: 0x8a5a2b), wood2 = Color(hex: 0x5c3b1c), post = Color(hex: 0x4a2f16)
+        for x in 0..<pierEnd { dot(x, hz - 2, wood); dot(x, hz - 1, wood2) }
+        for x in stride(from: 2, to: pierEnd, by: 6) { for y in hz..<(hz + 8) { dot(x, y, post) } }
+        // one lamp per chapter that moved
+        for (i, l) in shown.enumerated() {
+            let x = 6 + i * 8, on = l != .waiting || phase % 4 < 2
+            dot(x, hz - 4, post); dot(x, hz - 3, post)
+            let c = l == .waiting ? Brand.amber : l == .done ? Brand.green : Brand.cream
+            dot(x, hz - 5, c, on ? 1 : 0.25)
+            if on { dot(x, hz - 6, c, 0.3); dot(x - 1, hz - 5, c, 0.2); dot(x + 1, hz - 5, c, 0.2) }
+        }
+        // lighthouse with its beam
+        let lx = 176, base = hz - 1
+        for y in 0..<14 { for i in 0..<4 { dot(lx + i, base - y, (y / 3) % 2 == 1 ? Brand.cream : Brand.claude) } }
+        for i in -1...4 { dot(lx + i, base - 14, post) }
+        for (x, y) in [(1, 15), (2, 15), (1, 16), (2, 16)] { dot(lx + x, base - y, Brand.amber) }
+        let dir = phase < 4 ? -1 : 1
+        for k in 3..<30 { dot(lx + 1 + dir * k, base - 16 + k / 10, Brand.amber, max(0, 0.38 - Double(k) * 0.012)) }
+        // the boat sails home (≈ 6 s) and docks at the end of the pier
+        let dock = pierEnd + 1, from = cols - 16
+        let p = min(1, t / 6), eased = 1 - (1 - p) * (1 - p)
+        let bx = from - Int(Double(from - dock) * eased)
+        let by = hz - 10 + (phase % 4 < 2 ? 0 : 1)
+        for (y, row) in Self.boat.enumerated() { for (x, ch) in row.enumerated() where ch == "#" { dot(bx + x, by + y, y < 6 ? Brand.cream : Brand.amber) } }
+        if p < 1 { for k in stride(from: 1, to: 12, by: 2) { dot(bx + 14 + k, hz - 1 + (k / 2) % 2, Brand.cream, 0.5 - Double(k) * 0.04) } }
     }
 }
