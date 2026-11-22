@@ -2,55 +2,120 @@ import Foundation
 import SwiftUI
 import FoundationModels
 
-// MARK: - Smart areas (choice smart-areas, pick "auto"): the local AI regroups the roadmap by itself, every hour.
+// MARK: - Feature areas (choice feature-areas, pick A; request r261122-111239)
 //
-// The board's own areas (board.json → areas) map parts to repos and stay as Claude wrote them. These groups are only
-// for finding things: Apple Intelligence names 4–8 areas from the chapters, then puts every key result in one.
-// Saved per project in the app's support folder (never in the board, so no commits, no clashes with sessions).
-// Without the on-device model nothing changes: the Roadmap filter uses the board's areas.
+// The Roadmap area chips name the product's own features (SB: Data Room, Market Room, Partner, MCP…), found in the
+// chapter titles: each chapter's feature is the leading noun phrase of its title, shortened to what it shares with other
+// chapters ("Boosting Data Room with AI Local Engine" → Data Room, "Retouch suite" + "Retouch review" → Retouch).
+// A name the titles keep coming back to inside a heading (MCP in "Partner MCP" and "Standards … MCP …") is an area too.
+// Key results go to their chapter's feature; ones that name another area are tagged with it as well. Only key results
+// of chapters without a feature (Fixes & refinements) need the on-device model, which picks one of the names.
+// Your renames, merges and hides (right-click a chip) are kept apart and always win. Saved in the app's support folder.
 
 struct SmartAreas: Codable, Equatable {
     struct Area: Codable, Equatable, Hashable { var key: String; var name: String }
     var at: Date
     var areas: [Area]
-    /// Key result id (slug of its text) → area key.
+    /// Key result id (slug of its text) → area key (its chapter's feature).
     var items: [String: String]
+    /// Key result id → other areas its text names (a Market Room key result about the MCP is under MCP too).
+    var also: [String: [String]]? = nil
+    /// 2 = feature names (this file); older files held invented category words and are redone.
+    var v: Int? = nil
+    static let version = 2
+
+    /// The areas of a key result, first its own.
+    func keys(_ id: String) -> [String] { (items[id].map { [$0] } ?? []) + (also?[id] ?? []) }
+}
+
+/// What you changed on the chips (right-click): kept across regroupings, applied on top.
+struct AreaEdits: Codable, Equatable {
+    var names: [String: String] = [:]
+    var merged: [String: String] = [:]
+    var hidden: [String] = []
+
+    func apply(_ s: SmartAreas) -> SmartAreas {
+        guard !(names.isEmpty && merged.isEmpty && hidden.isEmpty) else { return s }
+        func to(_ k: String) -> String? {
+            var k = k, seen: Set<String> = []
+            while let n = merged[k], !seen.contains(k) { seen.insert(k); k = n }
+            return hidden.contains(k) ? nil : k
+        }
+        var out = s
+        out.items = s.items.compactMapValues { to($0) }
+        out.also = s.also?.mapValues { Array(NSOrderedSet(array: $0.compactMap { to($0) }).array as! [String]) }
+        for (id, ks) in out.also ?? [:] { out.also?[id] = ks.filter { $0 != out.items[id] } }
+        out.areas = s.areas.filter { to($0.key) == $0.key }.map { SmartAreas.Area(key: $0.key, name: names[$0.key] ?? $0.name) }
+        return out
+    }
 }
 
 @MainActor
 final class SmartAreaModel: ObservableObject {
     static let shared = SmartAreaModel()
     @Published private(set) var byProject: [String: SmartAreas] = [:]
+    @Published private(set) var edits: [String: AreaEdits] = [:]
     @Published private(set) var running: Set<String> = []
     static let every: TimeInterval = 3600
 
-    private static func file(_ projectId: String) -> URL {
+    private static func file(_ projectId: String, _ suffix: String = "") -> URL {
         let d = ProjectStore.dir.appendingPathComponent("smart-areas", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        return d.appendingPathComponent(projectId + ".json")
+        return d.appendingPathComponent(projectId + suffix + ".json")
     }
-    func get(_ projectId: String) -> SmartAreas? {
+    /// The areas as computed (no edits).
+    func raw(_ projectId: String) -> SmartAreas? {
         if let s = byProject[projectId] { return s }
         guard let d = try? Data(contentsOf: Self.file(projectId)),
-              let s = try? JSONDecoder().decode(SmartAreas.self, from: d) else { return nil }
+              let s = try? JSONDecoder().decode(SmartAreas.self, from: d), s.v == SmartAreas.version else { return nil }
         byProject[projectId] = s
         return s
     }
+    /// The areas as shown: with your renames, merges and hides.
+    func get(_ projectId: String) -> SmartAreas? { raw(projectId).map { edits(projectId).apply($0) } }
 
-    /// Regroup when the last run is older than an hour (or `force`). One project at a time; the model is shared.
+    func edits(_ projectId: String) -> AreaEdits {
+        if let e = edits[projectId] { return e }
+        let e = (try? Data(contentsOf: Self.file(projectId, ".edits"))).flatMap { try? JSONDecoder().decode(AreaEdits.self, from: $0) } ?? AreaEdits()
+        edits[projectId] = e
+        return e
+    }
+    func edit(_ projectId: String, _ change: (inout AreaEdits) -> Void) {
+        var e = edits(projectId); change(&e); edits[projectId] = e
+        if let d = try? JSONEncoder().encode(e) { try? d.write(to: Self.file(projectId, ".edits"), options: .atomic) }
+    }
+    func rename(_ pid: String, _ key: String, to name: String) {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        edit(pid) { if n.isEmpty || n == raw(pid)?.areas.first(where: { $0.key == key })?.name { $0.names[key] = nil } else { $0.names[key] = n } }
+    }
+    func merge(_ pid: String, _ key: String, into target: String) { guard key != target else { return }; edit(pid) { $0.merged[key] = target } }
+    func hide(_ pid: String, _ key: String) { edit(pid) { if !$0.hidden.contains(key) { $0.hidden.append(key) } } }
+    func resetEdits(_ pid: String) { edit(pid) { $0 = AreaEdits() } }
+
+    /// Regroup when the roadmap changed or the last run is older than an hour (or `force`).
     func refresh(_ board: BoardStore, force: Bool = false) async {
         let pid = board.project.id
-        if !force, let s = get(pid), Date().timeIntervalSince(s.at) < Self.every { return }
-        guard LocalAI.ready, !running.contains(pid) else { return }
         let items = board.roadmap.map { (id: $0.id, text: $0.text, chapter: $0.track) }
-        guard items.count >= 6 else { return }
+        let sig = LocalAI.hash(items.map { $0.id + "|" + $0.chapter }.joined(separator: "\n"))
+        if !force, raw(pid) != nil, lastSig[pid] == sig, let s = raw(pid), Date().timeIntervalSince(s.at) < Self.every { return }
+        guard !running.contains(pid), items.count >= 3 else { return }
         running.insert(pid); defer { running.remove(pid) }
-        guard let s = await Self.regroup(items, previous: get(pid)) else { return }
+        let words = Set(FeatureNames.words(board.project.name) + [board.project.id.lowercased()])
+        // Plain words first (instant), shown at once; then the on-device model sorts what no name covers.
+        let g = FeatureNames.group(items, project: words)
+        guard !g.areas.isEmpty else { return }
+        lastSig[pid] = sig
+        save(pid, SmartAreas(at: Date(), areas: g.areas, items: g.items, also: g.also.isEmpty ? nil : g.also, v: SmartAreas.version))
+        if let s = await Self.sortRest(g, items) { save(pid, s) }
+    }
+    private var lastSig: [String: String] = [:]
+    private func save(_ pid: String, _ s: SmartAreas) {
         byProject[pid] = s
         if let d = try? JSONEncoder().encode(s) { try? d.write(to: Self.file(pid), options: .atomic) }
     }
 
-    /// Keeps a project regrouped while its board is open: now if due, then every hour.
+    /// Keeps a project grouped while its board is open: now, then every hour (the view also calls `refresh` when the
+    /// roadmap changes, so no polling).
     func keepFresh(_ board: BoardStore) async {
         while !Task.isCancelled {
             await refresh(board)
@@ -58,79 +123,28 @@ final class SmartAreaModel: ObservableObject {
         }
     }
 
-    // MARK: The two model steps
-
-    /// Category words that say nothing about this product: never an area.
-    nonisolated static let generic: Set<String> = ["features", "feature", "development", "design", "testing", "tests", "documentation", "docs",
-        "feedback", "user management", "users", "improvements", "enhancements", "bugs", "fixes", "misc", "other", "general", "core",
-        "deployment", "infrastructure", "backend", "frontend", "ui", "ux", "user experience", "user interface", "performance", "quality"]
-
-    nonisolated static func regroup(_ items: [(id: String, text: String, chapter: String)], previous: SmartAreas?) async -> SmartAreas? {
-        // 1 · Name the areas from the chapters (a few key results each, so it sees what they hold).
-        var chapters: [String] = []
-        for it in items where !chapters.contains(it.chapter) { chapters.append(it.chapter) }
-        let menu = String(chapters.map { c in
-            "- \(c): " + items.filter { $0.chapter == c }.prefix(4).map { String($0.text.prefix(70)) }.joined(separator: "; ")
-        }.joined(separator: "\n").prefix(6500))
-        let keep = previous.map { "Current areas (keep a name when it still fits): " + $0.areas.map(\.name).joined(separator: ", ") + "\n\n" } ?? ""
-        var names: [String] = []
-        for attempt in 0..<2 where names.count < 3 {
-            guard let a = await LocalAI.ask(key: "areas2|\(attempt)|" + LocalAI.hash(keep + menu), instructions: """
-                You organise a product's roadmap into areas, so its owner can filter it.
-                An area is a PART OF THE PRODUCT that key results change: a screen, a tab, a panel, a flow, a page, a tool.
-                Name each area with words that appear in the chapters below (1 to 3 words), the way the owner would say it.
-                Never use generic categories such as Features, Design, Development, Testing, Documentation, Feedback, Deployment, User management.
-                Give between 4 and 8 areas that together cover every chapter. One area name per line, nothing else.
-                """, prompt: keep + "Chapters and some of their key results:\n" + menu, temperature: attempt == 0 ? 0.2 : 0.6) else { return nil }
-            for line in a.split(whereSeparator: \.isNewline) {
-                let n = line.trimmingCharacters(in: CharacterSet(charactersIn: " -*•0123456789.)\t\"")).trimmingCharacters(in: .whitespaces)
-                guard !n.isEmpty, n.count <= 32, !generic.contains(n.lowercased()),
-                      !names.contains(where: { $0.lowercased() == n.lowercased() }) else { continue }
-                names.append(n)
+    /// Key results of chapters without a feature that name none: the on-device model picks one, 10 at a time.
+    /// nil = nothing to sort or no model.
+    nonisolated static func sortRest(_ grouping: FeatureNames.Grouping, _ items: [(id: String, text: String, chapter: String)]) async -> SmartAreas? {
+        var g = grouping
+        let rest = items.filter { g.items[$0.id] == nil }
+        guard !rest.isEmpty, LocalAI.ready else { return nil }
+        do {
+            let names = g.areas.map(\.name)
+            for start in stride(from: 0, to: rest.count, by: 10) {
+                let batch = Array(rest[start..<min(start + 10, rest.count)])
+                let rows = batch.enumerated().map { "k\($0.offset + 1): \($0.element.text.prefix(140))" }.joined(separator: "\n")
+                guard let picks = await pick(key: "featpick|" + LocalAI.hash(names.joined(separator: "|") + rows), fields: batch.indices.map { "k\($0 + 1)" },
+                                             choices: names + ["Other"], instructions: """
+                    For each key result of a product roadmap, pick the feature of the product it changes.
+                    Features: \(names.joined(separator: ", ")). Answer Other when none of them fits.
+                    """, prompt: "Key results:\n" + rows) else { continue }
+                for (i, it) in batch.enumerated() {
+                    if let n = picks["k\(i + 1)"], let a = g.areas.first(where: { $0.name == n }) { g.items[it.id] = a.key }
+                }
             }
         }
-        names = Array(names.prefix(8))
-        guard names.count >= 3 else { return nil }
-        let areas = names.map { SmartAreas.Area(key: BoardFiles.slug($0), name: $0) }
-
-        // 2a · A key result that names an area goes there (the first one it names): plain words beat the model.
-        var map: [String: String] = [:]
-        for it in items { if let k = named(it.text, areas) { map[it.id] = k } }
-        // 2b · The rest, 10 at a time; the answer can only be one of the area names.
-        let rest = items.filter { map[$0.id] == nil }
-        for start in stride(from: 0, to: rest.count, by: 10) {
-            let batch = Array(rest[start..<min(start + 10, rest.count)])
-            let rows = batch.enumerated().map { "k\($0.offset + 1): \($0.element.text.prefix(120)) (chapter: \($0.element.chapter.prefix(50)))" }.joined(separator: "\n")
-            guard let picks = await pick(key: "areapick|" + LocalAI.hash(names.joined(separator: "|") + rows), fields: batch.indices.map { "k\($0 + 1)" },
-                                         choices: names, instructions: """
-                For each key result, pick the area a person would open to find it. The chapter is a hint, not the answer.
-                Areas: \(names.joined(separator: ", ")).
-                """, prompt: "Key results:\n" + rows) else { continue }
-            for (i, it) in batch.enumerated() {
-                if let n = picks["k\(i + 1)"], let a = areas.first(where: { $0.name == n }) { map[it.id] = a.key }
-            }
-        }
-        guard !map.isEmpty else { return nil }
-        // What the model skipped goes where most of its chapter went.
-        for it in items where map[it.id] == nil {
-            let mates = items.filter { $0.chapter == it.chapter }.compactMap { map[$0.id] }
-            if let top = Dictionary(grouping: mates, by: { $0 }).max(by: { $0.value.count < $1.value.count })?.key { map[it.id] = top }
-        }
-        let used = Set(map.values)
-        return SmartAreas(at: Date(), areas: areas.filter { used.contains($0.key) }, items: map)
-    }
-
-    /// The area whose name the text says first ("New request from the menu bar…" → Request), if any.
-    nonisolated static func named(_ text: String, _ areas: [SmartAreas.Area]) -> String? {
-        let words = text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
-        func stem(_ w: String) -> String { w.count > 4 && w.hasSuffix("s") ? String(w.dropLast()) : w }
-        var best: (pos: Int, key: String)? = nil
-        for a in areas {
-            let parts = a.name.lowercased().split { !$0.isLetter && !$0.isNumber }.map { stem(String($0)) }
-            guard let first = parts.first, first.count >= 3 else { continue }
-            if let i = words.firstIndex(where: { stem($0) == first }), best == nil || i < best!.pos { best = (i, a.key) }
-        }
-        return best?.key
+        return SmartAreas(at: Date(), areas: g.areas, items: g.items, also: g.also.isEmpty ? nil : g.also, v: SmartAreas.version)
     }
 
     /// One constrained answer per field, each one of `choices` (guided generation: the model cannot answer anything else).

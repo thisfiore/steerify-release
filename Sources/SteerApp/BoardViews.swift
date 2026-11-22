@@ -102,16 +102,18 @@ struct BoardScreen: View {
     /// The roadmap item last asked for: stays open (chapter, Done) after the scroll, until the tab changes.
     @State private var revealRef: String? = nil
     @ObservedObject private var smart = SmartAreaModel.shared
-    /// Roadmap areas regrouped by the local AI (choice smart-areas), when it has run for this project.
+    /// Roadmap areas = the product's features, from the chapter titles (choice feature-areas), once grouped.
     private var smartAreas: SmartAreas? { tab == .road ? smart.get(board.project.id) : nil }
     private var areaList: [(key: String, name: String)] { smartAreas.map { $0.areas.map { (key: $0.key, name: $0.name) } } ?? board.areas }
-    private func roadArea(_ r: RoadItem) -> String { smartAreas.map { $0.items[r.id] ?? "" } ?? r.area }
+    /// A key result's areas: its chapter's feature, then the other areas its text names.
+    private func roadAreas(_ r: RoadItem) -> [String] { smartAreas.map { $0.keys(r.id) } ?? [r.area] }
 
     /// The chapter of a roadmap ref ("road:<id>" or "track:<slug>").
     private func roadTrack(of ref: String) -> String? {
         ref.hasPrefix("road:") ? board.roadmap.first { "road:" + $0.id == ref }?.track
         : ref.hasPrefix("track:") ? board.roadmap.first { "track:" + BoardFiles.slug($0.track) == ref }?.track : nil
     }
+    private var roadSignature: String { "\(board.project.id)|\(board.roadmap.count)|\(Set(board.roadmap.map(\.track)).count)" }
     private func scroll(_ proxy: ScrollViewProxy) {
         guard let f = pendingScroll else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -142,7 +144,8 @@ struct BoardScreen: View {
             } else {
             FilterBar(board: board, tab: tab, area: $area, state: $state, counts: counts, areaCounts: areaCounts, areas: areaList,
                       smartAt: smartAreas?.at, smartRunning: smart.running.contains(board.project.id),
-                      regroup: LocalAI.ready && tab == .road ? { Task { await smart.refresh(board, force: true) } } : nil)
+                      regroup: tab == .road ? { Task { await smart.refresh(board, force: true) } } : nil,
+                      areaMenu: smartAreas == nil ? nil : AreaMenu(projectId: board.project.id))
             ScrollViewReader { proxy in
                 ScrollView {
                     // The roadmap is lazy again, but in small rows: an open chapter is no longer one card taller than the
@@ -180,6 +183,8 @@ struct BoardScreen: View {
         .onChange(of: tab) { _, _ in state = "open"; area = nil; revealRef = nil }
         // The local AI regroups this project's roadmap now if due, then every hour while it is open.
         .task(id: board.project.id) { await smart.keepFresh(board) }
+        // A chapter or key result added / renamed: regroup at once (plain words, instant; cached model answers).
+        .task(id: roadSignature) { await smart.refresh(board) }
         // Once per roadmap visit (it was a task on every chapter).
         .task(id: "\(board.project.id)|\(tab.rawValue)") { if tab == .road { await board.refreshCommitProposals() } }
     }
@@ -270,7 +275,7 @@ struct BoardScreen: View {
     private var reqGroups: [String] { Array(NSOrderedSet(array: reqs.map(\.group)).array as! [String]).reversed() }
     func roadIn(_ st: String, area sel: String?? = nil) -> [RoadItem] {
         board.roadmap.filter { r in
-            guard inArea([roadArea(r)], sel ?? area) else { return false }
+            guard inArea(roadAreas(r), sel ?? area) else { return false }
             switch st {
             case "open": return r.status != "done"
             case "done": return r.status == "done"
@@ -378,6 +383,10 @@ struct FilterBar: View {
     var smartAt: Date? = nil
     var smartRunning = false
     var regroup: (() -> Void)? = nil
+    /// Feature areas: right-click a chip to rename, merge or hide it (kept across regroupings).
+    var areaMenu: AreaMenu? = nil
+    /// Chips shown before "+ N more".
+    static let maxChips = 12
 
     static func states(_ tab: BoardTab) -> [(String, String)] {
         switch tab {
@@ -396,7 +405,7 @@ struct FilterBar: View {
             stateRow
             if areas.count > 1 { areaRow }
         }
-        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 10)
     }
 
     private var stateRow: some View {
@@ -426,26 +435,45 @@ struct FilterBar: View {
     }
 
     /// One tag per area: click to show only that area, click again (or All) to show everything.
+    /// Feature areas: the 12 biggest (plus the one selected), the rest under "+ N more".
     private var areaRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let ranked = areaMenu == nil ? areas : areas.enumerated()
+            .sorted { (areaCounts[$0.element.key] ?? 0, -$0.offset) > (areaCounts[$1.element.key] ?? 0, -$1.offset) }.map(\.element)
+        let shown = areaMenu == nil ? ranked : ranked.enumerated().filter { $0.offset < Self.maxChips || $0.element.key == area }.map(\.element)
+        let more = ranked.filter { a in !shown.contains { $0.key == a.key } }
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                areaTag(nil, "All areas", areaCounts[""] ?? 0)
-                ForEach(areas, id: \.key) { a in areaTag(a.key, a.name, areaCounts[a.key] ?? 0) }
+                areaTag(nil, areaMenu == nil ? "All areas" : "All", areaCounts[""] ?? 0)
+                ForEach(shown, id: \.key) { a in
+                    areaTag(a.key, a.name, areaCounts[a.key] ?? 0)
+                        .contextMenu { if let m = areaMenu { m.items(key: a.key, name: a.name, others: areas.filter { $0.key != a.key }) } }
+                }
+                if !more.isEmpty {
+                    Menu {
+                        ForEach(more, id: \.key) { a in Button("\(a.name)  \(areaCounts[a.key] ?? 0)") { area = a.key } }
+                    } label: {
+                        Text("+ \(more.count) more").font(.system(size: S(11))).foregroundStyle(Brand.ink)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .overlay(Capsule().stroke(Brand.line2, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("The other areas, smaller")
+                }
                 if smartAt != nil || smartRunning || regroup != nil { smartNote }
             }
             .padding(.leading, 2)
         }
     }
-    /// Who made these groups and when; click to regroup now.
+    /// Where these groups come from and when; click to regroup now.
     private var smartNote: some View {
         Button { regroup?() } label: {
             HStack(spacing: 4) {
                 Image(systemName: "sparkles").font(.system(size: S(9.5)))
-                Text(smartRunning ? "Regrouping…" : smartAt.map { d in let m = max(Int(-d.timeIntervalSinceNow / 60), 0); return "Local AI · " + (m < 1 ? "just now" : m < 60 ? "\(m) min ago" : "\(m / 60) h ago") } ?? "Group with local AI")
+                Text(smartRunning ? "Regrouping…" : smartAt == nil ? "Group by feature" : "From your chapter names")
             }
             .font(.system(size: S(10.5))).foregroundStyle(Brand.mute).padding(.leading, 4)
         }.buttonStyle(.plain).pointerStyle(.link).disabled(smartRunning || regroup == nil)
-        .help("The on-device model regroups the roadmap by itself every hour while Steerify is open. Click to regroup now.")
+        .help("Areas are the features your chapter titles name. Key results of Fixes & refinements are sorted by the on-device model. Right-click a chip to rename, merge or hide it. Click to regroup now.")
     }
     private func areaTag(_ key: String?, _ name: String, _ n: Int) -> some View {
         let on = area == key
@@ -587,11 +615,15 @@ struct NoteField: View {
     let initial: String
     /// true = take all the height it is given (the note box of a test row), click anywhere to write.
     var fill = false
+    /// Bump it to put the cursor in the box (To refine on a test row).
+    var focusTrigger = 0
+    /// Amber frame: this box holds feedback Claude will act on.
+    var marked = false
     let save: (String) -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
-    init(placeholder: String, initial: String, fill: Bool = false, save: @escaping (String) -> Void) {
-        self.placeholder = placeholder; self.initial = initial; self.fill = fill; self.save = save
+    init(placeholder: String, initial: String, fill: Bool = false, focusTrigger: Int = 0, marked: Bool = false, save: @escaping (String) -> Void) {
+        self.placeholder = placeholder; self.initial = initial; self.fill = fill; self.focusTrigger = focusTrigger; self.marked = marked; self.save = save
     }
     var body: some View {
         TextField(placeholder, text: $text, axis: .vertical)
@@ -602,8 +634,9 @@ struct NoteField: View {
             .contentShape(Rectangle())
             .onTapGesture { focused = true }
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.35)))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.line2, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(marked ? Brand.amber.opacity(0.8) : Brand.line2, style: StrokeStyle(lineWidth: 1, dash: marked ? [] : [3, 2])))
             .focused($focused)
+            .onChange(of: focusTrigger) { _, _ in focused = true }
             .onAppear { text = initial }
             .onChange(of: initial) { _, v in if !focused { text = v } }
             .onSubmit { flush() }
@@ -834,14 +867,15 @@ struct ShipCard: View {
 
             if !item.tests.isEmpty {
                 let fb = board.testFeedback(item)
-                let checked = fb.values.filter { $0.ok || !$0.note.isEmpty }.count
-                let notes = fb.values.filter { !$0.note.isEmpty }.count
+                let refines = board.testRefines(item)
+                let checked = Set(fb.filter { $0.value.ok }.map(\.key)).union(refines).count
+                let notes = refines.count
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         PixelIcon(name: "test", size: 10).foregroundStyle(Brand.blue)
                         Text("TESTS").font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.blue)
                         Text("\(checked) of \(item.tests.count) checked").font(.system(size: S(11.5))).foregroundStyle(Brand.ink)
-                        if notes > 0 { Text("· \(notes) with feedback").font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Brand.amber) }
+                        if notes > 0 { Text("· \(notes) to refine").font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Brand.amber) }
                         Spacer()
                     }
                     GeometryReader { g in
@@ -853,7 +887,7 @@ struct ShipCard: View {
                 }
                 ForEach(Array(item.tests.enumerated()), id: \.offset) { i, t in
                     TestChapter(board: board, item: item, index: i, count: item.tests.count, test: t, feedback: fb[i],
-                                openPicture: { img in
+                                refine: refines.contains(i), openPicture: { img in
                                     if let k = images.firstIndex(of: img) { openPreview(k) }
                                 })
                 }
@@ -867,8 +901,10 @@ struct ShipCard: View {
                 }.padding(.top, 4)
             } label: { Text("Details").font(.system(size: S(11.5))).foregroundStyle(Brand.mute) }
 
+            let notes = board.shipNotes(item)
+            NotesForClaude(notes: notes, pick: pick)
             HStack(spacing: 6) {
-                verdictButton("ok", "✓ OK", Brand.green, pick)
+                verdictButton("ok", notes.isEmpty ? "✓ OK" : "✓ OK + notes", Brand.green, pick)
                 verdictButton("refine", "↻ Refine", Brand.amber, pick)
                 verdictButton("broken", "✕ Broken", Brand.red, pick)
                 Spacer()
@@ -876,11 +912,12 @@ struct ShipCard: View {
                     ActionButton(title: "Fix my notes", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .fix) }
                 }
                 if (pick == "ok" && item.status != "live" && item.releases) || state == .afterRelease {
-                    ActionButton(title: state == .afterRelease ? "Release to test" : "Release", icon: "ship", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .release) }
+                    ActionButton(title: state == .afterRelease ? "Release to test" : notes.isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .release) }
                 }
                 ClaudeButton(title: "Open with Claude") { model.start(projectId: board.project.id, item: ref, intent: .look) }
             }
-            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(item)) { board.setShip(item, pick: pick, note: $0) }
+            // Note only: never re-write the verdict from an older render (OK pressed while the note was still saving).
+            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(item), marked: !board.shipNote(item).isEmpty) { board.setShip(item, pick: nil, note: $0) }
         }
     }
 
@@ -907,7 +944,7 @@ struct ShipCard: View {
     private var suggested: String? {
         guard board.shipPick(item) == nil, !item.tests.isEmpty else { return nil }
         let fb = board.testFeedback(item)
-        if fb.values.contains(where: { !$0.note.isEmpty }) { return "refine" }
+        if !board.testRefines(item).isEmpty { return "refine" }
         return fb.values.filter(\.ok).count == item.tests.count ? "ok" : nil
     }
 
@@ -996,8 +1033,11 @@ struct ShipTile: View {
                 verdict("refine", "↻ Refine", Brand.amber, pick)
                 verdict("broken", "✕ Broken", Brand.red, pick)
             }
-            if !board.shipNote(item).isEmpty {
-                Text("“\(board.shipNote(item))”").font(.system(size: S(11))).foregroundStyle(Brand.amber).lineLimit(1)
+            let notes = board.shipNotes(item)
+            if !notes.isEmpty {
+                Label("\(notes.count) note\(notes.count == 1 ? "" : "s") for Claude · " + notes.summary, systemImage: "text.bubble.fill")
+                    .font(.system(size: S(11))).foregroundStyle(Brand.amber).lineLimit(1)
+                    .help(notes.overall.isEmpty ? "Claude reads them whatever you press" : "“\(notes.overall)”")
             }
         }
     }
@@ -1895,20 +1935,24 @@ struct TestChapter: View {
     let count: Int
     let test: ShipTest
     let feedback: (ok: Bool, note: String)?
+    var refine = false
     let openPicture: (String) -> Void
+    @State private var focusNote = 0
 
     var body: some View {
         let ok = feedback?.ok == true
+        // To refine counts as feedback even before you write a word (Claude then looks at the picture again).
         let note = feedback?.note ?? ""
-        let accent: Color = !note.isEmpty ? Brand.amber : ok ? Brand.green : Brand.line2
-        TestRowFrame(dir: board.project.boardDir, img: test.img, focus: test.img.flatMap { item.focus[$0] }, accent: accent.opacity(ok || !note.isEmpty ? 0.6 : 1),
+        let flagged = refine || !note.isEmpty
+        let accent: Color = flagged ? Brand.amber : ok ? Brand.green : Brand.line2
+        TestRowFrame(dir: board.project.boardDir, img: test.img, focus: test.img.flatMap { item.focus[$0] }, accent: accent.opacity(ok || flagged ? 0.6 : 1),
                      open: { if let img = test.img { openPicture(img) } }) {
             HStack(alignment: .top, spacing: 8) {
                 Text("\(index + 1)")
                     .font(.system(size: S(12), weight: .heavy, design: .monospaced))
-                    .foregroundStyle(ok || !note.isEmpty ? Color(hex: 0x1a1200) : Brand.cream)
+                    .foregroundStyle(ok || flagged ? Color(hex: 0x1a1200) : Brand.cream)
                     .frame(width: S(22), height: S(22))
-                    .background(RoundedRectangle(cornerRadius: 6).fill(ok ? Brand.green : !note.isEmpty ? Brand.amber : Color.black.opacity(0.8)))
+                    .background(RoundedRectangle(cornerRadius: 6).fill(flagged ? Brand.amber : ok ? Brand.green : Color.black.opacity(0.8)))
                     .help(count > 1 ? "Test \(index + 1) of \(count)" : "")
                 Text(test.label).font(.system(size: S(14), weight: .semibold)).foregroundStyle(.white).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1937,19 +1981,73 @@ struct TestChapter: View {
                             .overlay(RoundedRectangle(cornerRadius: 7).stroke(vague == nil ? .clear : Brand.amber.opacity(0.7)))
                     }.buttonStyle(SteerButton()).help(vague.map { "This link opens \($0): \(u)\nSend it back with Refine to get a direct link." } ?? u)
                 }
-                Button { board.setTest(item, index: index, ok: !ok) } label: {
-                    HStack(spacing: 5) { Image(systemName: ok ? "checkmark.circle.fill" : "checkmark.circle"); Text("Looks right") }
-                        .lineLimit(1).fixedSize()
-                        .font(.system(size: S(12), weight: .semibold))
-                        .foregroundStyle(ok ? Color.black : Brand.green)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(ok ? Brand.green : .clear))
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.green.opacity(0.7)))
-                }.buttonStyle(SteerButton())
             }
             // The note box is always there and takes the rest of the row: writing a note is one click.
-            NoteField(placeholder: "What is off?", initial: note, fill: true) { board.setTest(item, index: index, note: $0) }
+            NoteField(placeholder: flagged ? "What should change? Claude reads it" : "What is off?", initial: note, fill: true,
+                      focusTrigger: focusNote, marked: flagged) { board.setTest(item, index: index, note: $0) }
+            // Under the note box: Looks right | To refine (request r261122-095541). One or the other, never both.
+            TestAnswerPair(ok: ok, refine: flagged,
+                           onOK: { board.setTest(item, index: index, ok: !ok) },
+                           onRefine: {
+                               if flagged && note.isEmpty { board.setTest(item, index: index, refine: false) }
+                               else { if !flagged { board.setTest(item, index: index, refine: true) }; focusNote += 1 }
+                           }, full: true)
         }
+    }
+}
+
+/// Over the verdict buttons: every note you left goes to Claude, whatever you press (request r261122-095541).
+struct NotesForClaude: View {
+    let notes: BoardStore.ShipNotes
+    let pick: String?
+    var body: some View {
+        if !notes.isEmpty {
+            let what = pick == "ok" ? "OK + notes: Claude applies them before it releases"
+                : pick == nil ? "Claude reads them whether you press OK or Refine"
+                : "Claude applies every one of them"
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Image(systemName: "text.bubble.fill").font(.system(size: S(11))).foregroundStyle(Brand.amber)
+                (Text("\(notes.count) note\(notes.count == 1 ? "" : "s") for Claude").bold().foregroundStyle(Brand.amber)
+                 + Text(" · " + notes.summary).foregroundStyle(Brand.ink.opacity(0.85))
+                 + Text("\n" + what).foregroundStyle(Brand.mute))
+                    .font(.system(size: S(11.5))).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Brand.amber.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.amber.opacity(0.45)))
+        }
+    }
+}
+
+/// Looks right | To refine: the answer to one test, as one segmented pair.
+struct TestAnswerPair: View {
+    let ok: Bool
+    let refine: Bool
+    let onOK: () -> Void
+    let onRefine: () -> Void
+    var full = false
+    var body: some View {
+        HStack(spacing: 0) {
+            seg("Looks right", ok ? "checkmark.circle.fill" : "checkmark.circle", Brand.green, on: ok && !refine, action: onOK)
+            Rectangle().fill(Brand.line2).frame(width: 1, height: S(26))
+            seg("To refine", refine ? "pencil.circle.fill" : "pencil.circle", Brand.amber, on: refine, action: onRefine)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(refine ? Brand.amber.opacity(0.8) : ok ? Brand.green.opacity(0.8) : Brand.line2))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .fixedSize(horizontal: !full, vertical: true)
+    }
+    private func seg(_ t: String, _ icon: String, _ c: Color, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) { Image(systemName: icon); Text(t) }
+                .lineLimit(1).fixedSize()
+                .font(.system(size: S(12), weight: .semibold))
+                .foregroundStyle(on ? Color.black : c)
+                .padding(.horizontal, 8).padding(.vertical, 6)
+                .frame(maxWidth: full ? .infinity : nil)
+                .background(on ? c : .clear)
+                .contentShape(Rectangle())
+        }.buttonStyle(SteerButton())
     }
 }
 
@@ -2014,5 +2112,31 @@ struct SessionStateBadge: View {
             Circle().fill(c).frame(width: 7, height: 7).opacity(st == .idle ? 0.7 : 1)
             Text(session.kind == .claude ? st.label : "shell").font(.system(size: S(11)))
         }.foregroundStyle(c)
+    }
+}
+
+/// Right-click on a feature-area chip: rename, merge into another, hide; your edits survive every regrouping.
+struct AreaMenu {
+    let projectId: String
+    @MainActor @ViewBuilder func items(key: String, name: String, others: [(key: String, name: String)]) -> some View {
+        Button("Rename…") { rename(key: key, name: name) }
+        Menu("Merge into") {
+            ForEach(others, id: \.key) { o in Button(o.name) { SmartAreaModel.shared.merge(projectId, key, into: o.key) } }
+        }
+        Button("Hide") { SmartAreaModel.shared.hide(projectId, key) }
+        if SmartAreaModel.shared.edits(projectId) != AreaEdits() {
+            Divider()
+            Button("Undo all my area changes") { SmartAreaModel.shared.resetEdits(projectId) }
+        }
+    }
+    @MainActor private func rename(key: String, name: String) {
+        let a = NSAlert()
+        a.messageText = "Rename area"
+        a.informativeText = "Kept when the areas are regrouped."
+        let f = NSTextField(string: name); f.frame = NSRect(x: 0, y: 0, width: 240, height: 24)
+        a.accessoryView = f
+        a.addButton(withTitle: "Rename"); a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = f
+        if a.runModal() == .alertFirstButtonReturn { SmartAreaModel.shared.rename(projectId, key, to: f.stringValue) }
     }
 }

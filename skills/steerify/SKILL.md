@@ -31,6 +31,8 @@ Board folder files (plain JSON, never reformat them; keep their indentation; sta
 - **Notes pinned on pictures:** `choices[<key>].pins = [{img, x, y, note, v}]` (key = `ship:<id>` for a To test item,
   the decision id for a choice). `img` is relative to the board folder, `x`/`y` are 0–1 from the top-left. Open the
   image, look at that spot, and treat every pin as a required change; say per pin what you did.
+- **Every note counts, whatever the verdict:** `get_item test:<id>` → `user_notes` (card note, per-test notes / To refine marks, pins).
+  `ok` + notes = apply them (small changes), test, then release; a bigger note → re-deliver. Say per note what you did.
 - `sessions.json` — which Claude Code conversation belongs to which item (written by Steerify; don't edit) except to map
   the `past:<id>` links at setup, see **First setup**).
 - `delivered.json` — the **To test** tab. Only change it through `node $STEERIFY_BOARD/deliver.mjs '<json>'`.

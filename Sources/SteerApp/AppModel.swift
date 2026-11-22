@@ -338,13 +338,14 @@ final class AppModel: ObservableObject {
                 // Resume on an idle session: say something, never just show it (request r261121-122352).
                 // Working: it is already on it. Needs you: typing would answer its prompt, so leave it.
                 let r = BoardFiles.resolve(ref, in: p).ref
-                existing.submit("/steerify \(intent.rawValue) \(r) — " + resumeNudge(claudeId: existing.claudeId, ref: r, in: p))
+                existing.submit("/steerify \(intent.rawValue) \(r) — " + (notesHint(r, in: p).map { $0 + " " } ?? "") + resumeNudge(claudeId: existing.claudeId, ref: r, in: p))
             }
             existing.alsoRefs += also.filter { !existing.covers($0) }
             return existing
         }
         let item = BoardFiles.resolve(ref, in: p)
-        let prompt = "/steerify \(intent.rawValue) \(item.ref)"
+        // Notes you left on a To test item travel with the very first line, whatever the verdict (request r261122-095541).
+        let prompt = "/steerify \(intent.rawValue) \(item.ref)" + (notesHint(item.ref, in: p).map { " — " + $0 } ?? "")
         // Same feature (design → dev → test → release) already open → continue in that conversation (SessionFlow.swift).
         if !fresh, let live = liveThreadSession(projectId: p.id, ref: item.ref) {
             selectedSession[p.id] = live.id

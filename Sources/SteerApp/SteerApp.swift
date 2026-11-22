@@ -35,7 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host.sizingOptions = []                       // keep our size, not the content's ideal size
         // `--window-width <n>`: the main window at that width (top bar density shots).
         let mainW = a0.firstIndex(of: "--window-width").flatMap { $0 + 1 < a0.count ? Double(a0[$0 + 1]) : nil } ?? 1500
-        let size = whatsNew ? NSSize(width: 380, height: 330) : panelOnly ? NSSize(width: 320, height: 760) : manager ? NSSize(width: 960, height: 620) : NSSize(width: mainW, height: 940)
+        // `--window-height <n>`: taller test shots (a whole To test card).
+        let mainH = a0.firstIndex(of: "--window-height").flatMap { $0 + 1 < a0.count ? Double(a0[$0 + 1]) : nil } ?? 940
+        let size = whatsNew ? NSSize(width: 380, height: 330) : panelOnly ? NSSize(width: 320, height: 760) : manager ? NSSize(width: 960, height: 620) : NSSize(width: mainW, height: mainH)
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 40, y: 40), size: size),
                          styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.contentViewController = host

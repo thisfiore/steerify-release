@@ -66,6 +66,7 @@ struct MenuBarLabel: View {
         }
         .onAppear {
             AppModel.reopenWindow = { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+            MenuBarWatch.shared.start()   // macOS may keep the wheel off screen: the window then says so
             AppModel.openProjects = { openWindow(id: "projects"); NSApp.activate(ignoringOtherApps: true) }
         }
     }

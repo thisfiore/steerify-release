@@ -70,13 +70,17 @@ final class MockSnapshots: NSObject, ObservableObject, WKNavigationDelegate {
     /// Pictures already found, for 2 s: the Choices tab asks on every redraw while scrolling, and each answer costs a
     /// folder listing, a date per kit file, a hash and a disk check (the Choices scroll budget, release 0.5.9).
     private var found: [String: (path: String, at: Date)] = [:]
+    /// Pictures not drawn yet: asked again only once a snapshot is done (or after 2 s).
+    private var missing: [String: Date] = [:]
 
     /// Absolute path of the picture for this option's mockup; nil (and rendering queued) if not there yet.
     func picture(for option: BoardOption, boardDir: String) -> String? {
         let memo = boardDir + "\u{1}" + (option.proto ?? "") + "\u{1}" + (option.proto == nil ? (option.mockHTML ?? "") : "") + (option.simple ? "\u{1}s" : "")
-        if let f = found[memo], Date().timeIntervalSince(f.at) < 2 { return f.path }
+        let now = Date()
+        if let f = found[memo], now.timeIntervalSince(f.at) < 2 { return f.path }
+        if let m = missing[memo], now.timeIntervalSince(m) < 2 { return nil }
         let p = lookUp(option, boardDir: boardDir)
-        if let p { found[memo] = (p, Date()) } else { found[memo] = nil }
+        if let p { found[memo] = (p, now); missing[memo] = nil } else { found[memo] = nil; missing[memo] = now }
         return p
     }
 
@@ -169,11 +173,12 @@ final class MockSnapshots: NSObject, ObservableObject, WKNavigationDelegate {
             cfg.snapshotWidth = NSNumber(value: Double(Self.W * 3))     // 3× for a crisp picture
             webView.takeSnapshot(with: cfg) { [weak self] img, _ in
                 guard let self else { return }
-                if let img, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-                   let png = rep.representation(using: .png, properties: [:]), let job = self.running {
-                    try? png.write(to: job.out)
+                // Encoding a 3× picture costs tens of ms: off the main thread, so scrolling never waits for it.
+                guard let cg = img?.cgImage(forProposedRect: nil, context: nil, hints: nil), let out = self.running?.out else { self.finish(); return }
+                Task.detached(priority: .utility) {
+                    if let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) { try? png.write(to: out) }
+                    await MainActor.run { self.finish() }
                 }
-                self.finish()
             }
         }
     }
@@ -182,6 +187,7 @@ final class MockSnapshots: NSObject, ObservableObject, WKNavigationDelegate {
 
     private func finish() {
         running = nil
+        missing.removeAll()
         version += 1
         if queue.isEmpty {
             // Free WebKit's memory once the queue is done.

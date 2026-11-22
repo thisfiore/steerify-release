@@ -22,6 +22,7 @@ struct PreviewOverlay: View {
     @State var state: PreviewState
 
     @State private var image: NSImage?
+    @State private var focusTestNote = 0
     @State private var zoom: CGFloat = 1
     @State private var baseZoom: CGFloat = 1
     @State private var pan: CGSize = .zero
@@ -243,16 +244,16 @@ struct PreviewOverlay: View {
                         Text(c).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                let ok = fb?.ok == true
-                Button { board.setTest(s, index: i, ok: !ok) } label: {
-                    Label(ok ? "Looks right" : "Mark it right", systemImage: ok ? "checkmark.circle.fill" : "checkmark.circle")
-                        .font(.system(size: S(12), weight: .semibold))
-                        .foregroundStyle(ok ? Color.black : Brand.green)
-                        .frame(maxWidth: .infinity).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(ok ? Brand.green : .clear))
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.green.opacity(0.7)))
-                }.buttonStyle(SteerButton())
-                NoteField(placeholder: "What is wrong with this test?", initial: fb?.note ?? "") { board.setTest(s, index: i, note: $0) }
+                let ok = fb?.ok == true, note = fb?.note ?? ""
+                let flagged = board.testRefines(s).contains(i)
+                NoteField(placeholder: flagged ? "What should change? Claude reads it" : "What is wrong with this test?", initial: note,
+                          focusTrigger: focusTestNote, marked: flagged) { board.setTest(s, index: i, note: $0) }
+                TestAnswerPair(ok: ok, refine: flagged,
+                               onOK: { board.setTest(s, index: i, ok: !ok) },
+                               onRefine: {
+                                   if flagged && note.isEmpty { board.setTest(s, index: i, refine: false) }
+                                   else { if !flagged { board.setTest(s, index: i, refine: true) }; focusTestNote += 1 }
+                               }, full: true)
             } else {
                 header("SCREENSHOT")
                 let cap = s.shots.first { $0.img == img }?.caption ?? ""
@@ -361,19 +362,21 @@ struct PreviewOverlay: View {
         let pick = board.shipPick(s)
         return VStack(alignment: .leading, spacing: 8) {
             header("YOUR VERDICT · v\(s.version)", Brand.cream)
+            let notes = board.shipNotes(s)
+            NotesForClaude(notes: notes, pick: pick)
             HStack(spacing: 6) {
-                verdictButton(s, "ok", "✓ OK", Brand.green, pick)
+                verdictButton(s, "ok", notes.isEmpty ? "✓ OK" : "✓ OK + notes", Brand.green, pick)
                 verdictButton(s, "refine", "↻ Refine", Brand.amber, pick)
                 verdictButton(s, "broken", "✕ Broken", Brand.red, pick)
             }
-            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(s)) { board.setShip(s, pick: pick, note: $0) }
+            NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(s), marked: !board.shipNote(s).isEmpty) { board.setShip(s, pick: nil, note: $0) }
             if let r = itemRef {
                 VStack(alignment: .leading, spacing: 6) {
                     if board.shipState(s) == .waiting {
                         ActionButton(title: "Fix my notes", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .fix) }
                     }
                     if pick == "ok" && s.status != "live" {
-                        ActionButton(title: "Release", icon: "ship", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .release) }
+                        ActionButton(title: board.shipNotes(s).isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .release) }
                     }
                     ClaudeButton(title: "Open with Claude") { close(); model.start(projectId: state.projectId, item: r, intent: .look) }
                 }.padding(.top, 2)

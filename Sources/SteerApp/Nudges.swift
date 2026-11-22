@@ -24,10 +24,12 @@ extension AppModel {
         for s in b.ships {
             let v = b.verdict("ship:" + s.id)
             guard v.v == s.version, let at = v.at else { continue }
+            let n = b.shipNotes(s).count, withNotes = n == 0 ? "" : " · \(n) note\(n == 1 ? "" : "s")"
             switch b.effectivePick(s) {
-            case "refine": out.append(("test:" + s.id, s.title, "Refine", .fix, at))
-            case "broken": out.append(("test:" + s.id, s.title, "Broken", .fix, at))
-            case "ok" where s.status != "live": out.append(("test:" + s.id, s.title, "OK → release", .release, at))
+            case "refine": out.append(("test:" + s.id, s.title, "Refine" + withNotes, .fix, at))
+            case "broken": out.append(("test:" + s.id, s.title, "Broken" + withNotes, .fix, at))
+            case "ok" where s.status != "live":
+                out.append(("test:" + s.id, s.title, n == 0 ? "OK → release" : "OK + \(n) note\(n == 1 ? "" : "s") → apply, release", .release, at))
             default: break
             }
         }
@@ -164,6 +166,7 @@ extension AppModel {
                     + ". Read my answers (get_item) and go on: goal, areas, then draft the first chapter."
             } else {
                 line = "/steerify \(first.intent.rawValue) \(first.ref)" + (rest.isEmpty ? "" : " (also: " + rest.joined(separator: ", ") + ")")
+                    + { let h = items.compactMap { notesHint($0.ref, in: p) }; return h.isEmpty ? "" : " — " + h.joined(separator: " ") }()
             }
             NSLog("steerify ping → \(s.title): \(line)")
             s.submit(line)
@@ -279,6 +282,20 @@ extension AppModel {
             }
             return NudgeGroup(key: ns[0].ref, title: ns[0].title, nudges: ns)
         }
+    }
+
+    /// One line for Claude when you left notes on a To test item: how many, where, and that each one is a change to make
+    /// whatever you pressed (OK included). nil = no notes.
+    func notesHint(_ ref: String, in p: Project) -> String? {
+        guard ref.hasPrefix("test:") else { return nil }
+        let b = board(for: p)
+        guard let s = b.ships.first(where: { "test:" + $0.id == ref }) else { return nil }
+        let n = b.shipNotes(s)
+        guard !n.isEmpty else { return nil }
+        let pick = b.shipPick(s)
+        let what = pick == "ok" ? "The user said OK with notes: apply every note first (small changes), test, then go on; a note bigger than a tweak → re-deliver it for a new check instead of releasing."
+            : "Each note is a required change."
+        return "\(ref): the user left \(n.count) note\(n.count == 1 ? "" : "s") (\(n.summary)). Read them all with get_item \(ref) → user_notes. \(what) Say per note what you did."
     }
 
     /// One session for the whole group: briefed with every answer, linked to every item.

@@ -116,3 +116,13 @@
 .gs-why figcaption { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 12px; align-items: baseline } .gs-why figcaption b { font-size: 17px; color: var(--cream) }
 .gs-why figcaption i { font: 12px var(--f-mono); font-style: normal; color: var(--amber) } .gs-why figcaption span { grid-column: 1 / -1; font-size: 14.5px; color: var(--mute); line-height: 1.5 }
 @media (max-width: 760px) { .gs-jump { grid-template-columns: 1fr } .gs-why { grid-template-columns: 1fr } }
+
+/* the big phone cycles through the screens (iphone.js) */
+.ip-phone { min-width: 0 }
+.ip-rotate { display: grid }
+.ip-rotate img { grid-area: 1 / 1; opacity: 0; transition: opacity .6s ease }
+.ip-rotate img.on { opacity: 1 }
+.ip-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 0; margin-top: 14px; max-width: 260px }
+.ip-dots button { font: 700 9.5px var(--f-pix); letter-spacing: .06em; text-transform: uppercase; color: var(--mute); background: none; border: 1px solid transparent; border-radius: 6px; padding: 6px 4px; cursor: pointer }
+.ip-dots button:hover { color: var(--ink) } .ip-dots button[aria-current] { color: var(--amber); border-color: var(--line2) }
+@media (max-width: 860px) { .ip-dots { max-width: none } }

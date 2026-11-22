@@ -40,7 +40,9 @@ struct DecisionCard: View {
     private var savedPicks: Set<String> { Set((board.verdict(d.id).pick as? [String]) ?? []) }
     private var savedMix: Set<String> { Set(board.mix(d)) }
     private var savedNote: String { board.verdict(d.id).note }
-    private var changed: Bool { (d.multi ? draftPicks != savedPicks : (draftPick != savedPick || draftMix != savedMix)) || draftNote != savedNote }
+    /// Folded (decided) cards load their drafts only when opened: writing five states as each card scrolls into view
+    /// laid it out twice (Choices scroll budget). Not loaded = nothing changed.
+    private var changed: Bool { loaded && ((d.multi ? draftPicks != savedPicks : (draftPick != savedPick || draftMix != savedMix)) || draftNote != savedNote) }
     private var canSave: Bool { (d.multi ? !draftPicks.isEmpty : draftPick != nil) || !draftNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     /// First setup's choices (`setup-…`): the why is Claude's snapshot of the project, one fact per line: show it whole.
     private var whole: Bool { d.id.hasPrefix("setup-") }
@@ -55,15 +57,18 @@ struct DecisionCard: View {
             if decided && !reopened && !changed { folded } else { guided(decided) }
         }
         .popover(item: $mock) { o in MockView(dir: board.project.boardDir, option: o).frame(width: 1080, height: 709) }
-        .onAppear {
-            guard !loaded else { return }
-            draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote
-            focus = (savedPick != "__note" ? savedPick : nil) ?? stage?.id
-            loaded = true
-        }
+        .onAppear { if !decided { load() } }
         .onChange(of: board.loadedAt) { _, _ in
+            guard loaded else { if !board.isDecided(d) { load() }; return }
             if !changed || (!noteFocused && draftPick == savedPick) { draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote }
         }
+    }
+
+    private func load() {
+        guard !loaded else { return }
+        draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote
+        focus = (savedPick != "__note" ? savedPick : nil) ?? stage?.id
+        loaded = true
     }
 
     // MARK: Folded (decided)
@@ -107,7 +112,7 @@ struct DecisionCard: View {
                     } else {
                         ActionButton(title: "Build my pick", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .build) }
                     }
-                    Button("Change") { withAnimation(.easeOut(duration: 0.18)) { reopened = true } }
+                    Button("Change") { load(); withAnimation(.easeOut(duration: 0.18)) { reopened = true } }
                         .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
                 }
             }
@@ -131,11 +136,11 @@ struct DecisionCard: View {
                 SessionChip(projectId: board.project.id, ref: "choice:" + d.id)
                 if reopened { Button("Close") { withAnimation { reopened = false } }.buttonStyle(SteerButton()).font(.system(size: S(11))).foregroundStyle(Brand.mute) }
             }
-            Text(d.title).font(.system(size: S(18), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+            Text(d.title).font(.system(size: S(18), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             if !d.why.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(BoardText.attributed(d.why)).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.85))
-                        .lineLimit(showWhy || whole ? nil : 3).fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(showWhy || whole ? nil : 3).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     if !whole, BoardText.plain(d.why).count > 240 {
                         Button(showWhy ? "less" : "more") { showWhy.toggle() }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11)))
                     }
@@ -244,7 +249,7 @@ struct DecisionCard: View {
                     Text("OPTION \(Self.letter(o, in: d))").font(Brand.label(9.5)).tracking(1).foregroundStyle(Brand.mute)
                     if o.rec { Pill(text: "suggested", color: Brand.blue) }
                 }
-                Text(Self.name(o)).font(.system(size: S(15.5), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+                Text(Self.name(o)).font(.system(size: S(15.5), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(o.points, id: \.self) { p in
                         HStack(alignment: .firstTextBaseline, spacing: 7) {
@@ -253,6 +258,7 @@ struct DecisionCard: View {
                         }
                     }
                 }
+                .textSelection(.enabled)
                 Spacer(minLength: 4)
                 Button { choose(o) } label: {
                     HStack(spacing: 7) {

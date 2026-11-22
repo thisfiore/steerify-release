@@ -481,6 +481,34 @@ enum SteerifyMCP {
             let del = (BoardFiles.json(board, "delivered.json") as? [String: Any])?["items"] as? [[String: Any]] ?? []
             guard let it = del.first(where: { $0["id"] as? String == parts[1] }) else { return ("no To test item \(parts[1])", true) }
             out["item"] = it; out["verdict"] = dec["ship:" + parts[1]] ?? NSNull()
+            // Every note of the current version in one place (request r261122-095541): Claude acts on them whatever the pick.
+            let ver = dec["ship:" + parts[1]] as? [String: Any] ?? [:]
+            let cur = it["version"] as? Int ?? 1
+            if (ver["v"] as? Int) == cur {
+                var notes: [String: Any] = [:]
+                if let n = (ver["note"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { notes["card"] = n }
+                let tests = it["tests"] as? [[String: Any]] ?? []
+                let per = (ver["tests"] as? [String: Any] ?? [:]).compactMap { k, v -> [String: Any]? in
+                    guard let i = Int(k), let d = v as? [String: Any] else { return nil }
+                    let note = ((d["note"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard (d["refine"] as? Bool ?? false) || !note.isEmpty else { return nil }
+                    let t = i < tests.count ? tests[i] : [:]
+                    var x: [String: Any] = ["test": i + 1, "label": t["label"] ?? "", "note": note.isEmpty ? "(marked To refine, no words: look at its picture again)" : note]
+                    if let img = t["img"] as? String { x["img"] = img.hasPrefix("/") ? img : (board as NSString).appendingPathComponent(img) }
+                    return x
+                }.sorted { ($0["test"] as? Int ?? 0) < ($1["test"] as? Int ?? 0) }
+                if !per.isEmpty { notes["tests"] = per }
+                let pins = (ver["pins"] as? [[String: Any]] ?? []).filter { p in (p["v"] as? Int).map { $0 == cur } ?? true }.map { p -> [String: Any] in
+                    let img = p["img"] as? String ?? ""
+                    return ["note": p["note"] ?? "", "x": p["x"] ?? 0, "y": p["y"] ?? 0, "img": img.hasPrefix("/") ? img : (board as NSString).appendingPathComponent(img)]
+                }
+                if !pins.isEmpty { notes["pinned"] = pins }
+                if !notes.isEmpty {
+                    notes["count"] = (notes["card"] == nil ? 0 : 1) + per.count + pins.count
+                    out["user_notes"] = notes
+                    out["how_to_read_the_notes"] = "Every note is a required change, whatever the pick. pick ok + notes = OK once the notes are applied: apply them (small changes), test, then release; a note bigger than a tweak → re-deliver for a new check. pick refine / broken / none → fix them and re-deliver with the same id. Pinned: open img, look at x/y (0–1 from the top-left). Say per note what you did."
+                }
+            }
         case "choice":
             guard let d = (b["decisions"] as? [[String: Any]] ?? []).first(where: { $0["id"] as? String == parts[1] }) else { return ("no choice \(parts[1])", true) }
             var slim = d; slim["options"] = (d["options"] as? [[String: Any]] ?? []).map { o in o.filter { $0.key != "mock" } }

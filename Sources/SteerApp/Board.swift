@@ -369,7 +369,15 @@ final class BoardStore: ObservableObject {
     }
 
     /// Latest Claude conversation started for an item, if any.
-    func lastLink(_ ref: String) -> SessionLink? { links.last { $0.item == ref } }
+    /// The newest session link of an item. Every card's session chip asks on every draw: one index per board change,
+    /// not a walk through every link per card (Choices scroll budget).
+    func lastLink(_ ref: String) -> SessionLink? {
+        memoized("lastLinkIndex", durable: true) { () -> [String: SessionLink] in
+            var m: [String: SessionLink] = [:]
+            for l in links { m[l.item] = l }
+            return m
+        }[ref]
+    }
 
     /// A session already took this answer: one was started on the item at or after your verdict.
     /// From then on the item is in Claude's court, not yours, even when that session has ended.
@@ -413,7 +421,8 @@ final class BoardStore: ObservableObject {
         let v = verdict("ship:" + s.id)
         return v.v == s.version ? v.pickString : nil
     }
-    func shipNote(_ s: ShipItem) -> String { verdict("ship:" + s.id).note }
+    /// Your card note on the current version (an older version's note shows in the "On v… you said" line).
+    func shipNote(_ s: ShipItem) -> String { let v = verdict("ship:" + s.id); return v.v == s.version ? v.note : "" }
 
     /// Where an item stands for YOU.
     /// afterRelease: tested on stage / prod, not released yet, no verdict: it waits for the release, not for you.
@@ -490,7 +499,7 @@ final class BoardStore: ObservableObject {
 
     func setShip(_ s: ShipItem, pick: String?, note: String? = nil) {
         update("ship:" + s.id) { c in
-            if (c["v"] as? Int) != s.version { c["pick"] = nil; c["tests"] = nil; c["v"] = s.version }
+            if (c["v"] as? Int) != s.version { c["pick"] = nil; c["tests"] = nil; c["note"] = nil; c["v"] = s.version }
             if let pick { c["pick"] = pick }
             if let note { c["note"] = note }
         }
@@ -509,16 +518,56 @@ final class BoardStore: ObservableObject {
     }
 
     /// Per-test answer, same shape as the web board: tests["<i>"] = {ok: true} or {note: "…"}; nil clears it.
-    func setTest(_ s: ShipItem, index: Int, ok: Bool? = nil, note: String? = nil) {
+    func setTest(_ s: ShipItem, index: Int, ok: Bool? = nil, note: String? = nil, refine: Bool? = nil) {
         update("ship:" + s.id) { c in
-            if (c["v"] as? Int) != s.version { c["pick"] = nil; c["tests"] = nil; c["v"] = s.version }
+            if (c["v"] as? Int) != s.version { c["pick"] = nil; c["tests"] = nil; c["note"] = nil; c["v"] = s.version }
             var tests = c["tests"] as? [String: Any] ?? [:]
             let k = String(index)
-            if let note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { tests[k] = ["note": note] }
+            if let note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { tests[k] = ["note": note, "refine": true] }
             else if ok == true { tests[k] = ["ok": true] }
+            else if refine == true || (note != nil && ((tests[k] as? [String: Any])?["refine"] as? Bool ?? false) && ok == nil) { tests[k] = ["refine": true] }
             else { tests[k] = nil }
             c["tests"] = tests
         }
+    }
+
+    /// Tests you sent back with To refine (with or without words yet).
+    func testRefines(_ s: ShipItem) -> Set<Int> {
+        let c = choiceMap["ship:" + s.id] ?? [:]
+        guard (c["v"] as? Int) == s.version, let t = c["tests"] as? [String: Any] else { return [] }
+        return Set(t.compactMap { k, v in
+            guard let i = Int(k), let d = v as? [String: Any] else { return nil }
+            return (d["refine"] as? Bool ?? false) || !((d["note"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? i : nil
+        })
+    }
+
+    /// Every note you left on a To test item's current version: the card note, per-test notes / To refine marks and
+    /// notes pinned on its pictures. Claude gets all of them whatever verdict you press (request r261122-095541).
+    struct ShipNotes {
+        var overall = ""
+        var tests: [(n: Int, note: String)] = []      // 1-based test number; "" = To refine without words
+        var pins = 0
+        var count: Int { (overall.isEmpty ? 0 : 1) + tests.count + pins }
+        var isEmpty: Bool { count == 0 }
+        /// "card note · test 2 · test 3 · 1 on a picture"
+        var summary: String {
+            var p: [String] = []
+            if !overall.isEmpty { p.append("card note") }
+            if !tests.isEmpty { p.append((tests.count == 1 ? "test " : "tests ") + tests.map { String($0.n) }.joined(separator: ", ")) }
+            if pins > 0 { p.append("\(pins) on \(pins == 1 ? "a picture" : "pictures")") }
+            return p.joined(separator: " · ")
+        }
+    }
+
+    func shipNotes(_ s: ShipItem) -> ShipNotes {
+        var out = ShipNotes()
+        let v = verdict("ship:" + s.id)
+        if v.v == s.version { out.overall = v.note.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let fb = testFeedback(s)
+        out.tests = testRefines(s).sorted().map { ($0 + 1, fb[$0]?.note.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") }
+        let raw = (choiceMap["ship:" + s.id]?["pins"] as? [[String: Any]]) ?? []
+        out.pins = raw.filter { p in (p["v"] as? Int).map { $0 == s.version } ?? true }.count
+        return out
     }
 
     func setRequirement(_ r: Requirement, pick: String, note: String? = nil) {

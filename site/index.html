@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="assets/site.css?v=15">
-<link rel="stylesheet" href="assets/story.css?v=16">
+<link rel="stylesheet" href="assets/story.css?v=23">
 <script src="assets/brand.js?v=10" defer></script>
 <script src="assets/infographics.js?v=8" defer></script>
 <script src="assets/story.js?v=10" defer></script>
@@ -40,6 +40,10 @@
 <script src="assets/gallery.js?v=1" defer></script>
 <script src="assets/github.js?v=2" defer></script>
 <script src="assets/harbour.js?v=2" defer></script>
+<link rel="stylesheet" href="assets/menu.css?v=1">
+<script src="assets/menu.js?v=2" defer></script>
+<script src="assets/iphone.js?v=1" defer></script>
+<script src="/assets/hit.js?v=1" defer></script>
 </head>
 <body>
 
@@ -48,13 +52,35 @@
     <a class="brand" href="#top"><span data-wheel="tile"></span><b>STEERIFY</b></a>
     <span class="by" title="Made by a human"><span class="me me-live" role="img" aria-label="Frenk, in pixels, reacting"></span><i>by Frenk</i></span>
     <nav>
-      <a href="#decide">Deciding</a>
-      <a href="#how">How it works</a>
+      <button type="button" class="fm-b" data-menu aria-expanded="false" aria-controls="menu">Features <i>▼</i></button>
       <a href="#real">Screenshots</a>
+      <a href="#iphone">iPhone</a>
       <a href="releases.html">What's new</a>
       <a href="tutorial.html">Tutorial</a>
-      <a class="btn sm amber" href="#get">Download</a>
+      <a class="btn sm amber" href="#get" data-send-swap>Download</a>
+      <button type="button" class="burger" data-menu aria-expanded="false" aria-controls="menu" aria-label="Menu"><span></span></button>
     </nav>
+    <div class="menu" id="menu">
+      <div class="menu-send"><a class="btn amber" href="#get" data-send>Send to my Mac</a><p>Steerify runs on a Mac. Send yourself the link, and download it there.</p></div>
+      <h4>Features</h4>
+      <div class="menu-g">
+        <a href="#decide"><i>→</i>Deciding, with pictures</a>
+        <a href="#say"><i>01</i>Say what you want</a>
+        <a href="#pictures"><i>02</i>Confirm it with pictures</a>
+        <a href="#right-thing"><i>03</i>Build the right thing</a>
+        <a href="#sync"><i>04</i>Always in sync</a>
+        <a href="#needs-you"><i>05</i>Only what needs you</a>
+        <a href="#standard"><i>06</i>One standard</a>
+        <a href="#tests"><i>07</i>Tests in the right place</a>
+        <a href="#skills"><i>08</i>Skills, not repeats</a>
+        <a href="#lost"><i>09</i>Never lost</a>
+        <a href="#mac"><i>10</i>Small jobs stay on your Mac</a>
+        <a href="#tasks"><i>11</i>Not only code: Tasks</a>
+      </div>
+      <div class="menu-more">
+        <a href="#real">Screenshots</a><a href="#iphone">iPhone app</a><a href="#watch">Short films</a><a href="#tech">Under the hood</a><a href="#faq">FAQ</a><a class="mo" href="releases.html">What's new</a><a class="mo" href="tutorial.html">Tutorial</a><a href="#get">Download</a>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -119,35 +145,35 @@
       <h2 style="margin-top:14px">From one sentence to shipped.</h2>
       <p class="lead" style="margin-top:14px">Eleven ideas, no manual. Scroll, watch, done.</p>
       <div class="moves">
-        <div class="mv">
+        <div class="mv" id="say">
           <div><span class="num">01</span><h3>Say what you want.</h3><p>Write it in plain words. Steerify turns it into requirements, docs and a roadmap.</p><p class="aside">No template to fill in.</p></div>
           <div data-scene="0"></div>
         </div>
-        <div class="mv flip">
+        <div class="mv flip" id="pictures">
           <div><span class="num">02</span><h3>Confirm it with pictures.</h3><p>Before anything is built, Claude shows the options as mockups. You pick the one you meant.</p><p class="aside">Look first. Build second.</p></div>
           <div data-scene="1"></div>
         </div>
-        <div class="mv">
+        <div class="mv" id="right-thing">
           <div><span class="num">03</span><h3>Build the right thing.</h3><p>Each answer starts a Claude session, already briefed, in the right repo.</p><p class="aside">Every terminal has a reason to exist.</p></div>
           <div data-scene="2"></div>
         </div>
-        <div class="mv flip">
+        <div class="mv flip" id="sync">
           <div><span class="num">04</span><h3>Always in sync.</h3><p>Every session sits on its roadmap item. The status moves on its own.</p><p class="aside">A status meeting, minus the meeting.</p></div>
           <div data-scene="3"></div>
         </div>
-        <div class="mv">
+        <div class="mv" id="needs-you">
           <div><span class="num">05</span><h3>Only what needs you.</h3><p>Nine sessions running, three waiting on you. You see those three: rowing is blue, your turn is violet with a Test or Answer button, done is grey with a tick. On top of the board, at most two next steps.</p><p class="aside">The other six don't need a babysitter.</p></div>
           <div data-scene="4"></div>
         </div>
-        <div class="mv flip">
+        <div class="mv flip" id="standard">
           <div><span class="num">06</span><h3>One standard.</h3><p>Every delivery is checked against the same design and the same tests. Pin a note where it's wrong; it goes back to the session that built it.</p><p class="aside">Your eyes are faster than your scroll wheel.</p></div>
           <div data-scene="5"></div>
         </div>
-        <div class="mv">
+        <div class="mv" id="tests">
           <div><span class="num">07</span><h3>Tests that open in the right place.</h3><p>Claude tests its own work first. Then each test you get is one picture of the exact thing to check, one line of what you should see, and a link that opens on that screen, with sample data already there.</p><p class="aside">No setup. No hunting for the page.</p></div>
           <div data-scene="focus"></div>
         </div>
-        <div class="mv flip">
+        <div class="mv flip" id="skills">
           <div><span class="num">08</span><h3>Skills, not repeats.</h3><p>What works becomes a skill. Every session reuses it, so everything stays aligned.</p><p class="aside">Solve it once. Stop explaining it.</p></div>
           <div data-scene="6"></div>
         </div>
@@ -250,7 +276,7 @@
         </div>
       </div>
       <div class="beta iphone" id="iphone">
-        <figure class="phone"><img src="assets/shots/iphone-ready.jpg" width="1206" height="2622" loading="lazy" alt="Steerify on iPhone: where you left off, and the one thing waiting on you"></figure>
+        <div class="ip-phone"><figure class="phone ip-rotate" data-rotate><img src="assets/shots/iphone-ready.jpg" width="1206" height="2622" alt="Steerify on iPhone: what your Mac is doing, and the one thing waiting on you" class="on"><img src="assets/shots/iphone-detail.jpg" width="1206" height="2622" loading="lazy" alt="To test on iPhone: the delivery as a picture, Looks right, then OK, Refine or Broken"><img src="assets/shots/iphone-choice.jpg" width="1206" height="2622" loading="lazy" alt="A choice on iPhone: the option as a mockup, a note pinned on it, Pick"><img src="assets/shots/iphone-road.jpg" width="1206" height="2622" loading="lazy" alt="The roadmap on iPhone: chapters, core progress, Resume chapter"><img src="assets/shots/iphone-request.jpg" width="1206" height="2622" loading="lazy" alt="A new request said out loud on iPhone, sorted as a refinement"></figure><div class="ip-dots" role="group" aria-label="iPhone screens"><button type="button" data-i="0" aria-current="true">Ready</button><button type="button" data-i="1">Test</button><button type="button" data-i="2">Pick</button><button type="button" data-i="3">Resume</button><button type="button" data-i="4">Ask</button></div></div>
         <div>
           <span class="eyebrow">iPhone companion · private beta</span>
           <div class="ip-head">

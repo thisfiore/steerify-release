@@ -31,6 +31,7 @@ struct ContentView: View {
                 SetupGate(board: b) {
                     VStack(spacing: 0) {
                         TabBar(board: b, tab: $boardTab).id(p.id).background(Brand.bg)
+                        MenuBarHiddenStrip()
                         BoardTerminalSplit { BoardScreen(board: b).id(p.id) } right: { TerminalPane(project: p) }
                     }
                 } live: {
@@ -81,6 +82,7 @@ struct ContentView: View {
             if since.brief != nil { since.brief = nil }
             DispatchQueue.main.async { since.check(model) }
         }
+        .blackTitleBar()          // black top bar with the Mac's blur (TitleBar.swift)
         .toolbar {
             ToolbarItem(placement: .navigation) { ProjectSwitcher(density: density) }
             ToolbarItem(placement: .principal) { Wordmark(compact: density > .full) }
