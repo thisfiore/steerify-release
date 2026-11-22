@@ -71,11 +71,12 @@ extension AppModel {
         var shown: [TerminalSession] = [], folded: [TerminalSession] = []
         for s in list {
             let st = stage(of: s)
-            if st == nil || st == tab || s.id == cur || (s.running && s.status == .waiting) { shown.append(s) } else { folded.append(s) }
+            if s.pinned || st == nil || st == tab || s.id == cur || (s.running && s.status == .waiting) { shown.append(s) } else { folded.append(s) }
         }
-        // This tab's sessions on top; kept-visible ones from other stages after them.
-        let mine = shown.filter { stage(of: $0) == tab }
-        return (mine + shown.filter { stage(of: $0) != tab }, folded)
+        // Pinned on top, then this tab's sessions; kept-visible ones from other stages after them.
+        let pins = shown.filter(\.pinned), rest = shown.filter { !$0.pinned }
+        let mine = rest.filter { stage(of: $0) == tab }
+        return (pins + mine + rest.filter { stage(of: $0) != tab }, folded)
     }
 
     /// How many sessions stand on each tab (for the counts on the tab bar).

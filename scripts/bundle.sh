@@ -32,7 +32,9 @@ rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/SteerApp "$APP/Contents/MacOS/Steerify"
 # Sparkle (in-app updates): the framework goes in Contents/Frameworks, found through this rpath.
 mkdir -p "$APP/Contents/Frameworks"
-ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
+# Apple Silicon only: Sparkle ships universal, so keep just its arm64 slice (an Intel slice makes macOS 26
+# warn "Support Ending for Intel-Based Apps").
+ditto --arch arm64 .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
 install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/Steerify" 2>/dev/null || true
 if [ ! -f build/AppIcon.icns ]; then
   swift scripts/make-icon.swift build/AppIcon.iconset >/dev/null
@@ -72,6 +74,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
+# Guard: no Intel code anywhere in the bundle (macOS 26 flags any x86_64 slice).
+INTEL=$(find "$APP" -type f -perm +111 -exec sh -c 'lipo -archs "$1" 2>/dev/null | grep -q x86_64 && echo "$1"' _ {} \;)
+[ -n "$INTEL" ] && { echo "Intel code in the bundle:\n$INTEL" >&2; exit 1; }
+
 if [ -n "$SIGN_ID" ]; then
   # Hardened runtime + secure timestamp: required for notarization. Sparkle's parts first, inside out.
   SPK="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
@@ -83,6 +89,9 @@ if [ -n "$SIGN_ID" ]; then
   echo "built $APP $VERSION ($BUILD), signed: $SIGN_ID"
 else
   codesign --force --deep --sign - "$APP" >/dev/null 2>&1
+  # Ad-hoc identity = the binary's hash by default, so macOS 26 sees every rebuild as a new app (Menu Bar ›
+  # Allow in the Menu Bar keeps the old one, the wheel stays hidden). Tie it to the bundle id instead.
+  codesign --force --sign - -r="designated => identifier \"$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")\"" "$APP" >/dev/null 2>&1
   echo "built $APP $VERSION ($BUILD), ad-hoc signed$([ $SIGN = 1 ] && echo ' (no Developer ID Application cert in the keychain)' || echo ' (test build; --sign or --dmg for Developer ID)')"
 fi
 

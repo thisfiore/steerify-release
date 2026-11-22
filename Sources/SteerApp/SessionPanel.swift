@@ -120,6 +120,7 @@ struct SessionChip2: View {
     let select: () -> Void
     let close: () -> Void
     @State private var hover = false
+    @State private var renaming = false
 
     var body: some View {
         let outlook = model.outlook(session)
@@ -140,21 +141,31 @@ struct SessionChip2: View {
                     // Column mode: verb + stage tag on their own small row, so the name keeps the full width.
                     let (verb, name) = splitTitle
                     let tag = wrapped ? nil : stage
-                    if verb != nil || tag != nil {
+                    if verb != nil || tag != nil || session.pinned {
                         HStack(spacing: 5) {
+                            if session.pinned { PinMark() }
                             if let verb { Text(verb.uppercased()).font(Brand.label(8)).tracking(0.6).foregroundStyle(Brand.mute).lineLimit(1).fixedSize() }
                             if let tag { StageTag(tab: tag) }
                         }
                     }
-                    Text(name).font(.system(size: S(12), weight: selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? Color.white : Brand.ink.opacity(wrapped ? 0.45 : 0.85))
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                        .strikethrough(wrapped && !selected, color: Brand.mute.opacity(0.6))
+                    if renaming {
+                        SessionRenameField(session: session, editing: $renaming)
+                    } else {
+                        Text(name).font(.system(size: S(12), weight: selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? Color.white : Brand.ink.opacity(wrapped ? 0.45 : 0.85))
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            .strikethrough(wrapped && !selected, color: Brand.mute.opacity(0.6))
+                    }
                 } else {
                     HStack(spacing: 5) {
-                        Text(session.title).font(.system(size: S(12), weight: selected ? .semibold : .regular))
-                            .foregroundStyle(selected ? Color.white : Brand.ink.opacity(wrapped ? 0.45 : 0.85)).lineLimit(1)
-                            .strikethrough(wrapped && !selected, color: Brand.mute.opacity(0.6))
+                        if session.pinned { PinMark() }
+                        if renaming {
+                            SessionRenameField(session: session, editing: $renaming).frame(width: S(150))
+                        } else {
+                            Text(session.title).font(.system(size: S(12), weight: selected ? .semibold : .regular))
+                                .foregroundStyle(selected ? Color.white : Brand.ink.opacity(wrapped ? 0.45 : 0.85)).lineLimit(1)
+                                .strikethrough(wrapped && !selected, color: Brand.mute.opacity(0.6))
+                        }
                         if let stage, !wrapped { StageTag(tab: stage) }
                     }
                 }
@@ -195,6 +206,18 @@ struct SessionChip2: View {
         .onTapGesture(perform: select)
         .pointerStyle(.link)
         .help(help(outlook, turn))
+        .contextMenu { labelMenu }
+    }
+
+    /// Right-click: rename and pin (kept for the conversation, shared with the iPhone).
+    @ViewBuilder private var labelMenu: some View {
+        if session.kind == .claude, session.claudeId != nil {
+            Button("Rename…") { renaming = true }
+            if session.customName != nil { Button("Use Steerify's name") { model.renameSession(session, to: nil) } }
+            Button(session.pinned ? "Unpin" : "Pin to top") { model.setPinned(session, !session.pinned) }
+            Divider()
+        }
+        Button("Close session") { close() }
     }
 
     /// "Test →", "Answer →", "Release →": opens the board item that waits on you.
@@ -247,6 +270,14 @@ struct SessionChip2: View {
         case .nothing?: return "Done: nothing left to do. Close it — the conversation stays resumable from its item."
         case nil: return wrapped ? "Done: released / finished. Close it — the conversation stays resumable from its item." : name
         }
+    }
+}
+
+/// A pinned session: a small amber pin before its name.
+struct PinMark: View {
+    var body: some View {
+        Image(systemName: "pin.fill").font(.system(size: S(8.5), weight: .bold)).foregroundStyle(Brand.amber)
+            .rotationEffect(.degrees(30)).help("Pinned: always on top (right-click to unpin)")
     }
 }
 

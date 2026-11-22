@@ -10,7 +10,13 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     let projectId: String
     let repo: Repo
     let kind: SessionKind
-    @Published var title: String
+    /// The name on the session row. A name you gave it (rename) wins over every automatic one (SessionLabels.swift).
+    @Published var title: String { didSet { if let c = customName { if title != c { autoTitle = title; title = c } } else { autoTitle = title } } }
+    private(set) var autoTitle = ""
+    /// Your own name for the session (nil = Steerify's), and pinned = always on top of the list. Shared with the iPhone.
+    @Published var customName: String? { didSet { title = customName ?? autoTitle } }
+    @Published var pinned = false
+    var labelsAdopted = false
     @Published var running = true
     @Published var directory: String?
 
@@ -60,7 +66,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         self.command = command
         self.dry = dry
         self.claudeId = claudeId
-        self.title = item?.title ?? repo.name
+        let t = item?.title ?? repo.name
+        self.title = t
+        self.autoTitle = t
         super.init()
     }
 

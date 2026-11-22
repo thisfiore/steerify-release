@@ -51,7 +51,7 @@ struct MenuBarHiddenStrip: View {
                 PixelWheel(size: 14)
                 Text("macOS is hiding the Steerify wheel in the menu bar")
                     .font(.system(size: 12.5, weight: .medium)).foregroundStyle(Brand.cream)
-                Text("Menu Bar › Steerify: switch it off and on")
+                Text("Menu Bar › Steerify: off, then on (the SteerApp rows are old test copies)")
                     .font(.system(size: 11.5)).foregroundStyle(Brand.mute).lineLimit(1)
                 Spacer(minLength: 8)
                 Button("Open Menu Bar settings") { watch.openSettings() }

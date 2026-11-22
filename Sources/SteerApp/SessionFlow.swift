@@ -124,8 +124,9 @@ extension AppModel {
         }
         // Each session is ranked once (not on every comparison of the sort), and the order once per draw.
         return TurnMemo.get("ordered:" + projectId) {
-            sessions(of: projectId).enumerated().map { (rank($0.element), $0.offset, $0.element) }
-                .sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
+            // Pinned sessions first (in the order they were opened), then by who moves.
+            sessions(of: projectId).enumerated().map { (($0.element.pinned && $0.element.running ? 0 : 1), rank($0.element), $0.offset, $0.element) }
+                .sorted { ($0.0, $0.1, $0.2) < ($1.0, $1.1, $1.2) }.map(\.3)
         }
     }
 

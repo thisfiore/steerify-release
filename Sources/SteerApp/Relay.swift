@@ -155,7 +155,8 @@ extension AppModel {
                 "verb": hasVerb ? parts[0] : "", "name": hasVerb ? parts.dropFirst().joined(separator: " · ") : s.title,
                 "stage": wrapped ? "" : (stage(of: s)?.rawValue ?? ""), "line": line, "group": group,
                 "turn": turn?.verb ?? "", "turnRef": turn?.ref ?? "",
-                "icon": icon.rows.joined(separator: "/"), "iconColor": Self.hex(icon.color)]
+                "icon": icon.rows.joined(separator: "/"), "iconColor": Self.hex(icon.color),
+                "id": s.claudeId ?? "", "pinned": s.pinned ? "1" : "", "named": s.customName == nil ? "" : "1"]
     }
 
     private static func hex(_ c: Color) -> String {

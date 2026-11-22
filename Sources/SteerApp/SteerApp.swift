@@ -330,6 +330,7 @@ struct SteerApp: App {
         }
         if a.contains("--origin-ping-demo") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { OriginPingDemo.run(m) } }
         if let i = a.firstIndex(of: "--flow-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SessionFlowDemo.run(m, a[i + 1]) } }
+        if let i = a.firstIndex(of: "--label-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SessionLabelsDemo.run(m, a[i + 1]) } }
         if let i = a.firstIndex(of: "--open-shells"), i + 1 < a.count, let n = Int(a[i + 1]) {
             for k in 0..<n { m.newSession(.shell, repo: m.project?.repos[k % max(1, m.project?.repos.count ?? 1)]) }
         }

@@ -206,6 +206,12 @@ extension AppModel {
                 list.append(pin)
                 c["pins"] = list
             }))
+        case "sessionName":   // rename a Mac session (ref = its Claude conversation id; empty note = Steerify's name)
+            guard !ref.isEmpty else { return "Which session?" }
+            _ = applyPhoneLabel(projectId: p.id, boardDir: p.boardDir, claudeId: ref, name: .some(note))
+        case "sessionPin":    // pin = "on" | "off"
+            guard !ref.isEmpty else { return "Which session?" }
+            _ = applyPhoneLabel(projectId: p.id, boardDir: p.boardDir, claudeId: ref, pinned: pick == "on")
         case "start":
             StartQueue.append(p.boardDir, [
                 "id": it["id"] as? String ?? UUID().uuidString, "ref": ref, "intent": it["intent"] as? String ?? "plan", "note": note,
@@ -275,7 +281,7 @@ extension AppModel {
 }
 
 enum BoardPublish {
-    static let files = ["board.json", "decisions.json", "requests.json", "starts.json", "delivered.json", "tasks.json", "inbox-applied.json", "steerify.json"]
+    static let files = ["board.json", "decisions.json", "requests.json", "starts.json", "delivered.json", "tasks.json", "inbox-applied.json", "steerify.json", "session-labels.json"]
 
     /// Commit the board files that changed and push. true = something reached GitHub.
     static func run(boardDir: String) -> Bool {

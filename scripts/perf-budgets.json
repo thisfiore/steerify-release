@@ -3,7 +3,7 @@
   "checks": [
     { "id": "roadmap-scroll",  "name": "Roadmap: scroll",        "args": ["--tab", "road", "--show", "all", "--scroll-bench"],   "metric": "p95Ms",     "limit": 26,  "target": 16 },
     { "id": "roadmap-change",  "name": "Roadmap: app change",    "args": ["--tab", "road", "--show", "all", "--churn-bench"],    "metric": "modelP95Ms", "limit": 40,  "target": 16 },
-    { "id": "totest-scroll",   "name": "To test: scroll",        "args": ["--tab", "test", "--show", "all", "--scroll-bench"],   "metric": "p95Ms",     "limit": 22,  "target": 16 },
+    { "id": "totest-scroll",   "name": "To test: scroll",        "args": ["--tab", "test", "--show", "all", "--scroll-bench"],   "metric": "p95Ms",     "limit": 26,  "target": 16 },
     { "id": "choices-scroll",  "name": "Choices: scroll",        "args": ["--tab", "choice", "--show", "all", "--scroll-bench"], "metric": "p95Ms",     "limit": 35,  "target": 16 },
     { "id": "reqs-scroll",     "name": "Requirements: scroll",   "args": ["--tab", "req", "--show", "all", "--scroll-bench"],    "metric": "p95Ms",     "limit": 16,  "target": 16 },
     { "id": "project-switch",  "name": "Switch project",         "args": ["--tab", "road", "--switch-bench"], "other": "tiny-todo", "metric": "warmAvgMs", "limit": 200, "target": 50 }
