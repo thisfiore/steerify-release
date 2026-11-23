@@ -103,7 +103,12 @@ final class StatusWatcher {
             FSEventStreamStart(s)
             stream = s
         }
+        // A session still warming up after 20 s: say why on its card (StuckStart.swift).
+        stuckTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model?.checkStuckStarts() }
+        }
     }
+    private var stuckTimer: Timer?
 
     func refresh() {
         guard let model else { return }
@@ -111,7 +116,7 @@ final class StatusWatcher {
         for s in model.sessions where s.kind == .claude {
             if !s.running { if s.status != .ended { s.status = .ended; changed = true }; continue }
             if let (st, at) = SessionHooks.read(s.id), st != s.status || at != s.statusAt {
-                s.status = st; s.statusAt = at; changed = true
+                s.status = st; s.statusAt = at; s.stuck = nil; changed = true
             }
         }
         if changed { model.sessionsChanged() }

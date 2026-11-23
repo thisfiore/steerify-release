@@ -27,6 +27,8 @@ struct Project: Hashable, Identifiable {
     var icon: IconConfig? = nil
     /// steerify.json → "environments": where to test (Environments.swift). Empty = not set up yet.
     var environments: [TestEnv] = []
+    /// steerify.json → "processes": the project's base processes, pinned under the sessions (Processes.swift).
+    var processes: [ProcessSpec] = []
     var manifest: String { (boardDir as NSString).appendingPathComponent("steerify.json") }
 
     /// A repo by the name an item uses: repo name, folder name or git remote ("steerify" → steer-app).
@@ -58,6 +60,7 @@ struct Manifest: Codable {
     var automation: Automation?
     var icon: IconConfig?
     var environments: [TestEnv]?
+    var processes: [ProcessSpec]?
 }
 
 /// The app's own memory is only *which* workspaces you opened (workspaces.json in Application Support).
@@ -103,7 +106,7 @@ enum ProjectStore {
                  git: r.git, areas: r.areas ?? [])
         }
         return Project(id: m.id, name: m.name, boardDir: folder, port: m.webBoard?.port ?? 0, repos: repos,
-                       release: m.release, automation: m.automation, icon: m.icon, environments: m.environments ?? [])
+                       release: m.release, automation: m.automation, icon: m.icon, environments: m.environments ?? [], processes: m.processes ?? [])
     }
 
     /// First run: workspaces already on this Mac.
@@ -279,15 +282,18 @@ enum BoardTemplate {
     const arg = process.argv[2];
     if (!arg) { console.error('usage: deliver.mjs <json | file.json>'); process.exit(1); }
     const item = JSON.parse(existsSync(arg) ? await readFile(arg, 'utf8') : arg);
-    for (const k of ['title', 'area', 'what']) if (!item[k]) { console.error(`missing ${k}`); process.exit(1); }
+    if (!item.id && !item.title) { console.error('missing title'); process.exit(1); }
     const areas = Object.keys(JSON.parse(await readFile(join(dir, 'board.json'), 'utf8')).areas || {});
-    if (!areas.includes(item.area)) { console.error(`area must be one of: ${areas.join('|')}`); process.exit(1); }
 
     const data = existsSync(FILE) ? JSON.parse(await readFile(FILE, 'utf8')) : { items: [] };
     const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 48);
     const now = new Date().toISOString();
     const id = item.id || slug(item.title);
     const prev = data.items.find((x) => x.id === id);
+    // A re-delivery by id (e.g. status → live) keeps what the previous version said.
+    for (const k of ['title', 'area', 'what']) if (!item[k] && prev?.[k]) item[k] = prev[k];
+    for (const k of ['title', 'area', 'what']) if (!item[k]) { console.error(`missing ${k}`); process.exit(1); }
+    if (!areas.includes(item.area)) { console.error(`area must be one of: ${areas.join('|')}`); process.exit(1); }
     const next = { status: 'local', tested: [], howTo: [], links: [], issues: [], repos: [], ...prev, ...item, id, updated: now, added: prev?.added || now };
     const keep = item.keepVerdict && prev;
     delete next.keepVerdict;

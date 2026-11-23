@@ -33,6 +33,11 @@ struct PreviewOverlay: View {
     @State private var pinMode = false
     @State private var draft: CGPoint?          // relative point of a note being written
     @State private var draftText = ""
+    // The note being written saves itself as it is typed (0.5 s after the last key, and whenever it is left:
+    // Esc, another picture, another click, closing). draftImg = the picture it is on; draftSaved = already a pin.
+    @State private var draftImg = ""
+    @State private var draftSaved = false
+    @State private var draftTask: Task<Void, Never>?
     @State private var openPin: Pin?
     @FocusState private var focused: Bool
     @FocusState private var draftFocused: Bool
@@ -41,7 +46,10 @@ struct PreviewOverlay: View {
     @State private var showPanel = true
 
     private var img: String { state.images[state.index] }
-    private var pins: [Pin] { board.pins(state.ref).filter { $0.img == img } }
+    /// Pins on this picture, minus the one still being written (it shows as the draft).
+    private var pins: [Pin] { board.pins(state.ref).filter { $0.img == img && !isDraft($0) } }
+    private func isDraft(_ p: Pin) -> Bool { guard let d = draft, draftSaved else { return false }; return p.img == draftImg && p.x == d.x && p.y == d.y }
+    private func same(_ a: Pin?, _ b: Pin) -> Bool { a.map { $0.img == b.img && $0.x == b.x && $0.y == b.y } ?? false }
 
     var body: some View {
         ZStack {
@@ -64,7 +72,16 @@ struct PreviewOverlay: View {
         .onReceive(MockSnapshots.shared.$version) { _ in refreshImages() }
         .onKeyPress(.leftArrow) { step(-1); return .handled }
         .onKeyPress(.rightArrow) { step(1); return .handled }
-        .onKeyPress(.escape) { if draft != nil { draft = nil } else { close() }; return .handled }
+        .onKeyPress(.escape) { if draft != nil { finishDraft() } else { close() }; return .handled }
+        .onChange(of: draftText) { _, _ in
+            guard draft != nil else { return }
+            draftTask?.cancel()
+            draftTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                if !Task.isCancelled { writeDraft() }
+            }
+        }
+        .onDisappear { finishDraft() }
         .onKeyPress(characters: CharacterSet(charactersIn: "+=-0ni")) { k in
             // Typing in a note box (the test note, a pinned note) must never zoom or hide the panel.
             if NSApp.keyWindow?.firstResponder is NSText { return .ignored }
@@ -114,9 +131,9 @@ struct PreviewOverlay: View {
                     .overlay {
                         ZStack(alignment: .topLeading) {
                             ForEach(Array(pins.enumerated()), id: \.offset) { i, p in
-                                marker(i + 1, selected: openPin == p)
+                                marker(i + 1, selected: same(openPin, p))
                                     .position(x: p.x * fit.width, y: p.y * fit.height)
-                                    .onTapGesture { openPin = (openPin == p) ? nil : p }
+                                    .onTapGesture { finishDraft(); openPin = same(openPin, p) ? nil : p }
                             }
                             if let d = draft {
                                 marker(pins.count + 1, selected: true).position(x: d.x * fit.width, y: d.y * fit.height)
@@ -129,8 +146,10 @@ struct PreviewOverlay: View {
                     .onTapGesture { loc in
                         // ⌘-click drops a note right there; in "Add note" mode a plain click does too.
                         guard pinMode || NSEvent.modifierFlags.contains(.command) else { return }
-                        draft = CGPoint(x: min(max(loc.x / fit.width, 0), 1), y: min(max(loc.y / fit.height, 0), 1))
-                        draftText = ""; openPin = nil
+                        finishDraft()
+                        // Rounded like the saved pin, so the draft and its pin are the same spot.
+                        draft = CGPoint(x: round3(min(max(loc.x / fit.width, 0), 1)), y: round3(min(max(loc.y / fit.height, 0), 1)))
+                        draftImg = img; draftText = ""; draftSaved = false; openPin = nil
                         if showPanel { DispatchQueue.main.async { draftFocused = true } }
                     }
                     .pointerStyle(pinMode ? .rectSelection : (zoom > 1 ? .grabIdle : .zoomIn))
@@ -157,9 +176,9 @@ struct PreviewOverlay: View {
             HStack(spacing: 8) {
                 Text("Note \(pins.count + 1)").font(Brand.label(10)).foregroundStyle(Brand.amber)
                 TextField("What should change here?", text: $draftText).textFieldStyle(.plain).font(.system(size: S(13)))
-                    .onSubmit(saveDraft)
-                Button("Save", action: saveDraft).keyboardShortcut(.return, modifiers: [])
-                Button("Cancel") { draft = nil }
+                    .onSubmit(finishDraft)
+                savedMark
+                Button { discardDraft() } label: { Image(systemName: "trash") }.foregroundStyle(Brand.mute).help("Delete this note")
             }
             .padding(12).frame(maxWidth: 620)
             .background(RoundedRectangle(cornerRadius: 10).fill(Brand.panel))
@@ -196,7 +215,7 @@ struct PreviewOverlay: View {
     /// Bottom hint on the picture while the side panel holds the notes.
     @ViewBuilder private var hint: some View {
         if pinMode || draft != nil {
-            Text(draft != nil ? "Write the note on the right · Esc to cancel" : "Click where the note goes · Esc to stop")
+            Text(draft != nil ? "Write the note on the right · it saves as you type" : "Click where the note goes · Esc to stop")
                 .font(.system(size: S(12))).foregroundStyle(Brand.amber).padding(.bottom, 14)
         } else if pins.isEmpty {
             Text("⌘-click on the picture to pin a note").font(.system(size: S(11.5))).foregroundStyle(Brand.mute).padding(.bottom, 14)
@@ -318,10 +337,11 @@ struct PreviewOverlay: View {
                 Spacer()
             }
             ForEach(Array(pins.enumerated()), id: \.offset) { i, p in
-                let on = openPin == p
+                let on = same(openPin, p)
                 HStack(alignment: .top, spacing: 8) {
                     marker(i + 1, selected: on).scaleEffect(zoom)
-                    Text(p.note).font(.system(size: S(12))).foregroundStyle(Brand.ink).fixedSize(horizontal: false, vertical: true)
+                    // Click to edit: saves as it is typed, like every other note.
+                    PinNoteText(note: p.note) { t in board.setPinNote(state.ref, p, note: t) }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Button { board.removePin(state.ref, p); if on { openPin = nil } } label: { Image(systemName: "trash").font(.system(size: S(10.5))) }
                         .buttonStyle(SteerButton()).foregroundStyle(Brand.mute).help("Delete this note")
@@ -338,12 +358,13 @@ struct PreviewOverlay: View {
                     TextField("What should change here?", text: $draftText, axis: .vertical)
                         .textFieldStyle(.plain).font(.system(size: S(12.5))).lineLimit(1...5)
                         .focused($draftFocused)
-                        .onSubmit(saveDraft)
-                    HStack {
-                        Button("Save", action: saveDraft).keyboardShortcut(.return, modifiers: [])
-                        Button("Cancel") { draft = nil }.foregroundStyle(Brand.mute)
+                        .onSubmit(finishDraft)
+                    HStack(spacing: 10) {
+                        savedMark
                         Spacer()
-                    }.buttonStyle(SteerButton()).font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Brand.amber)
+                        Button { discardDraft() } label: { Image(systemName: "trash").font(.system(size: S(10.5))) }
+                            .foregroundStyle(Brand.mute).help("Delete this note")
+                    }.buttonStyle(SteerButton())
                 }
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Brand.panel))
@@ -498,14 +519,71 @@ struct PreviewOverlay: View {
 
     private func step(_ d: Int) { if state.images.indices.contains(state.index + d) { state.index += d } }
     private func setZoom(_ z: CGFloat) { zoom = min(max(z, 0.5), 8); baseZoom = zoom }
-    private func resetView() { zoom = 1; baseZoom = 1; pan = .zero; basePan = .zero; openPin = nil; draft = nil }
-    private func close() { model.preview = nil }
+    private func resetView() { zoom = 1; baseZoom = 1; pan = .zero; basePan = .zero; openPin = nil; finishDraft() }
+    private func close() { finishDraft(); model.preview = nil }
+    private func round3(_ v: Double) -> Double { (v * 1000).rounded() / 1000 }
 
-    private func saveDraft() {
+    /// Write the note being typed to the board: a new pin the first time, the same pin after; empty = no pin.
+    private func writeDraft() {
+        draftTask?.cancel(); draftTask = nil
         guard let d = draft else { return }
         let t = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let opt = board.decisions.first { "choice:" + $0.id == state.ref }.flatMap { option($0)?.id }
-        if !t.isEmpty { board.addPin(state.ref, img: img, x: d.x, y: d.y, note: t, version: state.version, option: opt) }
-        draft = nil; draftText = ""
+        let spot = Pin(img: draftImg, x: d.x, y: d.y, note: t, at: nil)
+        if t.isEmpty {
+            if draftSaved { board.removePin(state.ref, spot); draftSaved = false }
+        } else if draftSaved {
+            board.setPinNote(state.ref, spot, note: t)
+        } else {
+            let opt = board.decisions.first { "choice:" + $0.id == state.ref }.flatMap { option($0)?.id }
+            board.addPin(state.ref, img: draftImg, x: d.x, y: d.y, note: t, version: state.version, option: opt)
+            draftSaved = true
+        }
+    }
+    /// Done writing (↩, Esc, another click, another picture, closing): keep what was typed.
+    private func finishDraft() {
+        guard draft != nil else { return }
+        writeDraft()
+        draft = nil; draftText = ""; draftSaved = false
+    }
+    /// The trash on the note being written: nothing stays.
+    private func discardDraft() {
+        draftText = ""; writeDraft()
+        draft = nil; draftSaved = false
+    }
+    private var savedMark: some View {
+        Text(draftSaved ? "Saved" : (draftText.trimmingCharacters(in: .whitespaces).isEmpty ? "Saves as you type" : "Saving…"))
+            .font(.system(size: S(11))).foregroundStyle(Brand.mute)
+    }
+}
+
+/// A pinned note's text, editable in place: saves 0.5 s after the last key and when it loses focus.
+private struct PinNoteText: View {
+    let note: String
+    let save: (String) -> Void
+    @State private var text = ""
+    @State private var pending: Task<Void, Never>?
+    @FocusState private var focused: Bool
+    var body: some View {
+        TextField("Note", text: $text, axis: .vertical)
+            .textFieldStyle(.plain).font(.system(size: S(12))).foregroundStyle(Brand.ink).lineLimit(1...8)
+            .focused($focused)
+            .onAppear { text = note }
+            .onChange(of: note) { _, v in if !focused { text = v } }
+            .onSubmit { flush() }
+            .onChange(of: focused) { _, f in if !f { flush() } }
+            .onChange(of: text) { _, _ in
+                guard focused else { return }
+                pending?.cancel()
+                pending = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if !Task.isCancelled { flush() }
+                }
+            }
+            .onDisappear { flush() }
+    }
+    private func flush() {
+        pending?.cancel(); pending = nil
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty && t != note { save(t) }      // emptied by mistake: keep the note (the trash deletes it)
     }
 }

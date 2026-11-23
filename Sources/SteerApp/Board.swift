@@ -940,6 +940,15 @@ extension BoardStore {
         }
     }
 
+    /// Change a pinned note's text in place (notes save as they are typed: no Save button).
+    func setPinNote(_ ref: String, _ pin: Pin, note: String) {
+        editPins(ref) { list in
+            for i in list.indices where (list[i]["img"] as? String) == pin.img && (list[i]["x"] as? Double) == pin.x && (list[i]["y"] as? Double) == pin.y {
+                list[i]["note"] = note
+            }
+        }
+    }
+
     func removePin(_ ref: String, _ pin: Pin) {
         editPins(ref) { list in
             list.removeAll { ($0["img"] as? String) == pin.img && ($0["x"] as? Double) == pin.x && ($0["y"] as? Double) == pin.y }

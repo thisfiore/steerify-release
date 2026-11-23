@@ -37,7 +37,8 @@ struct ContentView: View {
                 } live: {
                     BoardTerminalSplit { SetupLive(board: b).id(p.id) } right: { TerminalPane(project: p) }
                 } welcome: {
-                    SetupModal(board: b).id(p.id)
+                    // A project started from a recipe opens on its checklist instead (Recipes.swift).
+                    if let r = Recipe.of(p) { RecipeModal(board: b, recipe: r).id(p.id) } else { SetupModal(board: b).id(p.id) }
                 }
                 .navigationTitle("")
                 .overlay {
@@ -69,6 +70,9 @@ struct ContentView: View {
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }   // top bar density
         .folderDropTarget()       // folders dropped on the window become projects (FolderDrop.swift)
+        .overlay { if model.recipesOpen { RecipeGallery() } }
+        .overlay { if model.levelOpen { LevelSheet() } }
+        .overlay { AppFeedbackHost() }      // Report a bug / Ask for a feature (AppFeedback.swift)
         // "Since you left": on open, when you come back to the app, and when you switch to a project you left a while ago.
         .onAppear {
             let a = CommandLine.arguments
@@ -88,13 +92,19 @@ struct ContentView: View {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 10) { Wordmark(compact: density > .full); if model.updateReady { RestartToUpdate() } }.fixedSize()
             }
-            ToolbarItem(placement: .primaryAction) { HStack(spacing: 8) { NextUp(density: density); NewRequestButton() }.fixedSize() }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { model.reloadBoard() } label: { Image(systemName: "arrow.clockwise") }.help("Reload board (⌘R)")
-                if (model.project?.port ?? 0) > 0 {
+            // Reload sits left of + Request; the new-session menu is gone from here (the session panel has it),
+            // request r261123-135229.
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 8) {
+                    NextUp(density: density)
+                    Button { model.reloadBoard() } label: { Image(systemName: "arrow.clockwise") }.help("Reload board (⌘R)")
+                    NewRequestButton()
+                }.fixedSize()
+            }
+            if (model.project?.port ?? 0) > 0 {
+                ToolbarItem(placement: .primaryAction) {
                     Button { model.openWebBoard() } label: { Image(systemName: "safari") }.help("Open the web board in the browser")
                 }
-                NewSessionMenu()
             }
         }
     }
@@ -185,23 +195,6 @@ struct SessionRow: View {
     }
 }
 
-struct NewSessionMenu: View {
-    @EnvironmentObject var model: AppModel
-    var body: some View {
-        Menu {
-            if let p = model.project {
-                Section("Claude Code") {
-                    ForEach(p.repos) { r in Button(r.name) { model.newSession(.claude, repo: r) } }
-                }
-                Section("Shell") {
-                    ForEach(p.repos) { r in Button(r.name) { model.newSession(.shell, repo: r) } }
-                }
-            }
-        } label: { Label("New session", systemImage: "plus") }
-        .help("New Claude Code session (⌘T)")
-    }
-}
-
 // MARK: Board
 
 struct BoardPane: View {
@@ -239,10 +232,11 @@ struct WebHost: NSViewRepresentable {
 
 struct TerminalPane: View {
     @EnvironmentObject var model: AppModel
-    @AppStorage("sessionLayout", store: Prefs.store) private var layout: SessionLayout = .tabs
+    @AppStorage("sessionLayout", store: Prefs.store) private var layout: SessionLayout = .list
     @AppStorage(Prefs.boardTab, store: Prefs.store) private var tab: BoardTab = .test
     @AppStorage(Prefs.sessionsFollowTab, store: Prefs.store) private var follow = true
     @State private var othersOpen = false
+    @ObservedObject private var hub = ProcessHub.shared
     let project: Project
 
     var body: some View {
@@ -253,7 +247,7 @@ struct TerminalPane: View {
         let current = model.current(of: project.id)
         let _ = boardTick
         Group {
-            if all.isEmpty {
+            if all.isEmpty && project.processes.isEmpty {
                 EmptyTerminals(project: project)
             } else if layout == .tabs {
                 VStack(spacing: 0) {
@@ -267,6 +261,9 @@ struct TerminalPane: View {
                                 }
                             }.padding(.vertical, 6)
                             .animation(.easeInOut(duration: 0.25), value: list.map(\.id))
+                        }
+                        ForEach(project.processes) { spec in
+                            ProcessRow(spec: spec, project: project).fixedSize()
                         }
                         CloseWrappedButton(count: wrapped.count) { model.closeWrapped(projectId: project.id) }
                         if !split.folded.isEmpty { FoldedSessionsButton(count: split.folded.count, open: $othersOpen) }
@@ -314,6 +311,8 @@ struct TerminalPane: View {
                                 }
                             }
                         }
+                        // Pinned at the bottom: the project's base processes (request r261122-173509).
+                        if !project.processes.isEmpty { ProcessesSection(project: project).padding(.top, 4) }
                     }
                     .padding(10)
                     .frame(width: S(190))
@@ -324,6 +323,8 @@ struct TerminalPane: View {
         }
         .background(Color(nsColor: Theme.terminalBg))
         .onReceive(NotificationCenter.default.publisher(for: .steerifyBoardReloaded)) { _ in boardTick += 1 }
+        // Picking (or opening) a session hands the terminal back from a process to it.
+        .onChange(of: model.selectedSession[project.id]) { _, _ in hub.shown[project.id] = nil }
     }
 
     /// Board reloads (a delivery went live, a key result done) re-rank the tabs.
@@ -335,8 +336,8 @@ struct TerminalPane: View {
         return st == tab ? nil : st
     }
 
-    @ViewBuilder private func terminal(_ s: TerminalSession?) -> some View {
-        if let s { TerminalHost(session: s).id(s.id) } else { EmptyTerminals(project: project) }
+    @ViewBuilder private func terminal(_ sel: TerminalSession?) -> some View {
+        if let s = hub.shownShell(project) ?? sel { TerminalHost(session: s).id(s.id).overlay { DeployDoneLayer(session: s) } } else { EmptyTerminals(project: project) }
     }
 
     private var layoutToggle: some View {
@@ -559,6 +560,11 @@ struct ToastView: View {
     var body: some View {
         HStack(spacing: 10) {
             ClaudeSpark(size: S(13))
+            // About another project: its icon + name, so you know it is not this one (you stay here).
+            if let pid = toast.projectId, pid != model.selectedProjectId, let p = model.projects.first(where: { $0.id == pid }) {
+                PixelAvatar(name: p.name, size: S(14), projectId: p.id)
+                Text(p.name).font(.system(size: S(12.5), weight: .semibold)).foregroundStyle(Brand.cream).lineLimit(1)
+            }
             Text(toast.message).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(Brand.ink)
                 .lineLimit(compact ? 1 : 2).truncationMode(.tail).help(toast.message)
             if let undo = toast.undo {

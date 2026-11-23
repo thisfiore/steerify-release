@@ -387,7 +387,10 @@ struct SetupVoyage: View {
     private var line: (String, String) {
         if session.status == .waiting { return ("Claude needs you", "It asked something in the session on the right.") }
         switch stage {
-        case .read: return ("Claude is reading the project", "Code, README, history, your past chats. A few minutes.")
+        case .read:
+            // A recipe project (Recipes.swift) has no code: Claude reads the files you filled in.
+            if Recipe.read(URL(fileURLWithPath: session.repo.path, isDirectory: true)) != nil { return ("Claude is reading your files", "What you filled in, and the recipe. Then it asks you, one thing at a time.") }
+            return ("Claude is reading the project", "Code, README, history, your past chats. A few minutes.")
         case .ask: return ("Your turn: \(open) question\(open == 1 ? "" : "s") below", "Pick an option or write a note. Claude goes on when all are answered.")
         case .draft:
             if working { return ("Claude is drafting from your answers", "Goal, areas, then the first chapter.") }

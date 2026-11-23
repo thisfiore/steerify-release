@@ -15,6 +15,7 @@ enum Prefs {
     static let testLayout = "testLayout"      // list | grid (To test tab)
     static let remoteControl = "remoteControl" // Claude sessions start with Claude Code Remote Control (open them in the Claude app)
     static var remoteControlOn: Bool { store.object(forKey: remoteControl) as? Bool ?? true }
+    static let autoConsolidate = "autoConsolidate" // Roadmap counts down and applies sure proposals by itself (on by default)
 
     static let defaultTerminal = 0.30
     static let terminalRange = 0.18...0.55
@@ -42,69 +43,195 @@ struct SettingsView: View {
     @AppStorage(Prefs.sessionsFollowTab, store: Prefs.store) private var followTab = true
     @AppStorage(Prefs.defaultFlow, store: Prefs.store) private var defaultFlow = WorkFlow.main.rawValue
     @AppStorage(Prefs.remoteControl, store: Prefs.store) private var remoteControl = true
+    @AppStorage(Prefs.autoConsolidate, store: Prefs.store) private var autoConsolidate = true
+
+    /// The open page, remembered. Test hook: `--settings-pane <id>`.
+    @AppStorage("settingsPane", store: Prefs.store) private var pane: Pane = {
+        let a = CommandLine.arguments
+        return a.firstIndex(of: "--settings-pane").flatMap { $0 + 1 < a.count ? Pane(rawValue: a[$0 + 1]) : nil } ?? .look
+    }()
+
+    enum Pane: String, CaseIterable, Identifiable {
+        case you, look, behaviour, permissions, branches, iphone, shortcuts
+        var id: String { rawValue }
+        var title: String { ["you": "You", "look": "Look", "behaviour": "Behaviour", "permissions": "Permissions", "branches": "Branches", "iphone": "iPhone", "shortcuts": "Shortcuts"][rawValue]! }
+        var icon: String { ["you": "users", "look": "palette", "behaviour": "gear", "permissions": "lock", "branches": "branch", "iphone": "phone", "shortcuts": "keys"][rawValue]! }
+        var sub: String {
+            ["you": "How technical you are. Steerify and Claude fit their screens and words to it.",
+             "look": "Text size and how the window is split.",
+             "behaviour": "How Steerify behaves for you. New options land here.",
+             "permissions": "What Steerify and the Claude sessions inside it may do on this Mac.",
+             "branches": "How sessions use git when a project doesn't say. Each project can change it in its Release setup.",
+             "iphone": "Steer from the phone: pair it once, the board follows.",
+             "shortcuts": "Everything on the keyboard."][rawValue]!
+        }
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                section("PERMISSIONS", "What Steerify and the Claude sessions inside it may do on this Mac.") { PermissionsSettings() }
-                section("TEXT SIZE", "Board, sidebar and terminal together.") {
-                    HStack(spacing: 12) {
-                        ForEach(Prefs.Size.allCases) { s in sizeCard(s) }
-                    }
+        HStack(spacing: 0) {
+            sidebar
+            Rectangle().fill(Brand.line).frame(width: 1)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    header
+                    page
                 }
-                section("LAYOUT", "How much of the window the terminal takes. You can also drag the divider.") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        layoutDiagram
-                        HStack {
-                            Text("Terminal").font(.system(size: 12)).foregroundStyle(Brand.mute)
-                            Slider(value: $frac, in: Prefs.terminalRange, step: 0.01).tint(Brand.amber).frame(maxWidth: 320)
-                            Text("\(Int(frac * 100))%").font(.system(size: 12).monospacedDigit()).frame(width: 40)
-                            Button("Reset to 30%") { frac = Prefs.defaultTerminal }.disabled(abs(frac - Prefs.defaultTerminal) < 0.005)
-                        }
-                        Picker("Sessions  ⌘B", selection: Binding(get: { SessionLayout(rawValue: Prefs.store.string(forKey: "sessionLayout") ?? "") ?? .tabs },
-                                                                  set: { Prefs.store.set($0.rawValue, forKey: "sessionLayout") })) {
-                            ForEach(SessionLayout.allCases, id: \.self) { Text($0.title).tag($0) }
-                        }.pickerStyle(.segmented).frame(maxWidth: 320).font(.system(size: 12.5))
-                    }
-                }
-                // Every new preference lands here, one toggle per line with what it does.
-                section("PERSONALISATION", "How Steerify behaves for you. New options land here.") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        pref("Session list follows the tab", "Sessions on the open tab first, the others folded. The one you're in and the ones that need you always show.", $followTab)
-                        pref("Open sessions on your phone", "New Claude sessions start with Remote Control: tap one in Steerify for iPhone to continue it in the Claude app. Needs a claude.ai login (Pro, Max, Team, Enterprise).", $remoteControl)
-                    }
-                }
-                section("BRANCHES · DEFAULT FOR NEW PROJECTS", "How sessions use git when a project doesn't say. Each project can change it in its Release setup.") {
-                    FlowPicker(flow: Binding(get: { WorkFlow(rawValue: defaultFlow) ?? .main }, set: { defaultFlow = $0.rawValue }))
-                }
-                section("IPHONE", "Steerify for iPhone: the phone icon at the end of the tab bar opens the pairing code (green while the phone is connected).") {
-                    PhonePairingView()
-                }
-                section("SHORTCUTS", nil) { shortcuts }
+                .padding(.horizontal, 28).padding(.vertical, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
+            .id(pane)
         }
-        .frame(width: 640, height: 640)
+        .frame(width: 820, height: 600)
         .background(Brand.bg)
         .preferredColorScheme(.dark)
     }
 
-    private func pref(_ title: String, _ sub: String, _ on: Binding<Bool>) -> some View {
-        Toggle(isOn: on) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Brand.ink)
-                Text(sub).font(.system(size: 11)).foregroundStyle(Brand.mute)
+    // MARK: Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("SETTINGS").font(Brand.label(9)).tracking(1.2).foregroundStyle(Brand.mute)
+                .padding(.horizontal, 10).padding(.bottom, 8)
+            ForEach(Pane.allCases) { p in
+                let on = pane == p
+                Button { pane = p } label: {
+                    HStack(spacing: 10) {
+                        ArtIcon(name: p.icon, size: 26, tile: true)
+                        Text(p.title).font(.system(size: 13, weight: on ? .semibold : .regular))
+                            .foregroundStyle(on ? Brand.ink : Brand.ink.opacity(0.75))
+                        Spacer(minLength: 0)
+                        if p == .permissions, missingPermissions > 0 {
+                            Text("\(missingPermissions)").font(Brand.label(8)).foregroundStyle(Color(hex: 0x1a1200))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Capsule().fill(Brand.amber))
+                        }
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(on ? Brand.panel2 : .clear))
+                    .overlay(alignment: .leading) {
+                        if on { RoundedRectangle(cornerRadius: 1).fill(Brand.amber).frame(width: 3, height: 18).offset(x: -1) }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(SteerButton())
             }
+            Spacer()
+            Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+                .font(Brand.label(8)).foregroundStyle(Brand.mute.opacity(0.7)).padding(.horizontal, 10)
         }
-        .toggleStyle(.switch).tint(Brand.amber)
+        .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 14)
+        .frame(width: 196)
+        .background(Brand.panel)
     }
 
-    private func section<C: View>(_ title: String, _ sub: String?, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(Brand.label(10)).tracking(1).foregroundStyle(Brand.amber)
-            if let sub { Text(sub).font(.system(size: 12)).foregroundStyle(Brand.mute) }
+    @ObservedObject private var perms = PermissionStore.shared
+    private var missingPermissions: Int { Permission.allCases.filter { perms.states[$0] != nil && perms.states[$0] != .on }.count }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ArtIcon(name: pane.icon, size: 44, tile: true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(pane.title.uppercased()).font(Brand.label(14)).tracking(1.2).foregroundStyle(Brand.amber)
+                Text(pane.sub).font(.system(size: 12)).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder private var page: some View {
+        switch pane {
+        case .you:
+            LevelPicker(inSettings: true)
+        case .look:
+            group("TEXT SIZE", "Board, sidebar and terminal together.") {
+                HStack(spacing: 12) { ForEach(Prefs.Size.allCases) { s in sizeCard(s) } }
+            }
+            group("WINDOW", "How much of the window the terminal takes. You can also drag the divider.") {
+                card {
+                    VStack(alignment: .leading, spacing: 12) {
+                        layoutDiagram
+                        HStack {
+                            Text("Terminal").font(.system(size: 12)).foregroundStyle(Brand.mute)
+                            Slider(value: $frac, in: Prefs.terminalRange).tint(Brand.amber)
+                            Text("\(Int(frac * 100))%").font(.system(size: 12).monospacedDigit()).frame(width: 40)
+                            Button("Reset") { frac = Prefs.defaultTerminal }.disabled(abs(frac - Prefs.defaultTerminal) < 0.005)
+                        }
+                    }
+                }
+                card {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sessions").font(.system(size: 12.5, weight: .medium)).foregroundStyle(Brand.ink)
+                            Text("Tabs on top or a list beside the terminal · ⌘B").font(.system(size: 11)).foregroundStyle(Brand.mute)
+                        }
+                        Spacer()
+                        Picker("", selection: Binding(get: { SessionLayout(rawValue: Prefs.store.string(forKey: "sessionLayout") ?? "") ?? .list },
+                                                      set: { Prefs.store.set($0.rawValue, forKey: "sessionLayout") })) {
+                            ForEach(SessionLayout.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 220)
+                    }
+                }
+            }
+        case .behaviour:
+            group("SESSIONS", nil) {
+                rows {
+                    pref("terminal", "Session list follows the tab", "Sessions on the open tab first, the others folded. The one you're in and the ones that need you always show.", $followTab)
+                    divider
+                    pref("phone", "Open sessions on your phone", "New Claude sessions start with Remote Control: tap one in Steerify for iPhone to continue it in the Claude app. Needs a claude.ai login (Pro, Max, Team, Enterprise).", $remoteControl)
+                }
+            }
+            group("ROADMAP", nil) {
+                rows {
+                    pref("map", "Auto-consolidate", "Opening Roadmap counts down 10 s, then moves forward the key results whose deliveries you approved or sent back. Off: one Consolidate all button instead.", $autoConsolidate)
+                }
+            }
+        case .permissions:
+            PermissionsSettings()
+        case .branches:
+            group("DEFAULT FOR NEW PROJECTS", nil) {
+                FlowPicker(flow: Binding(get: { WorkFlow(rawValue: defaultFlow) ?? .main }, set: { defaultFlow = $0.rawValue }))
+            }
+        case .iphone:
+            card { PhonePairingView() }
+            Text("The phone icon at the end of the tab bar opens the pairing code too (green while the phone is connected).")
+                .font(.system(size: 11)).foregroundStyle(Brand.mute)
+        case .shortcuts:
+            shortcuts
+        }
+    }
+
+    // MARK: Building blocks
+
+    private func group<C: View>(_ title: String, _ sub: String?, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(Brand.label(9)).tracking(1).foregroundStyle(Brand.mute)
+            if let sub { Text(sub).font(.system(size: 11.5)).foregroundStyle(Brand.mute.opacity(0.85)) }
             content()
         }
+    }
+    private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        content().padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Brand.panel2))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.line))
+    }
+    /// Grouped rows in one card, like System Settings.
+    private func rows<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        VStack(spacing: 0) { content() }
+            .background(RoundedRectangle(cornerRadius: 10).fill(Brand.panel2))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.line))
+    }
+    private var divider: some View { Rectangle().fill(Brand.line).frame(height: 1).padding(.leading, 52) }
+
+    private func pref(_ icon: String, _ title: String, _ sub: String, _ on: Binding<Bool>) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ArtIcon(name: icon, size: 28, tile: true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.ink)
+                Text(sub).font(.system(size: 11.5)).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: on).labelsHidden().toggleStyle(.switch).tint(Brand.amber)
+        }
+        .padding(12)
     }
 
     /// A preset rendered at its own size: a card title, a line of text and a terminal line.
@@ -149,28 +276,64 @@ struct SettingsView: View {
     }
 
     private var shortcuts: some View {
-        let rows: [(String, String)] = [
-            ("⌘K", "Search sessions and items · ↩ item + its session · ⌘↩ start a session"),
-            ("⌘J", "Next thing that waits on you (board + its session)"),
-            ("⌘1 … ⌘5", "To test · Choices · Requirements · Roadmap · Release"),
-            ("⌥⌘1 … ⌥⌘9", "Switch project"), ("⌘B", "Sessions as tabs on top / list beside the terminal"),
-("⌘]  /  ⌘[", "Next / previous board tab"),
-            ("⌘T", "New Claude session (guided start)"), ("⇧⌘T", "New shell"),
-            ("⇧⌘]  /  ⇧⌘[", "Next / previous session"), ("⌘W", "Close the current session (never the app)"), ("⇧⌘W", "Close the window (sessions keep running)"),
-            ("⌘R", "Reload the board"), ("⌥⌘R", "Restart to load a new build (sessions come back)"), ("⌘,", "Settings"),
-            ("← →  + −  0  N  Esc", "In a picture preview: move, zoom, fit, pin a note, close"),
+        let groups: [(String, String, [([String], String)])] = [
+            ("FIND", "search", [
+                (["⌘K"], "Search sessions and items · ↩ item + its session · ⌘↩ start a session"),
+                (["⌘J"], "Next thing that waits on you (board + its session)"),
+            ]),
+            ("BOARD", "grid", [
+                (["⌘1", "…", "⌘5"], "To test · Choices · Requirements · Roadmap · Release"),
+                (["⌘[", "⌘]"], "Previous / next board tab"),
+                (["⌘R"], "Reload the board"),
+                (["←", "→", "+", "−", "0", "N", "Esc"], "In a picture: move, zoom, fit, pin a note, close"),
+            ]),
+            ("SESSIONS", "terminal", [
+                (["⌘T"], "New Claude session (guided start)"), (["⇧⌘T"], "New shell"),
+                (["⇧⌘[", "⇧⌘]"], "Previous / next session"),
+                (["⌘B"], "Sessions as tabs on top / list beside the terminal"),
+                (["⌘W"], "Close the current session (never the app)"),
+            ]),
+            ("WINDOW", "cube", [
+                (["⌥⌘1", "…", "⌥⌘9"], "Switch project"),
+                (["⇧⌘W"], "Close the window (sessions keep running)"),
+                (["⌥⌘R"], "Restart to load a new build (sessions come back)"),
+                (["⌘,"], "Settings"),
+            ]),
         ]
-        return VStack(spacing: 0) {
-            ForEach(rows, id: \.0) { r in
-                HStack {
-                    Text(r.0).font(.system(size: 12, design: .monospaced)).foregroundStyle(Brand.cream).frame(width: 190, alignment: .leading)
-                    Text(r.1).font(.system(size: 12)).foregroundStyle(Brand.ink.opacity(0.85))
-                    Spacer()
+        return VStack(alignment: .leading, spacing: 18) {
+            ForEach(groups, id: \.0) { g in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 7) {
+                        ArtIcon(name: g.1, size: 13)
+                        Text(g.0).font(Brand.label(9)).tracking(1).foregroundStyle(Brand.mute)
+                    }
+                    rows {
+                        ForEach(Array(g.2.enumerated()), id: \.offset) { i, r in
+                            if i > 0 { Rectangle().fill(Brand.line).frame(height: 1) }
+                            HStack(spacing: 12) {
+                                HStack(spacing: 4) {
+                                    ForEach(Array(r.0.enumerated()), id: \.offset) { _, k in
+                                        if k == "…" { Text("…").font(.system(size: 11)).foregroundStyle(Brand.mute) } else { keycap(k) }
+                                    }
+                                }
+                                .frame(width: 200, alignment: .leading)
+                                Text(r.1).font(.system(size: 12)).foregroundStyle(Brand.ink.opacity(0.88))
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                        }
+                    }
                 }
-                .padding(.vertical, 6)
-                .overlay(alignment: .bottom) { Rectangle().fill(Brand.line).frame(height: 1) }
             }
         }
+    }
+
+    private func keycap(_ k: String) -> some View {
+        Text(k).font(.system(size: 11.5, weight: .medium, design: .monospaced)).foregroundStyle(Brand.cream)
+            .padding(.horizontal, 6).frame(minWidth: 24, minHeight: 22)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color(hex: 0x0c0d10)))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Brand.line2))
+            .overlay(alignment: .bottom) { RoundedRectangle(cornerRadius: 5).fill(Brand.line2).frame(height: 2).padding(.horizontal, 1) }
     }
 }
 

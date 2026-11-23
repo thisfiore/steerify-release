@@ -56,7 +56,16 @@ mkdir -p "$APP/Contents/Resources/fonts" && cp fonts/Silkscreen-*.ttf fonts/Silk
 # What's new (the version badge's panel): this version's notes, when release.sh wrote them before bundling.
 # "What's new": the Mac app's own notes (release.sh writes both; older builds only had the full notes).
 if [ -f build/app-notes-$VERSION.md ]; then cp build/app-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"
-elif [ -f build/release-notes-$VERSION.md ]; then cp build/release-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"; fi
+elif [ -f build/release-notes-$VERSION.md ]; then cp build/release-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"
+else
+  # Dev build (no release.sh): the published notes of this version, its "In the app" part, cached per version.
+  DEVNOTES=build/dev-notes-$VERSION.md
+  if [ ! -s $DEVNOTES ] && command -v gh >/dev/null; then
+    gh release view "v$VERSION" -R thisfiore/steerify-release --json body -q .body 2>/dev/null \
+      | awk '/^### /{keep=($0=="### In the app")} keep||!/^### /&&!seen{print} /^### /{seen=1}' > $DEVNOTES || true
+  fi
+  [ -s $DEVNOTES ] && cp $DEVNOTES "$APP/Contents/Resources/whats-new.md"
+fi
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

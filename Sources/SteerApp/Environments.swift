@@ -99,7 +99,7 @@ enum TestEnvs {
             let action = u.host ?? ""
             if action.isEmpty { return "Steerify only, not the item" }
             if dead(raw) { return "nothing (Steerify has no \"\(action)\" link that leads to the item)" }
-            if action == "open", !query.contains("item=") { return "the project, not the item" }
+            if action == "open", !query.contains("item="), !query.contains("ref=") { return "the project, not the item" }
             return nil
         case "file":
             return raw.hasSuffix("/") ? "a folder, not the thing to look at" : nil
@@ -113,7 +113,9 @@ enum TestEnvs {
     static func reach(tests: [[String: Any]]) -> (broken: [String], down: [String]) {
         var broken: [String] = [], down: [String] = []
         for (i, t) in tests.enumerated() {
-            guard let s = t["url"] as? String, host(s) != nil, let url = URL(string: s) else { continue }
+            guard let s = t["url"] as? String, let h = host(s), let url = URL(string: s) else { continue }
+            // GitHub answers 404 to anyone not signed in on a private repo: Steerify cannot tell, so it does not refuse.
+            if h == "github.com" || h.hasSuffix(".github.com") { continue }
             var req = URLRequest(url: url, timeoutInterval: 4)
             req.httpMethod = "GET"
             let sem = DispatchSemaphore(value: 0)
@@ -126,6 +128,16 @@ enum TestEnvs {
             else if failed { down.append("test \(i + 1): \(s)") }
         }
         return (broken, down)
+    }
+
+    /// file:// URL for a link relative to the board folder (protos/x.html?v=B, img/…), when that file exists.
+    /// The skill tells sessions to link prototypes this way; Steerify opens them from the board.
+    static func boardFile(_ s: String, board: String) -> String? {
+        let raw = s.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty, !board.isEmpty, URL(string: raw)?.scheme == nil, !raw.hasPrefix("/") else { return nil }
+        let file = String(raw.split(separator: "?", maxSplits: 1).first ?? "").components(separatedBy: "#")[0]
+        guard !file.isEmpty, FileManager.default.fileExists(atPath: (board as NSString).appendingPathComponent(file)) else { return nil }
+        return MockSnapshots.protoURL(raw, base: URL(fileURLWithPath: board, isDirectory: true)).absoluteString
     }
 
     /// Outside links in a delivery of a project with no environments yet: Claude must ask, not guess.

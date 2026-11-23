@@ -12,6 +12,7 @@ final class AppModel: ObservableObject {
             if oldValue != selectedProjectId { nextIndex = 0 }
             // From one project to another: the pixel loader covers the time the new board takes to build.
             if oldValue != nil, oldValue != selectedProjectId, let p = project { SwitchLoader.shared.show(p.name) }
+            if oldValue != selectedProjectId, let p = project { ProcessHub.shared.autostart(p) }   // choice pt-start: when the project opens
         }
     }
     @Published var sidebarVisible: Bool = Prefs.store.object(forKey: Prefs.sidebarVisible) as? Bool ?? true {
@@ -24,6 +25,8 @@ final class AppModel: ObservableObject {
     @Published var preview: PreviewState?
     /// ⌘K palette.
     @Published var paletteOpen = false
+    @Published var recipesOpen = false                // "Start from a recipe" gallery (Recipes.swift)
+    @Published var levelOpen = false                  // "How technical are you?" (Level.swift): first launch, until answered
     /// ⌘N: the New request sheet, pinned to the project it was opened in (nil = closed). A session that
     /// switches the window to another project meanwhile must not move the request there.
     @Published var requestProjectId: String?
@@ -42,6 +45,10 @@ final class AppModel: ObservableObject {
     @Published var highlightRef: String?
     /// Which actionable item ⌘J goes to next.
     @Published var nextIndex = 0
+    /// Entries ⌘J already visited in this walk ("<project>|<ref>"), across projects (NextAcross.swift).
+    @Published var nextSeen: Set<String> = []
+    /// The ⌘J list (hover on the pill) is open.
+    @Published var nextListOpen = false
     /// Set by the menu bar label (it lives as long as the app): reopens the main window.
     static var reopenWindow: (() -> Void)?
     var quittingForUpdate = false
@@ -77,10 +84,11 @@ final class AppModel: ObservableObject {
         if let p {
             reloadManifest(p.id)
             board_(p).reload()
-            if let ref, info["action"] as? String == "focus" { focusItem(projectId: p.id, ref: ref) }
+            if let ref, info["action"] as? String == "focus" { revealFromClaude(projectId: p.id, ref: ref) }   // never another project
         }
         if let m = info["message"] as? String { showToast(m, projectId: p?.id, ref: ref) }
     }
+    func testUI(_ info: [AnyHashable: Any]) { handleUI(info) }
     private func board_(_ p: Project) -> BoardStore { board(for: p) }
     /// Answers waiting for a session, and what was just sent to sessions (Nudges.swift).
     @Published var nudges: [Nudge] = []
@@ -155,21 +163,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// ⌘J: the next item that waits on you (board jumps there, its session shows).
-    func jumpNext() {
-        guard let p = project else { return }
-        let list = nextSteps(p).filter(\.urgent)
-        guard !list.isEmpty else { return }
-        let i = nextIndex % list.count
-        let step = list[i]
-        nextIndex = (nextIndex + 1) % list.count
-        // Always say why ⌘J brought you here, so a jump is never a mystery.
-        showToast("⌘J \(i + 1)/\(list.count) · \(step.reason.prefix(1).uppercased() + step.reason.dropFirst())", projectId: p.id, ref: step.ref)
-        if step.ref.hasPrefix("session:"), let id = UUID(uuidString: String(step.ref.dropFirst(8))) {
-            selectedSession[p.id] = id; return
-        }
-        openCombo(projectId: p.id, ref: step.ref, startNew: false)
-    }
+    // ⌘J (jumpNext) lives in NextAcross.swift: it walks every project.
 
     struct FocusRequest: Equatable { let id = UUID(); let projectId: String; let ref: String }
 
@@ -242,6 +236,7 @@ final class AppModel: ObservableObject {
         ProjectIcons.shared.refresh(projects)
         let last = Prefs.store.string(forKey: Prefs.lastProject)
         selectedProjectId = projects.first(where: { $0.id == last })?.id ?? projects.first?.id
+        if let p = project { DispatchQueue.main.async { ProcessHub.shared.autostart(p) } }   // didSet does not run in init
     }
 
     var project: Project? { projects.first { $0.id == selectedProjectId } }
@@ -439,7 +434,7 @@ final class AppModel: ObservableObject {
             if projects.contains(where: { $0.id == pid }) { selectedProjectId = pid }
             newSession(.claude)
         case "open":       // steerify://open?project=sb&item=choice:<id> → that item on the board
-            if let ref = q["item"], !ref.isEmpty { focusItem(projectId: pid, ref: ref) }
+            if let ref = q["item"] ?? q["ref"], !ref.isEmpty { focusItem(projectId: pid, ref: ref) }
         case "since":      // steerify://since?project=sb&hours=20 → the "Since you left" brief as if you were away that long
             if projects.contains(where: { $0.id == pid }) { selectedProjectId = pid }
             let h = Double(q["hours"] ?? "") ?? 20

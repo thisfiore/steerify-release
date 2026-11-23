@@ -129,7 +129,21 @@ enum SteerifyMCP {
             guard let ref = a["ref"] as? String else { return ("ref is required", true) }
             return getItem(ref, board)
         case "deliver":
-            guard let item = a["item"] as? [String: Any] else { return ("item is required", true) }
+            guard var item = a["item"] as? [String: Any] else { return ("item is required", true) }
+            // A re-delivery by id (status → live, keepVerdict) keeps what the previous version said.
+            if let prev = deliveredItem(board, id: item["id"] as? String) {
+                for k in ["title", "area", "what"] where (item[k] as? String ?? "").isEmpty { if let v = prev[k] { item[k] = v } }
+            }
+            // Areas are spelled many ways ("Mac app", "mac", "iPhone"): resolve to the board's key, or say which ones exist.
+            switch resolveArea(item["area"] as? String, board: board) {
+            case .success(let k): if let k { item["area"] = k }
+            case .failure(let e): return (e.message, true)
+            }
+            // Board-relative links (protos/x.html?v=B, img/…) open from the board folder.
+            if var tl = item["tests"] as? [[String: Any]] {
+                for i in tl.indices { if let u = tl[i]["url"] as? String, let abs = boardFileURL(u, board: board) { tl[i]["url"] = abs } }
+                item["tests"] = tl
+            }
             // Test links go to the project's own environments only (steerify.json), never a guessed host.
             let envs = TestEnvs.load(board), testList = item["tests"] as? [[String: Any]] ?? []
             var wrong = TestEnvs.problems(tests: testList, area: item["area"] as? String, envs: envs)
@@ -193,7 +207,10 @@ enum SteerifyMCP {
                 const want = \(jsonString(item)); const st = \(jsonString(st));
                 const slug = s => s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48);
                 let hit = null;
-                for (const t of b.tracks || []) for (const it of t.items || []) if (it[0] === want || slug(it[0]) === slug(want)) {
+                const near = []; for (const t of b.tracks || []) for (const it of t.items || []) { const a = slug(it[0]), w = slug(want); if (a && w && a !== w && (a.startsWith(w) || w.startsWith(a))) near.push(it[0]) }
+                const exact = (b.tracks || []).some(t => (t.items || []).some(it => it[0] === want || slug(it[0]) === slug(want)));
+                const target = !exact && near.length === 1 ? near[0] : null;
+                for (const t of b.tracks || []) for (const it of t.items || []) if (it[0] === want || slug(it[0]) === slug(want) || it[0] === target) {
                   if (it[1] !== st) { if (!(it[2] && typeof it[2] === 'object')) it[2] = {}; it[2].moved = new Date().toISOString() }
                   it[1] = st; hit = it[0];
                   if (st === 'done') { if (!(it[2] && typeof it[2] === 'object')) it[2] = {}; it[2].doneAt = new Date().toISOString().slice(0,10) }
@@ -210,7 +227,10 @@ enum SteerifyMCP {
                 const want = \(jsonString(item)); const k = \(jsonString(k)); const proposed = \(a["proposed"] as? Bool == true ? "true" : "false");
                 const slug = s => s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48);
                 let hit = null;
-                for (const t of b.tracks || []) for (const it of t.items || []) if (it[0] === want || slug(it[0]) === slug(want)) {
+                const near = []; for (const t of b.tracks || []) for (const it of t.items || []) { const a = slug(it[0]), w = slug(want); if (a && w && a !== w && (a.startsWith(w) || w.startsWith(a))) near.push(it[0]) }
+                const exact = (b.tracks || []).some(t => (t.items || []).some(it => it[0] === want || slug(it[0]) === slug(want)));
+                const target = !exact && near.length === 1 ? near[0] : null;
+                for (const t of b.tracks || []) for (const it of t.items || []) if (it[0] === want || slug(it[0]) === slug(want) || it[0] === target) {
                   if (it.length < 2) it[1] = 'todo';
                   if (k) { if (!(it[2] && typeof it[2] === 'object')) it[2] = {}; it[2].kind = k; if (proposed) it[2].kindProposed = true; else delete it[2].kindProposed }
                   else if (it[2] && typeof it[2] === 'object') { delete it[2].kind; delete it[2].kindProposed; if (!Object.keys(it[2]).length) it.length = 2 }
@@ -340,7 +360,8 @@ enum SteerifyMCP {
                 out = (approve ? 'approved ' : 'discarded ') + name;
                 """)
         case "update_request":
-            guard let id = a["id"] as? String else { return ("id is required", true) }
+            guard let rawId = a["id"] as? String else { return ("id is required", true) }
+            let id = rawId.hasPrefix("request:") ? String(rawId.dropFirst(8)) : rawId
             let ok = RequestLog.edit(board, id: id) { r in
                 if let st = a["status"] as? String { r["status"] = st }
                 if let bc = a["became"] as? [String] { r["became"] = Array(NSOrderedSet(array: (r["became"] as? [String] ?? []) + bc)) }
@@ -391,6 +412,11 @@ enum SteerifyMCP {
                 runId = runs.first { $0.task == t && $0.status == "running" }?.id
                     ?? TaskStore.addRun(board, task: t, due: nil, late: false, session: nil, term: ProcessInfo.processInfo.environment["STEERIFY_SESSION"], note: nil)
             }
+            if let r = runId, !TaskStore.raw(board).runs.contains(where: { $0["id"] as? String == r }),
+               let t = r.split(separator: "@").first.map(String.init), TaskStore.raw(board).tasks.contains(where: { $0["id"] as? String == t }) {
+                runId = runs.first { $0.task == t && $0.status == "running" }?.id
+                    ?? TaskStore.addRun(board, task: t, due: nil, late: false, session: nil, term: ProcessInfo.processInfo.environment["STEERIFY_SESSION"], note: nil)
+            }
             guard let rid = runId, TaskStore.raw(board).runs.contains(where: { $0["id"] as? String == rid }) else {
                 return ("no such run; pass run (from your brief) or task", true)
             }
@@ -420,6 +446,36 @@ enum SteerifyMCP {
     }
 
     // MARK: Helpers
+
+    struct AreaError: Error { let message: String }
+
+    /// The delivered item with this id, if any (for re-deliveries that only send what changed).
+    static func deliveredItem(_ board: String, id: String?) -> [String: Any]? {
+        guard let id, !id.isEmpty, let d = BoardFiles.json(board, "delivered.json") else { return nil }
+        let items = (d as? [String: Any])?["items"] as? [[String: Any]] ?? (d as? [[String: Any]] ?? [])
+        return items.first { $0["id"] as? String == id }
+    }
+
+    /// The board.json area key for what a session wrote: the key itself, any case, or the area's name, or the one
+    /// area whose key / name contains it. nil area = leave it (deliver.mjs says it is missing).
+    static func resolveArea(_ given: String?, board: String) -> Result<String?, AreaError> {
+        guard let given = given?.trimmingCharacters(in: .whitespaces), !given.isEmpty else { return .success(nil) }
+        let areas = (BoardFiles.json(board, "board.json") as? [String: Any])?["areas"] as? [String: Any] ?? [:]
+        guard !areas.isEmpty else { return .success(given) }
+        let names = areas.mapValues { (($0 as? [String: Any])?["name"] as? String) ?? "" }
+        let g = given.lowercased(), gs = BoardFiles.slug(given).lowercased()
+        if areas[given] != nil { return .success(given) }
+        if let k = names.keys.first(where: { $0.lowercased() == g || BoardFiles.slug($0).lowercased() == gs }) { return .success(k) }
+        if let k = names.first(where: { $0.value.lowercased() == g || BoardFiles.slug($0.value).lowercased() == gs })?.key { return .success(k) }
+        let words = { (s: String) in Set(BoardFiles.slug(s).lowercased().split(separator: "-").map(String.init)) }
+        let gw = words(given)
+        let near = names.filter { k, n in !gw.isDisjoint(with: words(k).union(words(n))) }
+        if near.count == 1, let k = near.first?.key { return .success(k) }
+        let list = names.keys.sorted().map { k in names[k]!.isEmpty ? k : "\(k) (\(names[k]!))" }.joined(separator: ", ")
+        return .failure(AreaError(message: "area \"\(given)\" is not one of this board's areas. Use one of: \(list)"))
+    }
+
+    static func boardFileURL(_ s: String, board: String) -> String? { TestEnvs.boardFile(s, board: board) }
 
     private static func jsonString(_ v: Any) -> String {
         (try? JSONSerialization.data(withJSONObject: v, options: [.fragmentsAllowed])).flatMap { String(data: $0, encoding: .utf8) } ?? "null"
@@ -572,10 +628,29 @@ enum SteerifyMCP {
             }
             out["verdict"] = dec["req:" + parts[1]] ?? NSNull()
         case "track":
-            guard let t = (b["tracks"] as? [[String: Any]] ?? []).first(where: { BoardFiles.slug(($0["name"] as? String) ?? "") == parts[1] || ($0["name"] as? String) == parts[1] })
-            else { return ("no roadmap chapter \(parts[1])", true) }
+            let tracks = b["tracks"] as? [[String: Any]] ?? []
+            let want = BoardFiles.slug(parts[1]).lowercased()
+            let tslug = { (t: [String: Any]) in BoardFiles.slug((t["name"] as? String) ?? "").lowercased() }
+            // Sessions slug the whole name; Steerify's slugs stop at 48 characters: match either way, if only one fits.
+            let loose = tracks.filter { let s = tslug($0); return !s.isEmpty && (s.hasPrefix(want) || want.hasPrefix(s)) }
+            guard let t = tracks.first(where: { tslug($0) == want || ($0["name"] as? String) == parts[1] }) ?? (loose.count == 1 ? loose.first : nil)
+            else { return ("no roadmap chapter \(parts[1]). Chapters: " + tracks.compactMap { ($0["name"] as? String).map { "track:" + BoardFiles.slug($0) } }.joined(separator: ", "), true) }
             out["chapter"] = t["name"]; out["area"] = t["area"] ?? NSNull()
             out["items"] = (t["items"] as? [[Any]] ?? []).map { ["text": $0.first ?? "", "status": $0.count > 1 ? $0[1] : "todo"] }
+        case "road":
+            let want = BoardFiles.slug(parts[1]).lowercased()
+            var hits: [(String, [Any])] = []
+            for t in b["tracks"] as? [[String: Any]] ?? [] {
+                for it in t["items"] as? [[Any]] ?? [] {
+                    let s = BoardFiles.slug((it.first as? String) ?? "").lowercased()
+                    if s == want || it.first as? String == parts[1] { hits = [((t["name"] as? String) ?? "", it)]; break }
+                    if !s.isEmpty, s.hasPrefix(want) || want.hasPrefix(s) { hits.append(((t["name"] as? String) ?? "", it)) }
+                }
+                if hits.count == 1, BoardFiles.slug((hits[0].1.first as? String) ?? "").lowercased() == want { break }
+            }
+            guard hits.count == 1, let (chapter, it) = hits.first else { return ("no roadmap item \(parts[1])", true) }
+            out["chapter"] = chapter; out["text"] = it.first ?? ""; out["status"] = it.count > 1 ? it[1] : "todo"
+            if it.count > 2 { out["meta"] = it[2] }
         case "reqs":
             guard let g = (b["requirements"] as? [[String: Any]] ?? []).first(where: { BoardFiles.slug(($0["h"] as? String) ?? "") == parts[1] })
             else { return ("no requirements chapter \(parts[1])", true) }
@@ -594,7 +669,7 @@ enum SteerifyMCP {
             out["runs"] = Array(runs.filter { $0["task"] as? String == parts[1] }.sorted { ($0["started"] as? String ?? "") > ($1["started"] as? String ?? "") }.prefix(8))
             if let e = t["every"] as? String, let s = TaskSchedule(e) { out["schedule"] = s.describe }
         default:
-            return ("unknown ref kind; use test:, choice:, req:, track:, reqs:, request:, task:", true)
+            return ("unknown ref kind; use test:, choice:, req:, road:, track:, reqs:, request:, task:", true)
         }
         return (jsonString(out), false)
     }

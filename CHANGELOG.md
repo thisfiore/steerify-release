@@ -2,6 +2,21 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.17 · 2026-11-23
+
+### In the app
+
+- **A pick never vanishes from Ready** — Every pick shows in Ready · Busy asker: “queued · sends when it stops” · Sent by itself when free · Set sail still starts now
+- **Settings: pages with pixel icons** — Sidebar with six pages · Pixel icon on every page · Toggles grouped in cards · Shortcuts as keycaps, grouped
+- **Pixel pier on the auto-consolidate countdown** — Pixel harbour on the countdown · One buoy per key result · Lantern fuse counts seconds · Then the boat voyage
+- **report_issue: agents file bugs on the board** — New MCP tool: report_issue · Agent sends call, error, context · Lands as Request from an agent · Returns a follow link
+- **Report a bug / Ask for a feature in Steerify** — Beta pill: Report a bug, Ask for a feature · Help menu: bug, feature, question · Pixel sheet, shows what is sent · Bottle flies to the lighthouse
+- **Fix: forkFailed(24) when many sessions start** — No more "Process launch failed" · 40+ sessions restore together
+- **Fix: Focus items always on top, "Only in Focus" checkbox** — Focus items always listed first · ★ Focus chip removed · "Only in Focus" checkbox on the right
+- **Fix: Steerify MCP refused good calls** — Re-deliver by id just works · "Mac app" area accepted · protos/ links open from the board · Small card mockups accepted
+- **Fix: top bar · Reload left of + Request, no New session** — Reload sits left of + Request · New session menu removed · Sessions start from the session panel
+- **Stuck “warming up” says why + Restart** — Launch line no longer lost · Stuck card says why · Restart resumes the same chat
+
 ## 0.5.16 · 2026-11-23
 
 ### In the app

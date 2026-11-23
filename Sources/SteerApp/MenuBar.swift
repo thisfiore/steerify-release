@@ -155,12 +155,12 @@ struct MenuBarPanel: View {
     }
 
     @ViewBuilder private var hero: some View {
-        if let p = model.projects.first(where: { !model.nextSteps($0).filter(\.urgent).isEmpty }),
-           let step = model.nextSteps(p).first(where: \.urgent) {
-            Button { go { model.selectedProjectId = p.id; model.nextIndex = 0; model.jumpNext() } } label: {
+        if let e = model.nextUp(), let p = model.projects.first(where: { $0.id == e.projectId }) {
+            let step = e.step
+            Button { go { model.jumpNext() } } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
-                        Text("NEXT FOR YOU · \(p.name.uppercased())").font(Brand.label(8.5)).tracking(0.8).lineLimit(1)
+                        Text("NEXT FOR YOU · \(e.focused ? "★ " : "")\(p.name.uppercased())").font(Brand.label(8.5)).tracking(0.8).lineLimit(1)
                         Spacer(minLength: 4)
                         Text("⌘J").font(.system(size: 10, design: .monospaced))
                     }.foregroundStyle(Color(hex: 0x1a1200).opacity(0.65))
@@ -285,7 +285,7 @@ struct MenuSessionRow: View {
             case .working: return (session.kind == .claude ? "rowing…" : "shell", session.kind == .claude ? Brand.blue : Brand.cream.opacity(0.6))
             case .waiting: return ("raising a hand", Brand.amber)
             case .idle: return ("idle \(MenuBarPanel.since(session.statusAt).replacingOccurrences(of: "for ", with: ""))", Brand.cream)
-            case .starting: return ("warming up", Brand.mute)
+            case .starting: return session.stuck.map { ($0.reason, Brand.amber) } ?? ("warming up", Brand.mute)
             case .ended: return ("gone home", Brand.mute)
             }
         }()

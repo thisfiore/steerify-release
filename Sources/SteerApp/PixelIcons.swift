@@ -63,6 +63,10 @@ enum PixelArt {
                       words: ["board", "grid", "dashboard", "format", "template", "slides", "presentation", "deck"], color: Color(hex: 0xc4a7ff), boost: 0),
         "megaphone": .init(rows: ["........#.", "......###.", "....#####.", "#.#######.", "#########.", "#.#######.", "..#.#####.", "..#...###.", "..##....#.", ".........."],
                            words: ["marketing", "campaign", "announce", "social", "instagram", "ads", "advertising"], color: Color(hex: 0xff8fa0), boost: 0),
+        "branch": .init(rows: [".##....##.", ".##....##.", "..#.....#.", "..#.....#.", "..#....#..", "..#...#...", "..#.##....", "..##......", ".##.......", ".##......."],
+                        words: ["git", "branch", "merge", "worktree", "commit", "flow"], color: Color(hex: 0x4ade80), boost: 0),
+        "keys": .init(rows: ["..........", "##########", "#.#.#.#.##", "##########", "##.#.#.#.#", "##########", "#.######.#", "##########", "..........", ".........."],
+                      words: ["shortcut", "keyboard", "hotkey", "keys", "typing"], color: Color(hex: 0xf2e8cf), boost: 0),
         "cube": .init(rows: ["....##....", "..##..##..", "##......##", "#.##..##.#", "#...##...#", "#...#....#", "#...#....#", "##..#...##", "..##.###..", "....##...."],
                       words: ["package", "build", "app", "mac", "native", "swift", "bundle"], color: Color(hex: 0xf2e8cf), boost: 0),
     ]

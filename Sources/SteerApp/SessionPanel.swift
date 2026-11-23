@@ -90,13 +90,14 @@ extension TerminalSession {
         case .idle:
             let m = Int(-(statusAt ?? Date()).timeIntervalSinceNow / 60)
             return m < 1 ? "idle" : m < 60 ? "idle \(m)m" : "idle \(m / 60)h"
-        case .starting: return "warming up"
+        case .starting: return stuck?.reason ?? "warming up"
         case .ended: return "ended"
         }
     }
     var moodColor: Color {
         guard running else { return Brand.mute }
         if kind != .claude { return Brand.cream.opacity(0.6) }
+        if status == .starting, stuck != nil { return Brand.amber }
         switch status { case .working: return Brand.blue; case .waiting: return Brand.amber; case .idle: return Brand.cream.opacity(0.75); default: return Brand.mute }
     }
 }
@@ -175,6 +176,12 @@ struct SessionChip2: View {
                         turnButton(turn)
                         Text("your turn").font(.system(size: S(10))).foregroundStyle(Brand.violet.opacity(0.85)).lineLimit(1).fixedSize()
                     }.padding(.top, 2)
+                } else if vertical, session.stuck != nil, session.status == .starting, session.running {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(session.moodWord + " · " + whereName).font(.system(size: S(10))).foregroundStyle(Brand.amber)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        restartButton
+                    }.padding(.top, 1)
                 } else if vertical || selected {
                     Text(subtitle(outlook, turn) + (vertical && outlook == nil && turn == nil ? " · " + whereName : ""))
                         .font(.system(size: S(10))).foregroundStyle(subtitleColor(outlook, turn))
@@ -183,6 +190,7 @@ struct SessionChip2: View {
             }
             if vertical { Spacer(minLength: 4) }
             if !vertical, let turn { turnButton(turn) }
+            if !vertical, session.stuck != nil, session.status == .starting, session.running { restartButton }
             // Hover controls keep their space when hidden (opacity, not if): showing them must never
             // narrow the chip, rewrap the name or push the neighbours.
             let showControls = hover || selected
@@ -207,6 +215,16 @@ struct SessionChip2: View {
         .pointerStyle(.link)
         .help(help(outlook, turn))
         .contextMenu { labelMenu }
+    }
+
+    /// A session stuck on warming up: start it again, same chat (StuckStart.swift).
+    private var restartButton: some View {
+        Button { model.restartStuck(session) } label: {
+            Label("Restart", systemImage: "arrow.clockwise").font(.system(size: S(10.5), weight: .semibold))
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(Brand.amber)).foregroundStyle(Color.black)
+        }
+        .buttonStyle(SteerButton()).pointerStyle(.link).help("Start this session again, on the same chat")
     }
 
     /// Right-click: rename and pin (kept for the conversation, shared with the iPhone).

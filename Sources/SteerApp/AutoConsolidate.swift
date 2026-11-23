@@ -12,6 +12,7 @@ struct AutoConsolidateBar: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var board: BoardStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(Prefs.autoConsolidate, store: Prefs.store) private var autoOn = true
 
     private enum Phase: Equatable { case idle, counting, done }
     @State private var phase: Phase = .idle
@@ -51,6 +52,7 @@ struct AutoConsolidateBar: View {
             }
         }
         .onChange(of: sig) { _, s in if phase != .done { start(s) } }
+        .onChange(of: autoOn) { _, _ in if phase != .done { start(sig) } }
         .task(id: phase == .counting ? counted : "") {
             guard phase == .counting else { return }
             while left > 0 {
@@ -74,7 +76,7 @@ struct AutoConsolidateBar: View {
 
     private func start(_ sig: String) {
         guard !sig.isEmpty else { if phase == .counting { phase = .idle }; return }
-        guard sig != cancelled else { phase = .idle; return }
+        guard sig != cancelled, autoOn else { phase = .idle; return }   // Settings off: only the quiet line
         counted = sig; left = Self.seconds; phase = .counting
     }
 
@@ -103,11 +105,11 @@ struct AutoConsolidateBar: View {
 
     private func countCard(_ ps: [RoadProposal]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                CountRing(left: left, total: Self.seconds, still: reduceMotion)
             PierCountdown(left: left, total: Self.seconds, buoys: ps.count, still: reduceMotion)
                 .frame(maxWidth: .infinity).frame(height: S(78))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
+            HStack(spacing: 12) {
+                CountRing(left: left, total: Self.seconds, still: reduceMotion)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Bringing \(ps.count) key result\(ps.count == 1 ? "" : "s") up to date")
                         .font(.system(size: S(13.5), weight: .semibold)).foregroundStyle(Brand.cream)

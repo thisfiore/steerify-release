@@ -74,7 +74,17 @@ final class SmartAreaModel: ObservableObject {
         return s
     }
     /// The areas as shown: with your renames, merges and hides.
-    func get(_ projectId: String) -> SmartAreas? { raw(projectId).map { edits(projectId).apply($0) } }
+    /// Applying the edits walks every key result: the board asks for the areas once per key result on every app
+    /// change, so the result is kept until the areas or the edits change (0.5.17 speed check: app change grew with the board).
+    func get(_ projectId: String) -> SmartAreas? {
+        guard let r = raw(projectId) else { return nil }
+        let e = edits(projectId)
+        if let c = applied[projectId], c.raw == r.at, c.edits == e { return c.out }
+        let out = e.apply(r)
+        applied[projectId] = (r.at, e, out)
+        return out
+    }
+    private var applied: [String: (raw: Date, edits: AreaEdits, out: SmartAreas)] = [:]
 
     func edits(_ projectId: String) -> AreaEdits {
         if let e = edits[projectId] { return e }

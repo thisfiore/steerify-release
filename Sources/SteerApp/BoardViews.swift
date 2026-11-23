@@ -114,7 +114,7 @@ struct BoardScreen: View {
     private var smartAreas: SmartAreas? { tab == .road ? smart.get(board.project.id) : nil }
     private var areaList: [(key: String, name: String)] { smartAreas.map { $0.areas.map { (key: $0.key, name: $0.name) } } ?? board.areas }
     /// A key result's areas: its chapter's feature, then the other areas its text names.
-    private func roadAreas(_ r: RoadItem) -> [String] { smartAreas.map { $0.keys(r.id) } ?? [r.area] }
+    private func roadAreas(_ r: RoadItem, _ sa: SmartAreas?? = nil) -> [String] { (sa ?? smartAreas).map { $0.keys(r.id) } ?? [r.area] }
 
     /// The chapter of a roadmap ref ("road:<id>" or "track:<slug>").
     private func roadTrack(of ref: String) -> String? {
@@ -142,7 +142,7 @@ struct BoardScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             // The TabBar lives in ContentView, across the full window (board + sessions).
-            if tab != .ready { NextStrip(board: board, openReady: { tab = .ready }).padding(.top, 6).padding(.bottom, 4) }
+            if tab != .ready { NextStrip(board: board, openReady: { tab = .ready }, openTab: { tab = $0 }).padding(.top, 6).padding(.bottom, 4) }
             if tab == .release {
                 ReleaseScreen(board: board)
             } else if tab == .ready {
@@ -228,9 +228,15 @@ struct BoardScreen: View {
 
     // Filtering (area + state), per tab. Each state is a function so the filter bar can show counts.
     private func inArea(_ a: [String], _ sel: String?) -> Bool { sel == nil || a.contains(sel!) }
-    private var ships: [ShipItem] { shipsIn(state) }
-    private var choices: [BoardDecision] { choicesIn(state) }
-    private var reqs: [Requirement] { reqsIn(state) }
+    private var ships: [ShipItem] { focusFirst(shipsIn(state)) { "test:" + $0.id } }
+    private var choices: [BoardDecision] { focusFirst(choicesIn(state)) { "choice:" + $0.id } }
+    private var reqs: [Requirement] { focusFirst(reqsIn(state)) { "req:" + $0.id } }
+    /// Items of the chapters in focus always on top, in the focus order; the rest keep their order (request r261123-130505).
+    private func focusFirst<T>(_ xs: [T], _ ref: (T) -> String) -> [T] {
+        guard !board.focus.isEmpty else { return xs }
+        let rank = xs.map { board.focusChapter(of: ref($0)).flatMap(board.focusRank) ?? Int.max }
+        return xs.indices.sorted { (rank[$0], $0) < (rank[$1], $1) }.map { xs[$0] }
+    }
     private var road: [RoadItem] { roadIn(state) }
 
     func shipsIn(_ st: String, area sel: String?? = nil) -> [ShipItem] {
@@ -270,10 +276,16 @@ struct BoardScreen: View {
             }
         }
     }
-    private var reqGroups: [String] { Array(NSOrderedSet(array: reqs.map(\.group)).array as! [String]).reversed() }
+    private var reqGroups: [String] {
+        let all = Array((NSOrderedSet(array: reqsIn(state).map(\.group)).array as! [String]).reversed())
+        // Groups holding focused requirements first, in the focus order (request r261123-130505).
+        let focused = NSOrderedSet(array: reqs.filter { board.inFocus("req:" + $0.id) }.map(\.group)).array as! [String]
+        return focused + all.filter { !focused.contains($0) }
+    }
     func roadIn(_ st: String, area sel: String?? = nil) -> [RoadItem] {
-        board.roadmap.filter { r in
-            guard inArea(roadAreas(r), sel ?? area) else { return false }
+        let sa = smartAreas, a = sel ?? area   // once, not per key result
+        return board.roadmap.filter { r in
+            guard a == nil || inArea(roadAreas(r, .some(sa)), a) else { return false }
             switch st {
             case "open": return r.status != "done"
             case "done": return r.status == "done"
@@ -339,13 +351,17 @@ struct BoardScreen: View {
         Dictionary(uniqueKeysWithValues: FilterBar.states(tab).map { ($0.0, count($0.0)) })
     }
     /// Per area, in the state shown now ("" = all areas).
+    /// One pass over the items of this state (was one full filter per area chip, on every app change).
     private var areaCounts: [String: Int] {
-        func n(_ a: String?) -> Int {
-            switch tab { case .test: shipsIn(state, area: .some(a)).count; case .choice: choicesIn(state, area: .some(a)).count
-                         case .req: reqsIn(state, area: .some(a)).count; case .road: roadIn(state, area: .some(a)).count; case .release, .ready, .task: 0 }
+        var out: [String: Int] = ["": 0]
+        func add(_ areas: [String]) { out["", default: 0] += 1; for a in Set(areas) { out[a, default: 0] += 1 } }
+        switch tab {
+        case .test: for s in shipsIn(state, area: .some(nil)) { add([s.area]) }
+        case .choice: for d in choicesIn(state, area: .some(nil)) { add(d.areas) }
+        case .req: for r in reqsIn(state, area: .some(nil)) { add([r.area]) }
+        case .road: let sa = smartAreas; for r in roadIn(state, area: .some(nil)) { add(roadAreas(r, .some(sa))) }
+        case .release, .ready, .task: break
         }
-        var out = ["": n(nil)]
-        for a in areaList { out[a.key] = n(a.key) }
         return out
     }
 }
@@ -423,7 +439,7 @@ struct FilterBar: View {
     var regroup: (() -> Void)? = nil
     /// Feature areas: right-click a chip to rename, merge or hide it (kept across regroupings).
     var areaMenu: AreaMenu? = nil
-    /// ★ Focus chip (choice focus-filter-look), shown only when a chapter is in focus.
+    /// "Only in Focus" checkbox, on the right; shown only when a chapter is in focus.
     var focus: FocusChip? = nil
     /// Chips shown before "+ N more".
     static let maxChips = 12
@@ -450,7 +466,6 @@ struct FilterBar: View {
 
     private var stateRow: some View {
         HStack(spacing: 10) {
-            if let f = focus { focusChip(f) }
             HStack(spacing: 2) {
                 ForEach(states, id: \.0) { s in
                     let on = state == s.0, n = counts[s.0] ?? 0
@@ -468,6 +483,7 @@ struct FilterBar: View {
                 }
             }
             Spacer(minLength: 8)
+            if let f = focus { focusChip(f) }
             if area != nil || state != "open" {
                 Button("Clear") { area = nil; state = "open" }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11.5)))
             }
@@ -475,23 +491,20 @@ struct FilterBar: View {
         }
     }
 
+    /// "Only in Focus" checkbox on the right (request r261123-130505): focused items are always on top anyway,
+    /// this hides the rest.
     private func focusChip(_ f: FocusChip) -> some View {
-        Button(action: f.toggle) {
-            HStack(spacing: 5) {
-                Image(systemName: f.on ? "star.fill" : "star").font(.system(size: S(10.5), weight: .bold))
-                Text("Focus").fontWeight(.semibold)
-                Text("\(f.count)").monospacedDigit().opacity(0.75)
+        Toggle(isOn: Binding(get: { f.on }, set: { if $0 != f.on { f.toggle() } })) {
+            HStack(spacing: 4) {
+                Text("Only in Focus")
+                Text("\(f.count)").monospacedDigit().foregroundStyle(Brand.mute)
             }
-            .font(.system(size: S(12)))
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .foregroundStyle(f.on ? Color(hex: 0x1a1300) : Brand.amber)
-            .background(Capsule().fill(f.on ? Brand.amber : .clear))
-            .overlay(Capsule().stroke(Brand.amber.opacity(f.on ? 0 : 0.7)))
-            .contentShape(Capsule())
+            .font(.system(size: S(11.5)))
+            .foregroundStyle(f.on ? Brand.amber : Brand.ink)
         }
-        .buttonStyle(SteerButton())
-        .help(f.on ? "Showing only the chapters in focus · click to show everything"
-                   : "Show only what belongs to the chapters in focus: " + f.chapters.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " · "))
+        .toggleStyle(.checkbox)
+        .help("Items of the chapters in focus are always on top. Tick to hide the rest: "
+              + f.chapters.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " · "))
     }
 
     /// One tag per area: click to show only that area, click again (or All) to show everything.
@@ -1145,8 +1158,8 @@ struct TestRow: View {
             PixelIcon(name: "test", size: 10).foregroundStyle(Brand.mute).padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 // No Test it when the link leads nowhere (an app link Steerify cannot act on): the picture is the test.
-                if let u = test.url, !TestEnvs.dead(u), let url = URL(string: u) {
-                    Button(test.label) { if url.scheme == "steerify" { model.handle(url) } else { NSWorkspace.shared.open(url) } }
+                if let u0 = test.url, case let u = TestEnvs.boardFile(u0, board: model.projects.first { $0.id == projectId }?.boardDir ?? "") ?? u0, !TestEnvs.dead(u), let url = URL(string: u) {
+                    Button(test.label) { if url.scheme == "steerify" { model.handle(url) } else { openTestLink(url) } }
                         .buttonStyle(.link).pointerStyle(.link).font(.system(size: S(12), weight: .medium))
                 } else { Text(test.label).font(.system(size: S(12), weight: .medium)) }
                 if let c = test.check { Text(c).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true) }
@@ -2031,10 +2044,10 @@ struct TestChapter: View {
             }
             HStack(spacing: 6) {
                 // No Test it when the link leads nowhere (an app link Steerify cannot act on): the picture is the test.
-                if let u = test.url, !TestEnvs.dead(u), let url = URL(string: u) {
+                if let u0 = test.url, case let u = TestEnvs.boardFile(u0, board: board.project.boardDir) ?? u0, !TestEnvs.dead(u), let url = URL(string: u) {
                     // A link that does not reach the feature (older deliveries) says so instead of looking like a test.
                     let vague = TestEnvs.generic(u, envs: TestEnvs.load(board.project.boardDir))
-                    Button { if url.scheme == "steerify" { model.handle(url) } else { NSWorkspace.shared.open(url) } } label: {
+                    Button { if url.scheme == "steerify" { model.handle(url) } else { openTestLink(url) } } label: {
                         HStack(spacing: 5) {
                             if vague != nil { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: S(10.5))) }
                             Text(vague == nil ? "Test it" : "Home page only").font(.system(size: S(12.5), weight: .bold))
@@ -2238,5 +2251,15 @@ struct FocusStar: View {
         .buttonStyle(SteerButton())
         .help(rank.map { "In focus (\($0) of \(board.focus.count)): first on the Roadmap, ★ Focus on the tabs · click to take it off" }
               ?? "Put this chapter in focus (up to \(BoardStore.maxFocus)): first on the Roadmap, ★ Focus filter on the tabs")
+    }
+}
+
+/// Opens a test link. A local page with a query (protos/x.html?v=B) goes to the browser directly: Finder drops the
+/// query of a file URL, and the prototype would open on its first variant.
+func openTestLink(_ url: URL) {
+    if url.isFileURL, url.query != nil, let browser = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.com")!) {
+        NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: NSWorkspace.OpenConfiguration())
+    } else {
+        NSWorkspace.shared.open(url)
     }
 }

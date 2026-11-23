@@ -138,9 +138,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.startAutomation()
     }
     func applicationWillFinishLaunching(_ n: Notification) {
+        Self.raiseFileLimit()
         // Steerify remembers its own state (project, tab, sizes); macOS window restoration would reopen
         // only the Settings window and skip the main one.
         UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")  // (system key)
+    }
+    /// A Mac app starts with a soft limit of 256 open files. Each session holds a terminal and several pipes,
+    /// so a restore of ~40 sessions used them all and the next one said "Process launch failed: forkFailed(24)"
+    /// (EMFILE; request r261123-122630). Raise the soft limit as far as the system allows, before any session starts.
+    static func raiseFileLimit() {
+        var rl = rlimit()
+        guard getrlimit(RLIMIT_NOFILE, &rl) == 0 else { return }
+        var maxFiles: Int32 = 0; var size = MemoryLayout<Int32>.size
+        let perProc = sysctlbyname("kern.maxfilesperproc", &maxFiles, &size, nil, 0) == 0 ? rlim_t(maxFiles) : 10240
+        let want = min(rl.rlim_max, perProc)
+        guard want > rl.rlim_cur else { return }
+        rl.rlim_cur = want
+        _ = setrlimit(RLIMIT_NOFILE, &rl)
     }
     func applicationDidFinishLaunching(_ n: Notification) {
         SkillInstaller.install()
@@ -258,6 +272,18 @@ struct SteerApp: App {
         if a.contains("--test-persist") { m.restoreSessions() }
         // Test hook: `--add-folder <path>` adds any folder as a project, as Add project… does after the panel.
         if let i = a.firstIndex(of: "--add-folder"), i + 1 < a.count { m.addWorkspace(folder: a[i + 1]) }
+        // Test hooks: `--recipes-open` shows the recipe gallery; `--recipe-start <id> <folder>` starts that recipe there.
+        if a.contains("--recipes-open") { m.recipesOpen = true }
+        // "How technical are you?": asked on first launch until answered (`--level-open` shows it in tests).
+        if a.contains("--level-open") || (Level.chosen == nil && !a.contains("--background")) { m.levelOpen = true }
+        if let i = a.firstIndex(of: "--recipe-start"), i + 2 < a.count {
+            let (rid, dest) = (a[i + 1], a[i + 2])
+            RecipeLibrary.shared.load()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if let r = RecipeLibrary.shared.recipes.first(where: { $0.id == rid }) { m.startRecipe(r, at: URL(fileURLWithPath: dest)) }
+                else { NSLog("recipe-start: no recipe \(rid) (\(RecipeLibrary.shared.state))") }
+            }
+        }
         // Test hook: `--projects-do "move:3:0,rename:<id>:<name>,hide:<id>,show:<id>,remove:<id>,icon:<id>:auto|initials|<picture>,iconcolors:<id>:#a;#b|none"` runs those Projects
         // window actions 1 s in, in order (same functions as the window's buttons and drag).
         if let i = a.firstIndex(of: "--projects-do"), i + 1 < a.count {
@@ -292,6 +318,32 @@ struct SteerApp: App {
             let text = a[i + 1]
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { m.showToast(text, projectId: m.project?.id, ref: "road:x", undo: {}) }
         }
+        // Test hooks (request r261123-100223): `--claude-adds <project> <ref> [s]` acts as if a Claude session of that
+        // project added a choice / chapter (the MCP "focus" message); `--next-list [s]` opens the ⌘J list;
+        // `--jump-next [s]` presses ⌘J.
+        if let i = a.firstIndex(of: "--claude-adds"), i + 2 < a.count, let p = m.projects.first(where: { $0.id == a[i + 1] }) {
+            let at = (i + 3 < a.count ? Double(a[i + 3]) : nil) ?? 3
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.testUI(["action": "focus", "ref": a[i + 2], "message": "New choice: test", "board": p.boardDir]) }
+        }
+        if let i = a.firstIndex(of: "--next-list") {
+            let at = (i + 1 < a.count ? Double(a[i + 1]) : nil) ?? 3
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.nextListOpen = true }
+        }
+        // `--next-list-shot <png> [s]`: the ⌘J list rendered on its own (a popover is its own window: --shot misses it).
+        if let i = a.firstIndex(of: "--next-list-shot"), i + 1 < a.count {
+            let at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 4
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                let r = ImageRenderer(content: NextAcrossList(close: {}).environmentObject(m).background(Brand.panel).preferredColorScheme(.dark))
+                r.scale = 4
+                if let img = r.nsImage, let t = img.tiffRepresentation, let rep = NSBitmapImageRep(data: t) {
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: a[i + 1]))
+                }
+            }
+        }
+        if let i = a.firstIndex(of: "--jump-next") {
+            let at = (i + 1 < a.count ? Double(a[i + 1]) : nil) ?? 3
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.jumpNext() }
+        }
         // Test hook: `--request "<text>"` opens the New request sheet with that text typed in.
         if let i = a.firstIndex(of: "--request"), i + 1 < a.count { m.requestSeed = a[i + 1]; m.requestOpen = true }
         // `--request-pick` opens it as ⌃⌥N does (project pills); `--request-for <id>` picks another project 1.5 s in.
@@ -305,15 +357,31 @@ struct SteerApp: App {
         if let i = a.firstIndex(of: "--focus"), i + 1 < a.count, let p = m.project {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { m.openCombo(projectId: p.id, ref: a[i + 1], startNew: false) }
         }
+        // Test hook: `--settings-snapshot <file.png> <pane>`: the Settings window on that page, rendered off screen, then quit.
+        if let i = a.firstIndex(of: "--settings-snapshot"), i + 1 < a.count {
+            let out = a[i + 1]
+            if i + 2 < a.count { Prefs.store.set(a[i + 2], forKey: "settingsPane") }
+            let host = NSHostingView(rootView: SettingsView().environmentObject(m).tint(Brand.amber))
+            let sw = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+            sw.contentView = host; sw.alphaValue = 0; sw.ignoresMouseEvents = true; sw.orderFrontRegardless()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                    host.cacheDisplay(in: host.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
+                }
+                NSApp.terminate(nil)
+            }
+        }
         if a.contains("--settings") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) } }
         if let i = a.firstIndex(of: "--tab"), i + 1 < a.count { Prefs.store.set(a[i + 1], forKey: "boardTab") }
-        // Test hook: `--preview test:<id>` opens the preview of that item's pictures.
+        // Test hook: `--preview test:<id>` opens the preview of that item's pictures (`--preview-note`: in note mode).
         if let i = a.firstIndex(of: "--preview"), i + 1 < a.count, let p = m.project {
             let b = m.board(for: p), ref = a[i + 1]
             if let s = b.ships.first(where: { "test:" + $0.id == ref }) {
                 let imgs = s.shots.map(\.img) + s.tests.compactMap(\.img)
                 m.preview = PreviewState(projectId: p.id, ref: ref, title: s.title, dir: p.boardDir, images: imgs,
-                                         index: a.firstIndex(of: "--preview-index").flatMap { $0 + 1 < a.count ? Int(a[$0 + 1]) : nil }.map { min($0, max(imgs.count - 1, 0)) } ?? 0, version: s.version)
+                                         index: a.firstIndex(of: "--preview-index").flatMap { $0 + 1 < a.count ? Int(a[$0 + 1]) : nil }.map { min($0, max(imgs.count - 1, 0)) } ?? 0, version: s.version,
+                                         startInNoteMode: a.contains("--preview-note"))
             } else if let d = b.decisions.first(where: { "choice:" + $0.id == ref }) {
                 // Choices: the option pictures (shots, or drawn mockups). Opened like a click on the card: at once, with
                 // whatever is drawn, then B, C… join as they render (`refresh`). Nothing drawn yet: try again in 1 s.
@@ -339,8 +407,32 @@ struct SteerApp: App {
         if let i = a.firstIndex(of: "--deploy"), i + 1 < a.count, let p = m.project, let r = p.repos.first(where: { $0.name == a[i + 1] }) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { m.deploy(r, in: p) }
         }
+        // `--processes [name]`: a test copy starts its project's autostart processes (and shows one's logs).
+        if let i = a.firstIndex(of: "--processes"), let p = m.project {
+            ProcessHub.shared.autostart(p, force: true)
+            if i + 1 < a.count, !a[i + 1].hasPrefix("--") {
+                let name = a[i + 1]   // that one starts too (as ▶ would), even when it is not autostart
+                if let spec = p.processes.first(where: { $0.name == name }), !ProcessHub.shared.isRunning(p, name) { ProcessHub.shared.start(spec, in: p) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { ProcessHub.shared.shown[p.id] = name }
+            }
+        }
         if a.contains("--origin-ping-demo") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { OriginPingDemo.run(m) } }
         if let i = a.firstIndex(of: "--flow-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SessionFlowDemo.run(m, a[i + 1]) } }
+        // Test hook: `--stuck-demo <item ref>` opens a dry session (claude never starts): 20 s later its card says why + Restart.
+        if let i = a.firstIndex(of: "--stuck-demo"), i + 1 < a.count, let p = m.project {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                if let u = URL(string: "steerify://start?project=\(p.id)&item=\(a[i + 1])&intent=build&dry=1") { m.handle(u) }
+            }
+            // `--stuck-restart`: press Restart 26 s in; the log says how many sessions there are and their state.
+            if a.contains("--stuck-restart") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 26) {
+                    guard let s = m.sessions.first(where: { $0.stuck != nil }) else { NSLog("stuck-check: none stuck"); return }
+                    let old = s.id
+                    m.restartStuck(s)
+                    NSLog("stuck-check: \(m.sessions.count) session(s), new=\(m.sessions.first?.id != old), mood=\(m.sessions.first?.moodWord ?? "-"), title=\(m.sessions.first?.title ?? "-")")
+                }
+            }
+        }
         if let i = a.firstIndex(of: "--label-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SessionLabelsDemo.run(m, a[i + 1]) } }
         if let i = a.firstIndex(of: "--open-shells"), i + 1 < a.count, let n = Int(a[i + 1]) {
             for k in 0..<n { m.newSession(.shell, repo: m.project?.repos[k % max(1, m.project?.repos.count ?? 1)]) }
@@ -403,6 +495,7 @@ struct SteerApp: App {
                 Button("Check for Updates…") { AppUpdater.shared.checkForUpdates() }
                     .disabled(AppUpdater.isDevBuild)
             }
+            FeedbackCommands()      // Help → Report a Bug… / Ask for a Feature… / Ask a Question…
             CommandMenu("Projects") {
                 ForEach(0..<9, id: \.self) { i in
                     let list = model.switcherProjects
@@ -415,12 +508,13 @@ struct SteerApp: App {
                 Button("Reload board") { model.reloadBoard() }.keyboardShortcut("r", modifiers: .command)
                 Button("Restart to Update") { model.confirmRestartForUpdate() }.keyboardShortcut("r", modifiers: [.command, .option])
                 Button("Add project…") { model.addWorkspace() }.keyboardShortcut("o", modifiers: [.command, .shift])
+                Button("New Project from a Recipe…") { model.recipesOpen = true }
                 Button("Try the Demo Project") { model.openDemo() }
                 Button("Show steerify.json") { if let p = model.project { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p.manifest)]) } }
             }
             CommandGroup(after: .sidebar) {
                 Button("Sessions: Tabs on Top / List Beside") {
-                    let cur = SessionLayout(rawValue: Prefs.store.string(forKey: "sessionLayout") ?? "") ?? .tabs
+                    let cur = SessionLayout(rawValue: Prefs.store.string(forKey: "sessionLayout") ?? "") ?? .list
                     Prefs.store.set((cur == .tabs ? SessionLayout.list : .tabs).rawValue, forKey: "sessionLayout")
                 }.keyboardShortcut("b", modifiers: .command)
             }

@@ -19,18 +19,20 @@ enum ChoiceVisuals {
     enum Kind: String { case picture, scheme, wireframe, words }
     static func kind(_ html: String) -> Kind {
         if drawsSomething(html) { return .picture }
-        let elements = count("<(div|span|section|li|button|p|b|i|s|small|h\\d)\\b", html)
-        let nodes = count("class=\"[^\"]*\\b(box|node|step|card)\\b", html)
-            + count("style=\"[^\"]*border:\\s*\\d", html)                       // boxes drawn with inline styles
+        let elements = count("<(div|span|section|li|button|p|b|i|s|small|td|th|h\\d)\\b", html)
+        let nodes = count("class=[\"'][^\"']*\\b(box|node|step|card)\\b", html)
+            + count("style=[\"'][^\"']*border:\\s*\\d", html)                       // boxes drawn with inline styles
         // a connector stands between parts: an arrow starting its own text run, or an arrow / line element
         // (an arrow inside a box's sentence, "brief → v2", is still words)
-        let connectors = count(">\\s*[→←↓↑⟶⇢➜➝↳↘↗]|class=\"[^\"]*\\b(arr|arrow|line|edge)\\b", html)
+        let connectors = count(">\\s*[→←↓↑⟶⇢➜➝↳↘↗]|class=[\"'][^\"']*\\b(arr|arrow|line|edge)\\b", html)
         if nodes >= 2 && connectors >= 1 { return .scheme }        // parts joined by arrows
+        if connectors >= 2 { return .scheme }                      // a flow written top-down: step ↓ step ↓ step
         let layout = count("display:\\s*(flex|grid)|grid-template|width:\\s*\\d|height:\\s*\\d|border(-radius)?:|background:", html)
         let text = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         let perElement = Double(text.count) / Double(max(elements, 1))   // a mockup is many short labels, not prose
         if elements >= 8 && layout >= 4 && perElement <= 25 { return .wireframe }   // laid out with inline styles
+        if elements >= 5 && layout >= 3 && perElement <= 22 { return .wireframe }   // a small card: a few short labelled parts
         if elements >= 15 && perElement <= 20 { return .wireframe }                 // laid out with the kit's classes
         return .words
     }

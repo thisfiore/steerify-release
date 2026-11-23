@@ -41,7 +41,7 @@ enum TopBarDensity: Int, Comparable {
         let lights: CGFloat = 86
         let left = { (d: TopBarDensity) in lights + nameW + S(d == .full ? 172 : 100) }
         let right = { (d: TopBarDensity) in
-            S(d == .minimal ? 120 : 290) + S(100) + S(webBoard ? 116 : 80) + 24
+            S(d == .minimal ? 120 : 290) + S(100) + S(webBoard ? 80 : 44) + 24
         }
         let centre = { (d: TopBarDensity) in (d == .full ? S(176) : S(30)) + (updateReady ? S(90) : 0) }
         // The centre item stays centred, so each side gets half of what it leaves.
@@ -160,17 +160,21 @@ struct NextUp: View {
         if r.contains("roadmap") { return "ROADMAP" }
         return String(reason.uppercased().prefix(8))
     }
+    @State private var hoverPill = false
+    @State private var hoverList = false
     var body: some View {
-        if let p = model.project {
-            let list = model.nextSteps(p).filter(\.urgent)
-            let n = list.isEmpty ? nil : list[model.nextIndex % list.count]
-            Button { model.jumpNext() } label: {
+        if model.project != nil {
+            let list = model.nextAcross()
+            let n = model.nextUp()
+            let elsewhere = n.map { $0.projectId != model.selectedProjectId } ?? false
+            Button { model.nextListOpen = false; model.jumpNext() } label: {
                 HStack(spacing: 6) {
                     PixelIcon(name: "play", size: 8).foregroundStyle(n == nil ? Brand.mute : Brand.amber)
                     if let n {
-                        Text(Self.tag(n.reason)).font(Brand.label(8.5)).tracking(0.5).foregroundStyle(Brand.amber).lineLimit(1)
+                        if elsewhere { PixelAvatar(name: n.projectName, size: S(13), projectId: n.projectId) }
+                        Text((n.focused ? "★ " : "") + Self.tag(n.step.reason)).font(Brand.label(8.5)).tracking(0.5).foregroundStyle(Brand.amber).lineLimit(1)
                         if density < .minimal {
-                        Text(SessionName.short(n.title.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "“", with: "").replacingOccurrences(of: "”", with: ""), intent: nil)).lineLimit(1).truncationMode(.tail)
+                        Text(SessionName.short(n.step.title.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "“", with: "").replacingOccurrences(of: "”", with: ""), intent: nil)).lineLimit(1).truncationMode(.tail)
                             .foregroundStyle(Brand.ink).frame(maxWidth: S(150), alignment: .leading)
                         }
                         if list.count > 1 {
@@ -190,8 +194,21 @@ struct NextUp: View {
             }
             .buttonStyle(SteerButton())
             .disabled(n == nil)
-            .help(n.map { "\($0.reason.capitalized): \($0.title)\n\(list.count) waiting on you · ⌘J walks the list" } ?? "Nothing waits on you")
+            // The tooltip is the list itself: every project, each with its icon (request r261123-100223).
+            .onHover { h in
+                hoverPill = h
+                if h, n != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { if hoverPill { model.nextListOpen = true } } }
+                else { closeSoon() }
+            }
+            .popover(isPresented: $model.nextListOpen, arrowEdge: .bottom) {
+                NextAcrossList(close: { model.nextListOpen = false })
+                    .environmentObject(model)
+                    .onHover { h in hoverList = h; if !h { closeSoon() } }
+            }
         }
+    }
+    private func closeSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if !hoverPill && !hoverList { model.nextListOpen = false } }
     }
 }
 
@@ -309,6 +326,7 @@ struct WhatsNewPanel: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if all { ScrollView { rows }.frame(height: 320) } else { rows }
             }
+            if restart == nil { Divider(); FeedbackButtons(close: close) }
             Divider()
             HStack(spacing: 14) {
                 Button("Release notes ↗") { NSWorkspace.shared.open(WhatsNew.notes(version)); close() }

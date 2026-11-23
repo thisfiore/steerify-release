@@ -434,15 +434,19 @@ extension AppModel {
         let commit = Git.run(repo.path, ["rev-parse", "HEAD"]) ?? "unknown"
         let s = TerminalSession(project: p, repo: repo, kind: .shell, item: nil)
         s.shellCommand = cmd
-        s.onExit = { [weak self] code in
+        let started = Date()
+        s.onExit = { [weak self, weak s] code in
             Task { @MainActor in
                 guard let self else { return }
                 self.deployTick += 1                       // even a failed deploy changes the repo state (push, commits)
                 guard code == 0 else { return }
                 Deploys.append(DeployRecord(repo: repo.name, commit: commit, at: BoardStore.now(), by: "steerify deploy",
                                             committedAt: Git.run(repo.path, ["log", "-1", "--format=%cI", commit])), in: p.boardDir)
-                self.markLive(p)
-                self.wakeAfterDeploy(repo, commit: commit, in: p)   // the session that waited on this deploy finishes up
+                let shipped = self.markLive(p)
+                let done = self.markRoadsDone(of: shipped, in: p)   // their key results: approved + live = done
+                let checking = self.wakeAfterDeploy(repo, commit: commit, in: p)   // the session that waited on this deploy finishes up
+                s?.celebration = DeployCelebration(repo: repo.name, commit: commit, took: Date().timeIntervalSince(started),
+                                                   live: shipped.map(\.title), done: done, checking: checking)
                 // A deployed app restarts: ask its live check again until it answers with the new version.
                 if p.release?.repos[repo.name]?.liveCheck != nil {
                     for delay in [5, 20, 60, 150] {
@@ -502,15 +506,34 @@ extension AppModel {
     }
 
     /// Approved items become live as soon as their repos show them shipped (push or deploy). No tokens.
-    func markLive(_ p: Project) {
-        guard AppModel.mayWriteBoards else { return }   // test copies never write the board
+    /// Returns the items that turned live now.
+    @discardableResult
+    func markLive(_ p: Project) -> [ShipItem] {
+        guard AppModel.mayWriteBoards else { return [] }   // test copies never write the board
         gitCache = [:]
         let b = board(for: p)
         let ready = b.ships.filter { b.goesInRelease($0) && (shipCheck($0, in: p)?.live ?? false) }
-        guard !ready.isEmpty else { return }
+        guard !ready.isEmpty else { return [] }
         deployTick += 1
         setLive(ready, in: p, live: true)
         showToast("\(ready.count) approved item\(ready.count == 1 ? "" : "s") shipped → live", projectId: p.id)
+        return ready
+    }
+
+    /// The key results of approved deliveries that just went live: marked done (no tokens). Returns their texts.
+    func markRoadsDone(of items: [ShipItem], in p: Project) -> [String] {
+        guard AppModel.mayWriteBoards, !items.isEmpty else { return [] }
+        let b = board(for: p)
+        var texts: [String] = []
+        for s in items where b.effectivePick(s) == "ok" {
+            for rd in s.roads {
+                guard let r = b.roadmap.first(where: { $0.text == rd || $0.id == BoardFiles.slug(rd) }), r.status != "done",
+                      !texts.contains(r.text) else { continue }
+                texts.append(r.text)
+            }
+        }
+        if !texts.isEmpty { b.setRoad(texts.map { ($0, "done") }) }
+        return texts
     }
 
     /// Write status live (or back) through the board's deliver.mjs, keeping your verdict.

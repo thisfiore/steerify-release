@@ -146,6 +146,16 @@ normal chat. Short chat lines; questions and proposals are choices with pictures
    (objective, 3–7 key results, requirements), a follow-up choice only if something is still open. Never mark
    anything agreed or done. The welcome screen goes away as soon as the first choice lands; the board takes over.
 
+**Recipe setup** (the project has `recipe.json` at the top: it was started from a recipe, e.g. a build of the book
+AI Traction; the session brief carries the recipe's first message). The reader is **not technical**:
+- Their first request is the recipe's `firstMessage`, not "map the codebase". Skip step 2 (nothing to run); read
+  `recipe.json`, `START-HERE.md` and every file the reader filled. The skills it names are in `.claude/skills`.
+- The snapshot (`setup-understood`) is what you understood **from their files** + what is missing from them.
+- Then follow the message's own order (interview one question at a time, smallest test by hand, estimate, roadmap),
+  every question as a choice with pictures (`simple: true` where nothing is visual), plain words, no git / branch /
+  MCP wording. First runs on invented material. Draft the first chapter from the recipe's build, never build before
+  the reader says the sample pieces are good.
+
 ## Core and extras (every key result)
 
 A chapter's progress is its **core**: the key results without which the objective is not met. Everything else is an

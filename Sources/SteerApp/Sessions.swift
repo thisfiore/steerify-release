@@ -51,7 +51,12 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     /// A shell session that runs one command and exits (deploys), and what to do with its exit code.
     var shellCommand: String?
     var onExit: ((Int32) -> Void)?
+    /// A deploy that exited 0: the card shown over the tab (DeployDone.swift).
+    @Published var celebration: DeployCelebration?
     var statusAt: Date?
+    /// When the process was started, and why it still shows "warming up" after a while (StuckStart.swift).
+    var launchedAt: Date?
+    @Published var stuck: StuckStart?
     /// The folder the session runs in when it is not the repo's own checkout (a feature worktree, Flow.swift),
     /// and what Steerify adds to its environment (STEERIFY_FLOW, STEERIFY_BRANCH…).
     var workdir: String?
@@ -103,6 +108,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
             let full = dry ? "echo " + Self.shellQuote(line) + "; pwd; git branch --show-current; env | grep ^STEERIFY_ | sort" : line
             args = Self.claudeArgs(launch: Self.launchLine(full, id: id), shell: shell)
         }
+        launchedAt = Date()
         v.startProcess(executable: shell, args: args,
                        environment: env.map { "\($0.key)=\($0.value)" },
                        execName: "-" + (shell as NSString).lastPathComponent,

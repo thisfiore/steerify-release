@@ -51,7 +51,10 @@ struct PendingWake { var deploys: [(repo: String, commit: String)]; var at: Date
 
 extension AppModel {
     /// After a deploy of `repo` succeeded: queue a wake-up for every live Claude session whose last reply waits on it.
-    func wakeAfterDeploy(_ repo: Repo, commit: String, in p: Project) {
+    /// Returns the titles of the sessions that will be told.
+    @discardableResult
+    func wakeAfterDeploy(_ repo: Repo, commit: String, in p: Project) -> [String] {
+        var told: [String] = []
         let released = (p.release?.repos.keys).map(Array.init) ?? p.repos.map(\.name)
         for s in sessions where s.projectId == p.id && s.kind == .claude && s.running && !s.dry {
             guard let cid = s.claudeId, let url = SessionSummaries.transcript(cid),
@@ -62,9 +65,11 @@ extension AppModel {
             w.deploys.append((repo.name, commit))
             w.at = Date()
             deployWakes[s.id] = w
+            told.append(s.title)
             NSLog("steerify deploy-wake queued → \(s.title): \(repo.name)")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 21) { [weak self] in self?.flushDeployWakes() }
+        return told
     }
 
     /// Send queued deploy wake-ups to sessions that are idle now (called with the nudges).

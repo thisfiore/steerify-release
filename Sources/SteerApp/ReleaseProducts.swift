@@ -201,10 +201,16 @@ struct ReleaseProducts: View {
                 runs.active[key]?.command = pr.deploy; runs.active[key]?.log = "lsregister: -u failed (exit 1)\nrelease.sh: line 88: build failed"
                 runs.finish(key, .failed("The release script stopped (code 1) before anything went out."))
             }
+            if a.contains("--demo-ship-card") { runs.shown = nil }
         }
     }
 
     @ViewBuilder private func card(_ pr: ReleaseProduct, _ all: [ReleaseProduct]) -> some View {
+        if let r = runs.active[project.id + "/" + pr.id] { ShippingCard(run: r, product: pr, state: states[pr.id] ?? ProductState()) }
+        else { idleCard(pr, all) }
+    }
+
+    @ViewBuilder private func idleCard(_ pr: ReleaseProduct, _ all: [ReleaseProduct]) -> some View {
         let st = states[pr.id] ?? ProductState()
         let rd = ready(pr, all), ft = features(pr, all)
         let need = !rd.isEmpty || st.unreleased > 0
@@ -231,8 +237,8 @@ struct ReleaseProducts: View {
                     Text("UP TO DATE").font(Brand.label(8.5)).tracking(0.8).foregroundStyle(Brand.green)
                 }
                 Spacer()
-                if need || runs.active[project.id + "/" + pr.id] != nil {
-                    ActionButton(title: runs.active[project.id + "/" + pr.id] != nil ? "Shipping…" : (pr.deploy != nil ? "Ship" : "Ship with Claude"),
+                if need {
+                    ActionButton(title: pr.deploy != nil ? "Ship" : "Ship with Claude",
                                  icon: "ship", primary: true) { ship(pr, st, rd) }
                         .help(pr.deploy.map { "Runs “\($0)” in a shell tab" } ?? "A Claude session ships just this product")
                 }
@@ -258,7 +264,7 @@ struct ReleaseProducts: View {
 
     private func ship(_ pr: ReleaseProduct, _ st: ProductState, _ rd: [ShipItem]) {
         let key = project.id + "/" + pr.id
-        if runs.active[key] != nil { runs.shown = key; return }
+        if runs.active[key]?.phase == .shipping { runs.shown = key; return }
         runs.start(ShipRun(key: key, projectId: project.id, product: pr, from: st, items: rd.map(\.title)))
         if let cmd = pr.deploy, let repo = pr.repo.flatMap({ project.resolveRepo($0) }) ?? project.repos.first {
             runs.runDeploy(cmd, repo: repo, in: project, model: model, key: key)
@@ -293,6 +299,9 @@ struct ShipRun: Identifiable, Equatable {
     var shell: UUID?
     var command: String?
     var log = ""
+    /// The release script ended well: now waiting for the new version to show up.
+    var scriptDone = false
+    var finished: Date?
 }
 
 @MainActor
@@ -330,7 +339,7 @@ final class ShipRuns: ObservableObject {
                     self.active[key]?.log = s.map { Self.tail($0) } ?? ""
                     self.finish(key, .failed("The release script stopped (code \(code)) before anything went out."))
                 }
-                else { self.tick += 1 }   // the version check turns it into done
+                else { self.active[key]?.scriptDone = true; self.tick += 1 }   // the version check turns it into done
             }
         }
         _ = s.view
@@ -375,10 +384,26 @@ final class ShipRuns: ObservableObject {
 
     func finish(_ key: String, _ phase: ShipRun.Phase) {
         guard var r = active[key] else { return }
-        r.phase = phase; active[key] = r; shown = key   // the confirmation always comes to the front
+        r.phase = phase; r.finished = Date(); active[key] = r; shown = key   // the confirmation always comes to the front
+        // Out: the card keeps its fireworks for a minute, then settles to Up to date.
+        if case .done = phase {
+            let at = r.finished
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Self.celebrate))
+                guard let self, self.active[key]?.finished == at else { return }
+                self.active[key] = nil
+                if self.shown == key { self.shown = nil }
+            }
+        }
     }
+    static let celebrate: Double = 60
 
+    /// Hides the modal. A failed run is let go; a done one stays on its card until its minute is up.
     func close(_ key: String) {
+        if case .failed = active[key]?.phase { active[key] = nil }
+        if shown == key { shown = nil }
+    }
+    func dismiss(_ key: String) {
         if active[key]?.phase != .shipping { active[key] = nil }
         if shown == key { shown = nil }
     }
@@ -560,6 +585,182 @@ struct ShipPixelScene: View {
                 dot(x + xx / 2, y + yy / 2, c, 1)
             }
         }
+    }
+}
+
+// MARK: - Shipping on the card (choice ship-on-card, A: a harbour strip)
+
+/// The product card while it ships, and for a minute after it is out: the boat sails across a strip, the steps tick,
+/// fireworks on the card when the version changes. The modal can be closed: the card keeps telling.
+struct ShippingCard: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject private var runs = ShipRuns.shared
+    let run: ShipRun
+    let product: ReleaseProduct
+    let state: ProductState
+
+    private var done: String? { if case .done(let v) = run.phase { return v }; return nil }
+    private var failed: String? { if case .failed(let w) = run.phase { return w }; return nil }
+
+    var body: some View {
+        let tint = done != nil ? Brand.green : failed != nil ? Brand.red : Brand.amber
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .center, spacing: 12) {
+                ProductArt(icon: product.icon).frame(width: S(60), height: S(60))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(product.name.uppercased()).font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.mute).lineLimit(1)
+                    Text("\(run.from.version) → \(done ?? "…")").font(.system(size: S(16), weight: .bold, design: .monospaced))
+                        .foregroundStyle(Brand.cream).lineLimit(1).minimumScaleFactor(0.7)
+                    TimelineView(.periodic(from: .now, by: 1)) { tl in
+                        Text(subtitle(tl.date)).font(.system(size: S(11))).foregroundStyle(failed != nil ? Brand.red : Brand.mute).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            ShipStrip(icon: product.icon, phase: run.phase)
+                .frame(maxWidth: .infinity).frame(height: S(78))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle()).onTapGesture { runs.shown = run.key }
+                .help("Open the shipping window")
+            steps
+            ForEach(run.items.prefix(4), id: \.self) { t in
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text(done != nil ? "✦" : "▸").font(.system(size: S(9))).foregroundStyle(done != nil ? Brand.green : Brand.amber)
+                    Text(t).font(.system(size: S(12))).foregroundStyle(done != nil ? Brand.ink : Brand.amber).lineLimit(1)
+                }
+            }
+            if run.items.count > 4 { Text("+ \(run.items.count - 4) more").font(.system(size: S(11))).foregroundStyle(Brand.mute) }
+            HStack(spacing: 8) {
+                Spacer()
+                if failed != nil {
+                    ActionButton(title: "Fix it with Claude", icon: "term", primary: true) { runs.fixWithClaude(run.key, model: model) }
+                    ActionButton(title: "Later", icon: "play") { runs.dismiss(run.key) }
+                } else if done != nil {
+                    ActionButton(title: "Nice") { runs.dismiss(run.key) }
+                } else {
+                    ActionButton(title: "Open", icon: "ship") { runs.shown = run.key }
+                        .help(product.deploy.map { "“\($0)” is running in a shell tab" } ?? "A Claude session is shipping it")
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Brand.panel))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(tint.opacity(done != nil ? 0.8 : 0.6), lineWidth: done != nil ? 1.5 : 1))
+        .animation(.spring(duration: 0.35), value: run.phase)
+    }
+
+    private func subtitle(_ now: Date) -> String {
+        if let w = failed { return w }
+        if done != nil { return "out · in \(Self.span(run.started, run.finished ?? now))" }
+        return "shipping · \(Self.span(run.started, now))"
+    }
+
+    /// What really happened so far: started → the script (or Claude) → the new version seen → out.
+    private var steps: some View {
+        let script = product.deploy != nil
+        let list: [(String, Int)] = {   // 2 = done, 1 = now, 0 = to come, -1 = stopped
+            if done != nil { return [("started", 2), (script ? "script" : "Claude", 2), ("live", 2)] }
+            if failed != nil { return [("started", 2), (script ? "script stopped" : "stopped", -1), ("live", 0)] }
+            if script && run.scriptDone { return [("started", 2), ("script", 2), ("new version?", 1)] }
+            return [("started", 2), (script ? "release script" : "Claude ships it", 1), ("live", 0)]
+        }()
+        return HStack(spacing: 5) {
+            ForEach(Array(list.enumerated()), id: \.offset) { i, s in
+                if i > 0 { Text("·").foregroundStyle(Brand.mute) }
+                Text((s.1 == 2 ? "✓ " : s.1 == 1 ? "▸ " : s.1 == -1 ? "✕ " : "") + s.0)
+                    .foregroundStyle(s.1 == 2 ? Brand.green : s.1 == 1 ? Brand.amber : s.1 == -1 ? Brand.red : Brand.mute)
+            }
+        }
+        .font(.system(size: S(10.5), weight: .semibold, design: .monospaced))
+    }
+
+    static func span(_ a: Date, _ b: Date) -> String {
+        let s = max(0, Int(b.timeIntervalSince(a)))
+        return s < 60 ? "\(s) s" : "\(s / 60) min \(s % 60) s"
+    }
+}
+
+/// A wide harbour (96×22 pixels) for the card: the boat carries the product across while it ships,
+/// fireworks over it when it is out, a grey sky and the boat at the pier when it stopped.
+struct ShipStrip: View {
+    let icon: String
+    let phase: ShipRun.Phase
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.15)) { tl in
+            let t = Int(tl.date.timeIntervalSinceReferenceDate / 0.15)
+            Canvas { ctx, size in draw(ctx, size, t) }
+        }
+    }
+
+    private func draw(_ ctx: GraphicsContext, _ size: CGSize, _ tick: Int) {
+        let rows = 22
+        let px = size.height / CGFloat(rows)
+        let cols = max(40, Int(size.width / px))
+        let ox = (size.width - px * CGFloat(cols)) / 2
+        func dot(_ x: Int, _ y: Int, _ c: Color, _ a: Double = 1) {
+            guard x >= 0, x < cols, y >= 0, y < rows else { return }
+            ctx.fill(Path(CGRect(x: ox + CGFloat(x) * px, y: CGFloat(y) * px, width: px + 0.3, height: px + 0.3)), with: .color(c.opacity(a)))
+        }
+        let failed: Bool = { if case .failed = phase { return true }; return false }()
+        let done: Bool = { if case .done = phase { return true }; return false }()
+        let slow = tick / 3
+        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(failed ? Color(hex: 0x1b1d22) : Color(hex: 0x141a26)))
+        // stars (a grey cloud when it stopped)
+        if failed {
+            for x in 14..<28 { for y in 2..<5 where (x + y) % 5 != 0 { dot(x, y, Brand.mute, 0.45) } }
+        } else {
+            for i in 0..<(cols / 8) { dot((i * 37 + 11) % cols, (i * 7 + 2) % 11, Brand.cream, (i + slow) % 3 == 0 ? 0.9 : 0.3) }
+        }
+        if done {
+            let fw: [Color] = [Brand.amber, Brand.green, Brand.blue, Brand.violet, Brand.red]
+            let spots = [(cols / 6, 6, 0), (cols / 2 - 4, 5, 3), (cols * 5 / 6 - 14, 7, 6), (cols / 3 + 4, 9, 5)]
+            for (k, (cx, cy, off)) in spots.enumerated() {
+                let p = (slow + off) % 9
+                if p < 3 { dot(cx, cy + 9 - p * 3, Brand.cream, 0.8); continue }   // the rocket going up
+                let r = Double(p - 2), c = fw[(k + (slow + off) / 9) % fw.count]
+                for a in 0..<12 {
+                    let an = Double(a) * .pi / 6
+                    dot(Int((Double(cx) + cos(an) * r).rounded()), Int((Double(cy) + sin(an) * r * 0.8).rounded()), c, p > 6 ? 0.5 : 1)
+                }
+            }
+        } else if !failed {
+            let gx = cols - 1 - (slow % (cols + 6)), gy = 4 + (slow % 4 < 2 ? 0 : 1)   // a gull
+            dot(gx, gy, Brand.cream); dot(gx + 1, gy + 1, Brand.cream); dot(gx + 2, gy, Brand.cream)
+        }
+        // pier on the left, the lighthouse on the right
+        for x in 0..<8 { dot(x, 15, Color(hex: 0x5b3d1e)) }
+        for y in 16..<rows { dot(1, y, Color(hex: 0x5b3d1e)); dot(6, y, Color(hex: 0x5b3d1e)) }
+        for y in 8..<18 { dot(cols - 4, y, Brand.cream, 0.85); dot(cols - 3, y, (y / 2) % 2 == 0 ? Brand.red : Brand.cream, 0.85) }
+        dot(cols - 4, 7, Brand.amber, done || tick % 4 < 2 ? 1 : 0.3); dot(cols - 3, 7, Brand.amber, done || tick % 4 < 2 ? 1 : 0.3)
+        // sea
+        for r in 0..<3 {
+            for x in 0..<cols where (x + slow * (r + 1) + r * 3) % 7 < 4 {
+                dot(x, 18 + r * 2, r == 0 ? Color(hex: 0x3d6ea5) : Color(hex: 0x26364d))
+                dot(x, 19 + r * 2, Color(hex: 0x26364d), 0.6)
+            }
+        }
+        // the boat: at the pier when stopped, across the strip while shipping, by the lighthouse when out
+        let span = max(1, cols - 28)
+        let bx = failed ? 8 : done ? cols - 22 : 8 + (slow % span), by = 14 + (tick / 4) % 2
+        for x in 0..<16 { dot(bx + x, by + 2, Color(hex: 0x8a5a2b)) }
+        for x in 1..<15 { dot(bx + x, by + 3, Color(hex: 0x6e4520)) }
+        for x in 3..<13 { dot(bx + x, by + 4, Color(hex: 0x6e4520)) }
+        for y in (by - 12)...(by + 1) { dot(bx + 12, y, Brand.cream) }
+        for y in 0..<9 { for x in 0..<(y / 2 + 1) { dot(bx + 13 + x, by - 11 + y, failed ? Brand.mute : Brand.cream, 0.9) } }
+        if !failed { dot(bx + 12, by - 13, Brand.amber); dot(bx + 13, by - 13, Brand.amber, tick % 2 == 0 ? 1 : 0.4) }
+        // the product on deck (its 24×24 art at 10×10), hopping when it is out
+        let hop = done && (tick / 3) % 4 == 0 ? 1 : 0
+        let map = ProductArt.map(icon)
+        for (yy, row) in map.enumerated() where yy % 2 == 0 {
+            for (xx, ch) in row.enumerated() where xx % 2 == 0 {
+                guard let c = ProductArt.color(ch) else { continue }
+                dot(bx + 1 + xx / 2, by - 10 - hop + yy / 2, c)
+            }
+        }
+        // crates waiting on the pier while it loads
+        if !failed && !done && slow % span < 6 { dot(2, 14, Brand.amber); dot(4, 14, Brand.amber); dot(3, 13, Brand.amber) }
     }
 }
 
