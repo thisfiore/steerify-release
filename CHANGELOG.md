@@ -2,6 +2,14 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.19 · 2026-11-23
+
+### In the app
+
+- **Build my pick: big main call to action** — Build my pick as big as Your choice · Discuss this with Claude under it · Same size, picture view + Choices tab
+- **QR window: push first warning** — QR window checks the board is on GitHub · Red "Push first" note + copy command · Step 1: Push this repo (✓ when done) · Clearer error on the iPhone
+- **Tab bar: no session icon and count** — No terminal icon on tabs · No session count on tabs · Yellow badges stay
+
 ## 0.5.18 · 2026-11-23
 
 ### In the app

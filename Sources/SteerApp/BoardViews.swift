@@ -378,7 +378,6 @@ struct TabBar: View {
     @ObservedObject var board: BoardStore
     @Binding var tab: BoardTab
     var body: some View {
-        let sessionCounts = model.sessionCounts(projectId: board.project.id)
         HStack(spacing: 2) {
             ForEach(Array(BoardTab.allCases.enumerated()), id: \.element) { i, t in
                 Button { tab = t } label: {
@@ -387,10 +386,6 @@ struct TabBar: View {
                         Text(t.title).font(Brand.label(12)).tracking(0.9)
                         let n = badge(t)
                         if n > 0 { Text("\(n)").font(.system(size: S(11), weight: .bold)).foregroundStyle(Color(hex: 0x1a1200)).padding(.horizontal, 5).padding(.vertical, 1).background(RoundedRectangle(cornerRadius: 4).fill(t.color)) }
-                        if let k = sessionCounts[t], k > 0 {
-                            HStack(spacing: 2) { Image(systemName: "terminal").font(.system(size: S(9))); Text("\(k)").font(.system(size: S(10.5)).monospacedDigit()) }
-                                .foregroundStyle(Brand.mute).help("\(k) session\(k == 1 ? "" : "s") on this tab")
-                        }
                     }
                     .foregroundStyle(tab == t ? Brand.cream : Brand.mute)
                     .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 10)

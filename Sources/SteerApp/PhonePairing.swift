@@ -11,7 +11,13 @@ import CoreImage.CIFilterBuiltins
 // it never leaves this Mac. Later: "Sign in with GitHub" on the phone instead of the Mac's token.
 
 enum PhonePairing {
-    struct Info { let url: URL; let repo: String; let hasToken: Bool; let relay: Bool }
+    struct Info {
+        let url: URL; let repo: String; let hasToken: Bool; let relay: Bool
+        let branch: String
+        /// Why the phone would not find the board on GitHub yet (nil = pushed), and the command that fixes it.
+        var unpushed: String? = nil
+        var pushCommand: String = ""
+    }
 
     static func info(for p: Project) -> Info? {
         guard let root = Git.run(p.boardDir, ["rev-parse", "--show-toplevel"]), !root.isEmpty,
@@ -30,7 +36,23 @@ enum PhonePairing {
         if let token { q.append(URLQueryItem(name: "token", value: token)) }
         c.queryItems = q
         guard let url = c.url else { return nil }
-        return Info(url: url, repo: repo, hasToken: token != nil, relay: relay != nil)
+        let boardDir = dir.isEmpty ? "." : dir
+        return Info(url: url, repo: repo, hasToken: token != nil, relay: relay != nil, branch: branch,
+                    unpushed: pushProblem(root: root, branch: branch, dir: dir),
+                    pushCommand: "git add \(boardDir) && git commit -m \"Steerify board\" && git push -u origin \(branch)")
+    }
+
+    /// The iPhone reads the board from GitHub, not from this Mac: a board that was never committed or pushed
+    /// is a 404 on the phone (request 23 Nov: "Not found on GitHub"). Checked against the last known origin
+    /// refs, no network call.
+    static func pushProblem(root: String, branch: String, dir: String) -> String? {
+        let board = dir.isEmpty ? "board.json" : dir + "/board.json"
+        if Git.run(root, ["ls-files", "--error-unmatch", board]) == nil { return "The board is not committed yet." }
+        if Git.run(root, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/\(branch)"]) == nil {
+            return "Branch “\(branch)” is not on GitHub yet."
+        }
+        if Git.run(root, ["cat-file", "-e", "origin/\(branch):\(board)"]) == nil { return "The board is committed but not pushed." }
+        return nil
     }
 
     /// "https://github.com/owner/name(.git)" or "git@github.com:owner/name.git" → "owner/name".
@@ -109,6 +131,10 @@ struct PhonePairingView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Point the iPhone camera at it, tap “Open in Steerify”.").font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.ink)
                         row("Board", s.repo)
+                        row("On GitHub", s.unpushed == nil ? "pushed on \(s.branch)" : "not yet: push first")
+                        if let why = s.unpushed {
+                            PushFirstNote(why: why, command: s.pushCommand)
+                        }
                         row("Realtime", s.relay ? "relay.steerify.dev" : "off")
                         row("GitHub access", s.hasToken ? "your GitHub CLI login on this Mac" : "the phone will ask for a token")
                         Text("The code holds a GitHub token: show it only to your own phone.").font(.system(size: 11)).foregroundStyle(Brand.amber)
@@ -164,9 +190,11 @@ struct PairingModal: View {
                 }
                 .frame(width: 260, height: 260)
                 VStack(alignment: .leading, spacing: 14) {
-                    step(1, "Install Steerify on the iPhone", "TestFlight → Steerify")
-                    step(2, "Open the Camera, point it here", "No app to open first")
-                    step(3, "Tap “Open in Steerify”", "The board shows in a few seconds")
+                    step(1, "Push this repo to GitHub", info.map { $0.unpushed == nil ? "Done: the board is on \($0.branch)" : "The phone reads the board from there" }
+                         ?? "The phone reads the board from there", ok: info != nil && info?.unpushed == nil)
+                    step(2, "Install Steerify on the iPhone", "TestFlight → Steerify")
+                    step(3, "Open the Camera, point it here", "No app to open first")
+                    step(4, "Tap “Open in Steerify”", "The board shows in a few seconds")
                     Divider().overlay(Brand.line)
                     if let i = info {
                         row("BOARD", i.repo)
@@ -174,6 +202,9 @@ struct PairingModal: View {
                         row("GITHUB", i.hasToken ? "your GitHub CLI login on this Mac" : "the phone asks for a token")
                     }
                 }
+            }
+            if let i = info, let why = i.unpushed {
+                PushFirstNote(why: why, command: i.pushCommand)
             }
             Toggle(isOn: $remoteControl) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -197,10 +228,10 @@ struct PairingModal: View {
         }
     }
 
-    private func step(_ n: Int, _ title: String, _ sub: String) -> some View {
+    private func step(_ n: Int, _ title: String, _ sub: String, ok: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Text("\(n)").font(.system(size: S(13), weight: .heavy, design: .monospaced)).foregroundStyle(Color(hex: 0x1a1200))
-                .frame(width: 24, height: 24).background(Rectangle().fill(Brand.amber))
+            Text(ok ? "✓" : "\(n)").font(.system(size: S(13), weight: .heavy, design: .monospaced)).foregroundStyle(Color(hex: 0x1a1200))
+                .frame(width: 24, height: 24).background(Rectangle().fill(ok ? Brand.green : Brand.amber))
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: S(13.5), weight: .semibold)).foregroundStyle(Brand.ink)
                 Text(sub).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
@@ -212,6 +243,32 @@ struct PairingModal: View {
             Text(k).font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.mute).frame(width: 70, alignment: .leading)
             Text(v).font(.system(size: S(12))).foregroundStyle(Brand.ink).lineLimit(1)
         }
+    }
+}
+
+/// "Push first": the board is not on GitHub yet, so the phone would say "Not found on GitHub".
+struct PushFirstNote: View {
+    let why: String
+    let command: String
+    @State private var copied = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("PUSH FIRST · THE PHONE WON’T FIND THE BOARD").font(Brand.label(10)).tracking(1).foregroundStyle(Brand.red)
+            Text(why + " The iPhone reads the board from GitHub, so push the repo with its board folder, then scan.")
+                .font(.system(size: S(12))).foregroundStyle(Brand.ink).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Text(command).font(.system(size: S(11), design: .monospaced)).foregroundStyle(Brand.cream)
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                Spacer(minLength: 4)
+                Button(copied ? "Copied" : "Copy") {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string); copied = true
+                }
+            }
+            .padding(8).background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.25)))
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Brand.red.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.red.opacity(0.45)))
     }
 }
 

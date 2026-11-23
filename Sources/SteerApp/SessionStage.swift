@@ -78,13 +78,6 @@ extension AppModel {
         let mine = rest.filter { stage(of: $0) == tab }
         return (pins + mine + rest.filter { stage(of: $0) != tab }, folded)
     }
-
-    /// How many sessions stand on each tab (for the counts on the tab bar).
-    func sessionCounts(projectId: String) -> [BoardTab: Int] {
-        var out: [BoardTab: Int] = [:]
-        for s in sessions(of: projectId) where s.running && !isWrapped(s) { if let t = stage(of: s) { out[t, default: 0] += 1 } }
-        return out
-    }
 }
 
 /// A small coloured stage tag on a session chip ("CHOICE", "TO TEST"…), shown when it is not the open tab's.
