@@ -118,7 +118,6 @@ struct ReleaseScreen: View {
             }
             .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 12)
         }
-        .overlay { ShipModal(projectId: project.id) }
         .task(id: project.release) { await loadGit(); await model.checkLive(project) }
         // A deploy finished, a live check found a new version, items turned live: show it now.
         .onChange(of: model.deployTick) { _, _ in Task { await loadGit() } }
@@ -145,12 +144,15 @@ struct ReleaseScreen: View {
             .help("Branches: " + WorkFlow.of(project).title + ". " + WorkFlow.of(project).note + " Change it in the setup.")
             Button("Edit setup") { editing = true }.buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
             SessionChip(projectId: project.id, ref: "release:" + project.id)
+            // Products ship from their cards (one release per product); a whole-project release only for what no product owns.
+            if ready.contains(where: { model.product(of: $0, in: project) == nil }) || model.products(project).isEmpty {
             ActionButton(title: "Prepare release", icon: "ship", primary: true) {
                 var x = ItemRef(ref: "release:" + project.id)!; x.title = "Release: " + project.name
                 model.start(projectId: project.id, item: x, intent: .ship)
             }
             .disabled(ready.isEmpty && !git.contains { $0.unpushed > 0 || !$0.readyBranches.isEmpty })
             .help("A Claude session ships everything ready, following this project's release setup, and marks the items live")
+            }
         }
     }
 
@@ -193,10 +195,17 @@ struct ReleaseScreen: View {
                         model.setLive([s], in: project, live: true)
                         model.showToast("“\(s.title.prefix(40))” → live", projectId: project.id, undo: { model.setLive([s], in: project, live: false, previous: prev) })
                     }.buttonStyle(SteerButton()).font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Brand.green)
-                    Button("Ship just this") {
-                        var x = ItemRef(ref: "test:" + s.id)!; x.title = s.title; x.area = s.area
-                        model.start(projectId: project.id, item: x, intent: .release)
-                    }.buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.cream)
+                    // Ships its product with its other ready items, through the one ship sheet (choice ship-by-product).
+                    if let ship = model.shipLabel(s, in: project) {
+                        Button(ship.title) { model.askShip(item: s, in: project) }
+                            .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.cream)
+                            .help("Ship \(ship.product.name) with its \(ship.count) ready item\(ship.count == 1 ? "" : "s")")
+                    } else {
+                        Button("Ship just this") {
+                            var x = ItemRef(ref: "test:" + s.id)!; x.title = s.title; x.area = s.area
+                            model.start(projectId: project.id, item: x, intent: .release)
+                        }.buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.cream)
+                    }
                 }
                 .padding(.vertical, 3)
             }

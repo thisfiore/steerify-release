@@ -439,7 +439,7 @@ struct ReadyScreen: View {
                         Text("READY TO RELEASE").font(Brand.label(10)).tracking(0.9).foregroundStyle(Brand.green)
                         Text("you said OK · not live yet").font(.system(size: S(11))).foregroundStyle(Brand.mute)
                     }
-                    ReleaseReadyCard(project: p, items: rel)
+                    ReadyByProduct(project: p, items: rel)
                         .padding(.bottom, groups.isEmpty ? 0 : 10)
                 }
                 if !groups.isEmpty {
@@ -555,8 +555,11 @@ struct ReleaseReadyCard: View {
 
     var body: some View {
         let skip = model.releaseSkipped(project.id)
-        let picked = items.filter { !skip.contains($0.id) }
-        let left = items.filter { skip.contains($0.id) }
+        // Items a release is shipping right now: shown as shipping, never shipped twice (ShipHandoff.swift).
+        let shipping = model.shippingIds(project.id)
+        let picked = items.filter { !skip.contains($0.id) && !shipping.contains($0.id) }
+        let left = items.filter { skip.contains($0.id) && !shipping.contains($0.id) }
+        let allShipping = items.allSatisfy { shipping.contains($0.id) }
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .center, spacing: 12) {
                 PixelIcon(name: "rocket", size: S(24)).foregroundStyle(Brand.green)
@@ -571,9 +574,10 @@ struct ReleaseReadyCard: View {
                     .help("Branches: " + flow.title + ". " + flow.note)
                 }
                 Spacer(minLength: 8)
-                PixelCTA(title: picked.count == items.count ? (flow == .main ? "Release all \(items.count)" : "Ship all \(items.count)")
+                PixelCTA(title: allShipping ? "Shipping \(items.count)…"
+                                : picked.count == items.count ? (flow == .main ? "Release all \(items.count)" : "Ship all \(items.count)")
                                                              : "Release \(picked.count) of \(items.count)",
-                         subtitle: picked.count == 1 && flow != .main ? "its own release" : "one release · 1 session",
+                         subtitle: allShipping ? "a release is on it" : picked.count == 1 && flow != .main ? "its own release" : "one release · 1 session",
                          color: Brand.green, icon: "rocket") {
                     model.startRelease(projectId: project.id, items: picked, skipped: left, note: note)
                     note = ""; Prefs.store.removeObject(forKey: noteKey)
@@ -589,7 +593,7 @@ struct ReleaseReadyCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 7).fill(Brand.panel2))
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.line))
-            ForEach(items) { s in row(s, on: !skip.contains(s.id)) }
+            ForEach(items) { s in row(s, on: !skip.contains(s.id), shipping: shipping.contains(s.id)) }
             VStack(alignment: .leading, spacing: 4) {
                 Text("RELEASE NOTE · OPTIONAL").font(Brand.label(8.5)).tracking(0.8).foregroundStyle(Brand.mute)
                 TextField("For Claude: major or minor? Leave something out? Hide a half-done feature behind a flag? Only for some users?",
@@ -609,25 +613,31 @@ struct ReleaseReadyCard: View {
         .onAppear { if note.isEmpty { note = Prefs.store.string(forKey: noteKey) ?? "" } }
     }
 
-    private func row(_ s: ShipItem, on: Bool) -> some View {
+    private func row(_ s: ShipItem, on: Bool, shipping: Bool = false) -> some View {
         let at = model.board(for: project).verdict("ship:" + s.id).at.flatMap { AppModel.iso.date(from: $0) }
         return HStack(spacing: 9) {
-            Button {
-                var skip = model.releaseSkipped(project.id)
-                if on { skip.insert(s.id) } else { skip.remove(s.id) }
-                model.setReleaseSkipped(project.id, skip)
-            } label: {
-                Image(systemName: on ? "checkmark.square.fill" : "square").font(.system(size: S(13)))
-                    .foregroundStyle(on ? Brand.green : Brand.mute)
+            if shipping {
+                ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: S(13), height: S(13))
+                    .help("A release is shipping it")
+            } else {
+                Button {
+                    var skip = model.releaseSkipped(project.id)
+                    if on { skip.insert(s.id) } else { skip.remove(s.id) }
+                    model.setReleaseSkipped(project.id, skip)
+                } label: {
+                    Image(systemName: on ? "checkmark.square.fill" : "square").font(.system(size: S(13)))
+                        .foregroundStyle(on ? Brand.green : Brand.mute)
+                }
+                .buttonStyle(SteerButton()).help(on ? "Leave it for a later release" : "Put it in this release")
             }
-            .buttonStyle(SteerButton()).help(on ? "Leave it for a later release" : "Put it in this release")
             Text(s.title).font(.system(size: S(12.5), weight: .medium)).foregroundStyle(on ? Brand.ink : Brand.mute).lineLimit(1)
                 .contentShape(Rectangle())
                 .onTapGesture { model.openCombo(projectId: project.id, ref: "test:" + s.id, startNew: false) }
-            if !on { Text("waits").font(.system(size: S(10.5))).foregroundStyle(Brand.amber) }
+            if shipping { Text("shipping…").font(.system(size: S(10.5))).foregroundStyle(Brand.blue) }
+            else if !on { Text("waits").font(.system(size: S(10.5))).foregroundStyle(Brand.amber) }
             Spacer(minLength: 6)
             if let at { Text("OK " + at.formatted(.dateTime.day().month(.abbreviated))).font(.system(size: S(11))).foregroundStyle(Brand.mute) }
-            if flow != .main {
+            if flow != .main && !shipping {
                 Button("Ship") { model.startRelease(projectId: project.id, items: [s], skipped: [], note: note) }
                     .buttonStyle(SteerButton()).font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Brand.green)
                     .help("Release just this feature (its branch / pull request)")

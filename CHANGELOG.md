@@ -2,6 +2,14 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.18 · 2026-11-23
+
+### In the app
+
+- **How technical are you? level picker** — Asked once on first launch · Three characters, pixel art header · What you'll see, how we say it · Change it in Settings → You
+- **Ship hands off: sessions show shipping, then released** — Shipping items: no Release button · Session says shipping · in the release · Stopped release gives it back
+- **Ship by product, everywhere: one ship sheet** — Every ship button: same product sheet · Card + session: Ship Mac app · N · Ready grouped by product · Untick = waits, release note
+
 ## 0.5.17 · 2026-11-23
 
 ### In the app

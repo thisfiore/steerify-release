@@ -109,14 +109,22 @@ struct DecisionCard: View {
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 6) {
                 SessionChip(projectId: board.project.id, ref: "choice:" + d.id)
-                HStack(spacing: 6) {
-                    if board.isBuilt(d) {
+                if board.isBuilt(d) {
+                    HStack(spacing: 6) {
                         Label("Built", systemImage: "checkmark").font(.system(size: S(11.5), weight: .medium)).foregroundStyle(Brand.green)
-                    } else {
-                        ActionButton(title: "Build my pick", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .build) }
+                        Button("Change") { load(); withAnimation(.easeOut(duration: 0.18)) { reopened = true } }
+                            .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
                     }
-                    Button("Change") { load(); withAnimation(.easeOut(duration: 0.18)) { reopened = true } }
-                        .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
+                } else {
+                    // Picked, not built: building it is the main call to action, as big as "Your choice".
+                    HStack(alignment: .center, spacing: 8) {
+                        Button("Change") { load(); withAnimation(.easeOut(duration: 0.18)) { reopened = true } }
+                            .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
+                        VStack(spacing: 6) {
+                            ActionButton(title: "Build my pick", primary: true, large: true) { model.start(projectId: board.project.id, item: ref, intent: .build) }
+                            ClaudeButton(title: "Discuss this with Claude", large: true) { model.start(projectId: board.project.id, item: ref, intent: .look) }
+                        }.frame(width: S(250))
+                    }
                 }
             }
         }
@@ -166,9 +174,12 @@ struct DecisionCard: View {
             }
             answerBar(decided)
 
-            HStack(spacing: 6) {
-                if decided && !board.isBuilt(d) { ActionButton(title: "Build my pick", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .build) } }
-                ClaudeButton(title: "Ask Claude") { model.start(projectId: board.project.id, item: ref, intent: .look) }
+            HStack(alignment: .bottom, spacing: 6) {
+                // Once picked, building it is the main call to action: as big as "Your choice", Claude under it, same size.
+                VStack(spacing: 8) {
+                    if decided && !board.isBuilt(d) { ActionButton(title: "Build my pick", primary: true, large: true) { model.start(projectId: board.project.id, item: ref, intent: .build) } }
+                    ClaudeButton(title: "Discuss this with Claude", large: true) { model.start(projectId: board.project.id, item: ref, intent: .look) }
+                }.frame(maxWidth: 340)
                 Spacer()
                 Button(board.isParked(d) ? "Recover" : "Park for later") { board.setParked(d, !board.isParked(d)) }
                     .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)

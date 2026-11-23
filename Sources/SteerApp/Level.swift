@@ -134,7 +134,9 @@ struct LevelPicker: View {
     /// true inside Settings: no title block of its own, saves on click.
     var inSettings = false
     var onDone: (() -> Void)? = nil
-    @State private var pick: Level = Level.chosen ?? .builder
+    var onLater: (() -> Void)? = nil
+    /// A first answer starts in the middle; Settings shows the saved one.
+    @State private var pick: Level = Level.chosen ?? .tinkerer
 
     var body: some View {
         VStack(alignment: .leading, spacing: S(16)) {
@@ -149,10 +151,15 @@ struct LevelPicker: View {
             HStack(alignment: .top, spacing: S(12)) {
                 ForEach(Level.allCases) { l in card(l) }
             }
+            .fixedSize(horizontal: false, vertical: true)   // cards as tall as the tallest one, no taller
             if !inSettings {
                 HStack {
                     Text("Started from an AI Traction recipe? Explorer fits best.").font(.system(size: S(11))).foregroundStyle(Brand.mute)
                     Spacer()
+                    if let onLater {
+                        Button("Later", action: onLater).buttonStyle(.plain).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
+                            .keyboardShortcut(.cancelAction).padding(.trailing, 6)
+                    }
                     ActionButton(title: "I'm \(pick.article) \(pick.name)", icon: "ship", primary: true) { save(); onDone?() }
                         .keyboardShortcut(.defaultAction)
                 }
@@ -189,8 +196,8 @@ struct LevelPicker: View {
                         Text("“\(l.says)”").font(.system(size: S(11.5))).italic().foregroundStyle(Brand.cream)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 6) {
-                            Text("The button").font(.system(size: S(10.5))).foregroundStyle(Brand.mute)
-                            Text(l.releaseWord).font(.system(size: S(10.5), weight: .semibold)).foregroundStyle(Color(hex: 0x1a1200))
+                            Text("The button").font(.system(size: S(10.5))).foregroundStyle(Brand.mute).fixedSize()
+                            Text(l.releaseWord).font(.system(size: S(10.5), weight: .semibold)).foregroundStyle(Color(hex: 0x1a1200)).lineLimit(1).fixedSize()
                                 .padding(.horizontal, 7).padding(.vertical, 2).background(RoundedRectangle(cornerRadius: 4).fill(l.color))
                         }
                     }
@@ -226,11 +233,7 @@ struct LevelSheet: View {
     var body: some View {
         ZStack {
             Color.black.opacity(0.6).ignoresSafeArea()
-            VStack(alignment: .trailing, spacing: 8) {
-                LevelPicker { model.levelOpen = false }
-                Button("Later") { model.levelOpen = false }
-                    .buttonStyle(.plain).font(.system(size: S(11))).foregroundStyle(Brand.mute).keyboardShortcut(.cancelAction)
-            }
+            LevelPicker(onDone: { model.levelOpen = false }, onLater: { model.levelOpen = false })
             .padding(S(22))
             .frame(width: S(900))
             .background(RoundedRectangle(cornerRadius: 16).fill(Brand.bg))

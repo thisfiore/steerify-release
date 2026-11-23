@@ -160,6 +160,8 @@ extension BoardStore {
         let chs = chapters(of: item).subtracting([fixes])
         return links.filter { l in
             guard l.claudeSession != claudeId, l.started > since else { return false }
+            // A release session ships the item: a hand-off, not a take-over (ShipHandoff.swift: shipping, then released).
+            if l.intent == "ship" { return false }
             if thread.contains(l.item) { return true }
             return (isChapter(item) || isChapter(l.item)) && !chs.isDisjoint(with: chapters(of: l.item))
         }.max { $0.started < $1.started }
@@ -248,7 +250,7 @@ extension AppModel {
               let p = projects.first(where: { $0.id == s.projectId }) else { return nil }
         switch outlook(s) {
         case .ask?, .next?, .takenOver?: return nil
-        default: return board(for: p).yourTurn(of: [item.ref] + s.alsoRefs)
+        default: return handedOff(s) ? nil : board(for: p).yourTurn(of: [item.ref] + s.alsoRefs)
         }
     }
 }

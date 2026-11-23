@@ -64,10 +64,15 @@ extension AppModel {
 
         let rel = releasable(p.id)
         if !rel.isEmpty {
+            // By product (choice ship-by-product): one product → its ship sheet; several → Ready, grouped by product.
+            let prods = rel.map { product(of: $0, in: p)?.id ?? "" }
+            let one = Set(prods).count == 1 && !prods[0].isEmpty ? products(p).first { $0.id == prods[0] } : nil
             out.append(NextPlanStep(id: "release", kind: .ship,
-                                    text: "\(rel.count) approved to ship",
+                                    text: one.map { "\($0.name): \(rel.count) approved to ship" } ?? "\(rel.count) approved to ship · \(Set(prods).count) products",
                                     detail: rel.prefix(2).map(\.title).joined(separator: ", ") + (rel.count > 2 ? " …" : ""),
-                                    button: "Ship \(rel.count)", claude: false) { openReady() })
+                                    button: one.map { "Ship \($0.name) · \(rel.count)" } ?? "Ship by product", claude: false) { [weak self] in
+                if let one { self?.askShip(projectId: p.id, product: one.id) } else { openReady() }
+            })
         }
 
         let toTest = b.ships.filter { [.toTest, .retest].contains(b.shipState($0)) }

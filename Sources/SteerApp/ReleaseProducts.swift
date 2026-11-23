@@ -188,7 +188,8 @@ struct ReleaseProducts: View {
             Dictionary(uniqueKeysWithValues: all.map { ($0.id, ProductState.read($0, in: p)) })
         }.value
         states = out
-        runs.check(project: p.id, states: out)
+        // Landed: its items are live and their key results done, so their feature sessions show released.
+        model.landShips(p, states: out)
         // Test hook (test copies only): `--demo-ship <product id> shipping|done|failed` opens the modal on that state.
         let a = CommandLine.arguments
         if a.contains("--background"), let i = a.firstIndex(of: "--demo-ship"), i + 2 < a.count,
@@ -238,9 +239,9 @@ struct ReleaseProducts: View {
                 }
                 Spacer()
                 if need {
-                    ActionButton(title: pr.deploy != nil ? "Ship" : "Ship with Claude",
-                                 icon: "ship", primary: true) { ship(pr, st, rd) }
-                        .help(pr.deploy.map { "Runs “\($0)” in a shell tab" } ?? "A Claude session ships just this product")
+                    ActionButton(title: rd.isEmpty ? "Ship" : "Ship · \(rd.count)",
+                                 icon: "ship", primary: true) { model.askShip(projectId: project.id, product: pr.id) }
+                        .help("Ship \(pr.name): its ready items, one release (" + (pr.deploy.map { "runs “\($0)”" } ?? "a Claude session ships it") + ")")
                 }
             }
             ForEach(rd.prefix(4)) { s in line("▸", s.title, Brand.amber, Brand.amber) }
@@ -262,21 +263,6 @@ struct ReleaseProducts: View {
         }
     }
 
-    private func ship(_ pr: ReleaseProduct, _ st: ProductState, _ rd: [ShipItem]) {
-        let key = project.id + "/" + pr.id
-        if runs.active[key]?.phase == .shipping { runs.shown = key; return }
-        runs.start(ShipRun(key: key, projectId: project.id, product: pr, from: st, items: rd.map(\.title)))
-        if let cmd = pr.deploy, let repo = pr.repo.flatMap({ project.resolveRepo($0) }) ?? project.repos.first {
-            runs.runDeploy(cmd, repo: repo, in: project, model: model, key: key)
-        } else {
-            var x = ItemRef(ref: "release:" + project.id)!; x.title = "Release: " + pr.name
-            let brief = "Ship only the product \(pr.name) (steerify.json → products → \(pr.id); its items: "
-                + (rd.isEmpty ? "none approved, just its unreleased commits" : rd.map(\.title).joined(separator: "; ")) + "). "
-                + (pr.how ?? "") + " Leave the other products alone."
-            model.start(projectId: project.id, item: x, intent: .ship, extraBrief: brief)
-        }
-    }
-
     static func day(_ d: Date) -> String {
         let f = DateFormatter(); f.dateFormat = Calendar.current.isDateInToday(d) ? "'today' HH:mm" : "d MMM"
         return f.string(from: d)
@@ -292,6 +278,8 @@ struct ShipRun: Identifiable, Equatable {
     let product: ReleaseProduct
     let from: ProductState
     let items: [String]
+    /// The To test ids it ships: marked live when it lands; their sessions show "shipping" meanwhile.
+    var itemIds: [String] = []
     let started = Date()
     enum Phase: Equatable { case shipping, done(String), failed(String) }
     var phase: Phase = .shipping
@@ -310,6 +298,8 @@ final class ShipRuns: ObservableObject {
     @Published var active: [String: ShipRun] = [:]
     /// The run the modal shows (nil = hidden; a run keeps going in the background).
     @Published var shown: String?
+    /// The ship sheet to show (ShipProduct.swift): every ship button opens it.
+    @Published var ask: ShipAsk?
     /// Bumped while a run is shipping, so the products read their version again.
     @Published var tick = 0
     private var poll: Task<Void, Never>?
@@ -375,11 +365,14 @@ final class ShipRuns: ObservableObject {
     }
 
     /// Products read again: a shipping one whose version changed is done.
-    func check(project: String, states: [String: ProductState]) {
+    @discardableResult
+    func check(project: String, states: [String: ProductState]) -> [ShipRun] {
+        var landed: [ShipRun] = []
         for (k, r) in active where r.projectId == project && r.phase == .shipping {
             guard let st = states[r.product.id], st.version != "—", st.version != r.from.version else { continue }
-            finish(k, .done(st.version))
+            finish(k, .done(st.version)); landed.append(r)
         }
+        return landed
     }
 
     func finish(_ key: String, _ phase: ShipRun.Phase) {

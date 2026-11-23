@@ -417,6 +417,10 @@ struct SteerApp: App {
             }
         }
         if a.contains("--origin-ping-demo") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { OriginPingDemo.run(m) } }
+        if let i = a.firstIndex(of: "--ship-handoff-demo"), i + 1 < a.count {
+            let stop = i + 2 < a.count && !a[i + 2].hasPrefix("--") ? a[i + 2] : "live"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { ShipHandoffDemo.run(m, a[i + 1], stop: stop) }
+        }
         if let i = a.firstIndex(of: "--flow-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SessionFlowDemo.run(m, a[i + 1]) } }
         // Test hook: `--stuck-demo <item ref>` opens a dry session (claude never starts): 20 s later its card says why + Restart.
         if let i = a.firstIndex(of: "--stuck-demo"), i + 1 < a.count, let p = m.project {

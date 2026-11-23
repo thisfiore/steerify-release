@@ -107,6 +107,7 @@ extension AppModel {
     private func computeWrapped(_ s: TerminalSession) -> Bool {
         if !s.running { return true }
         if yourTurn(s) != nil { return false }      // waits on you on the board: not done
+        if handedOff(s) { return false }            // a release is shipping it: not done until it is live
         if outlook(s)?.isDone == true { return true }
         guard s.kind == .claude, s.status == .idle,
               let p = projects.first(where: { $0.id == s.projectId }), let item = s.item else { return false }

@@ -376,6 +376,15 @@ final class AppModel: ObservableObject {
                     SessionLinks.append(SessionLink(item: item.ref, claudeSession: prev.claudeSession, intent: intent.rawValue, repo: repo.name,
                                                     title: item.title ?? item.ref, started: BoardStore.now(), dir: s.workdir), in: p.boardDir)
                 }
+            } else {
+                // Its own conversation again: what it covers comes with it (a release resumed with the items it ships).
+                s.alsoRefs = also.filter { $0 != item.ref }
+                if !dry {
+                    for r in s.alsoRefs {
+                        SessionLinks.append(SessionLink(item: r, claudeSession: prev.claudeSession, intent: intent.rawValue, repo: repo.name,
+                                                        title: item.title ?? item.ref, started: BoardStore.now(), dir: s.workdir), in: p.boardDir)
+                    }
+                }
             }
             return open(s)
         }

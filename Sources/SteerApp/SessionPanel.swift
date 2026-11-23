@@ -240,9 +240,16 @@ struct SessionChip2: View {
 
     /// "Test →", "Answer →", "Release →": opens the board item that waits on you.
     private func turnButton(_ turn: BoardTurn) -> some View {
-        Button { model.focusItem(projectId: session.projectId, ref: turn.ref) } label: {
+        let ship = shipOf(turn)
+        return Button {
+            // A release waits: the product's ship sheet (choice ship-by-product), like every other ship button.
+            if let ship, let p = model.projects.first(where: { $0.id == session.projectId }) {
+                model.selectedProjectId = p.id
+                model.askShip(projectId: p.id, product: ship.product.id, highlight: String(turn.ref.dropFirst("release:".count)))
+            } else { model.focusItem(projectId: session.projectId, ref: turn.ref) }
+        } label: {
             HStack(spacing: 3) {
-                Text(turn.verb).font(.system(size: S(10.5), weight: .semibold))
+                Text(ship?.title ?? turn.verb).font(.system(size: S(10.5), weight: .semibold))
                 Image(systemName: "arrow.right").font(.system(size: S(8), weight: .bold))
             }
             .padding(.horizontal, 7).padding(.vertical, 3)
@@ -251,7 +258,15 @@ struct SessionChip2: View {
             .foregroundStyle(Brand.violet)
         }
         .buttonStyle(SteerButton()).pointerStyle(.link).fixedSize()
-        .help("Your turn: open it on \(turn.tab.title.capitalized)")
+        .help(ship.map { "Your turn: ship \($0.product.name) with its \($0.count) ready item\($0.count == 1 ? "" : "s")" } ?? "Your turn: open it on \(turn.tab.title.capitalized)")
+    }
+
+    /// "Release" turn → the product it ships ("Ship Mac app · 3").
+    private func shipOf(_ turn: BoardTurn) -> (product: ReleaseProduct, title: String, count: Int)? {
+        guard turn.ref.hasPrefix("release:"), let p = model.projects.first(where: { $0.id == session.projectId }) else { return nil }
+        let id = String(turn.ref.dropFirst("release:".count))
+        guard let s = model.board(for: p).ships.first(where: { $0.id == id }) else { return nil }
+        return model.shipLabel(s, in: p)
     }
 
     /// "Tidy · Project ops" → ("Tidy", "Project ops"); a title without a known verb stays whole.
@@ -269,12 +284,15 @@ struct SessionChip2: View {
     private func subtitle(_ o: SessionOutlook?, _ t: BoardTurn?) -> String {
         if !session.running { return "ended · close it" }
         if let t { return "your turn · " + t.tab.title.capitalized.replacingOccurrences(of: "To Test", with: "To test") }
+        if model.handedOff(session) { return "shipping · in the release" }
+        if wrapped && model.isReleased(session) { return "released · close it" }
         if let o { return o.line }
         return wrapped ? "done · close it" : session.moodWord
     }
     private func subtitleColor(_ o: SessionOutlook?, _ t: BoardTurn?) -> Color {
-        if wrapped { return Brand.mute }
+        if wrapped { return model.isReleased(session) ? Brand.green.opacity(0.8) : Brand.mute }
         if t != nil { return Brand.violet }
+        if model.handedOff(session) { return Brand.blue }
         switch o { case .ask?: return Brand.amber; case .next?: return Brand.cream; default: return session.moodColor }
     }
     private func help(_ o: SessionOutlook?, _ t: BoardTurn?) -> String {

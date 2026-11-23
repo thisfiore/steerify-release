@@ -401,7 +401,11 @@ struct PreviewOverlay: View {
                         ActionButton(title: "Fix my notes", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .fix) }
                     }
                     if pick == "ok" && s.status != "live" {
-                        ActionButton(title: board.shipNotes(s).isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .release) }
+                        if let ship = model.shipLabel(s, in: board.project) {
+                            ActionButton(title: ship.title, icon: "ship", primary: true) { close(); model.askShip(item: s, in: board.project) }
+                        } else {
+                            ActionButton(title: board.shipNotes(s).isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .release) }
+                        }
                     }
                     ClaudeButton(title: "Open with Claude") { close(); model.start(projectId: state.projectId, item: r, intent: .look) }
                 }.padding(.top, 2)
@@ -437,12 +441,12 @@ struct PreviewOverlay: View {
                 else { board.setChoice(d, pick: v.pickString ?? (t.isEmpty ? nil : "__note"), note: t) }
             }
             if let r = itemRef {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     if board.isDecided(d) && !board.isBuilt(d) {
-                        ActionButton(title: "Build my pick", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .build) }
+                        ActionButton(title: "Build my pick", primary: true, large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .build) }
                     }
-                    ClaudeButton(title: "Ask Claude") { close(); model.start(projectId: state.projectId, item: r, intent: .look) }
-                }.padding(.top, 2)
+                    ClaudeButton(title: "Discuss this with Claude", large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .look) }
+                }.padding(.top, 4)
             }
         }
     }

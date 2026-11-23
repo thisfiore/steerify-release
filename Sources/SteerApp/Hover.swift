@@ -64,17 +64,22 @@ struct ClaudeSpark: View {
 struct ClaudeButton: View {
     var title = "Do it with Claude"
     var prominent = false
+    /// Full width, the same size as the main call to action above it.
+    var large = false
     let action: () -> Void
     var body: some View {
+        let r: CGFloat = large ? 8 : 6
         Button(action: action) {
-            HStack(spacing: 6) {
-                ClaudeSpark(size: S(12), color: prominent ? .white : Brand.claude)
-                Text(title).font(.system(size: S(11.5), weight: .semibold))
+            HStack(spacing: large ? 7 : 6) {
+                ClaudeSpark(size: S(large ? 13.5 : 12), color: prominent ? .white : Brand.claude)
+                Text(title).font(.system(size: S(large ? 13.5 : 11.5), weight: large ? .bold : .semibold))
             }
+            .frame(maxWidth: large ? .infinity : nil)
             .foregroundStyle(prominent ? Color.white : Brand.claude)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6).fill(prominent ? Brand.claude : Brand.claude.opacity(0.08)))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.claude.opacity(prominent ? 1 : 0.55)))
+            .padding(.horizontal, 10).padding(.vertical, large ? 9 : 5)
+            .background(RoundedRectangle(cornerRadius: r).fill(prominent ? Brand.claude : Brand.claude.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: r).stroke(Brand.claude.opacity(prominent ? 1 : 0.55)))
+            .contentShape(Rectangle())
         }
         .buttonStyle(SteerButton())
     }

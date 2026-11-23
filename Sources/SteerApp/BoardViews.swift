@@ -175,6 +175,8 @@ struct BoardScreen: View {
         }
         }
         .background(Brand.bg)
+        // The ship sheet and the shipping modal, whatever the tab (choice ship-by-product).
+        .overlay { ShipHost(projectId: board.project.id) }
         // Listened to here, not on the list: a jump from Ready, Tasks or Release (Where you left off,
         // Also waiting on you) must switch the tab even though no list is showing yet.
         .onChange(of: model.focus) { _, f in
@@ -601,14 +603,23 @@ struct Pill: View {
 }
 
 struct ActionButton: View {
-    let title: String; var icon: String = "play"; var primary = false; let action: () -> Void
+    let title: String; var icon: String = "play"; var primary = false
+    /// The main call to action: full width, the same size as "Choose A" / "Your choice".
+    var large = false
+    let action: () -> Void
     var body: some View {
+        let r: CGFloat = large ? 8 : 6
         Button(action: action) {
-            HStack(spacing: 5) { PixelIcon(name: icon, size: 9); Text(title).font(.system(size: S(11.5), weight: .semibold)) }
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .foregroundStyle(primary ? Color(hex: 0x1a1200) : Brand.cream)
-                .background(RoundedRectangle(cornerRadius: 6).fill(primary ? Brand.amber : .clear))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(primary ? Brand.amber : Brand.line2))
+            HStack(spacing: large ? 7 : 5) {
+                PixelIcon(name: icon, size: large ? 11 : 9)
+                Text(title).font(.system(size: S(large ? 13.5 : 11.5), weight: large ? .bold : .semibold))
+            }
+            .frame(maxWidth: large ? .infinity : nil)
+            .padding(.horizontal, 10).padding(.vertical, large ? 9 : 5)
+            .foregroundStyle(primary ? Color(hex: 0x1a1200) : Brand.cream)
+            .background(RoundedRectangle(cornerRadius: r).fill(primary ? Brand.amber : .clear))
+            .overlay(RoundedRectangle(cornerRadius: r).stroke(primary ? Brand.amber : Brand.line2))
+            .contentShape(Rectangle())
         }.buttonStyle(SteerButton())
     }
 }
@@ -988,7 +999,14 @@ struct ShipCard: View {
                     ActionButton(title: "Fix my notes", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .fix) }
                 }
                 if (pick == "ok" && item.status != "live" && item.releases) || state == .afterRelease {
-                    ActionButton(title: state == .afterRelease ? "Release to test" : notes.isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .release) }
+                    // Ship its product with all its ready items, through the one ship sheet (choice ship-by-product).
+                    if let ship = model.shipLabel(item, in: board.project) {
+                        ProductChip(product: ship.product)
+                        ActionButton(title: ship.title, icon: "ship", primary: true) { model.askShip(item: item, in: board.project) }
+                            .help("Ship \(ship.product.name) with its \(ship.count) ready item\(ship.count == 1 ? "" : "s"), this one included")
+                    } else {
+                        ActionButton(title: state == .afterRelease ? "Release to test" : notes.isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true) { model.start(projectId: board.project.id, item: ref, intent: .release) }
+                    }
                 }
                 ClaudeButton(title: "Open with Claude") { model.start(projectId: board.project.id, item: ref, intent: .look) }
             }
