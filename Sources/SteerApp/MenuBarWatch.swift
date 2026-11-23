@@ -15,16 +15,32 @@ import AppKit
     /// System Settings › Menu Bar (macOS 26; Control Centre on older systems, where the same list lives).
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension")!
 
-    /// Only the app you use puts a wheel in the menu bar. Test copies never do: `--background` runs, the test build
-    /// (`build/test/Steerify.app`: same name and bundle id as yours, so its wheel collides with your wheel) and bare
-    /// executables (`swift run`, `.build/…/SteerApp`, listed by macOS as "SteerApp"), unless started with `--menubar`
-    /// to test the wheel itself. Each copy that adds one gets its own row in System Settings › Menu Bar.
-    static let allowed: Bool = {
-        let args = CommandLine.arguments
-        if args.contains("--menubar") { return true }
-        let path = Bundle.main.bundleURL.path
-        return !args.contains("--background") && path.hasSuffix(".app") && !path.contains("/build/test/")
+    /// A test copy: a `--background` run, a bare executable (`swift run`, `.build/…/SteerApp`, listed by macOS as
+    /// "SteerApp"), the test build (`build/test/Steerify.app`) or any copy in a temp / scratch folder. They all share
+    /// your app's name and bundle id, so macOS mixes their menu bar rows up with yours.
+    static let isTestCopy: Bool = {
+        if CommandLine.arguments.contains("--background") { return true }
+        let path = Bundle.main.bundleURL.resolvingSymlinksInPath().path
+        guard path.hasSuffix(".app") else { return true }
+        return path.contains("/build/test/") || ["/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"].contains { path.hasPrefix($0) }
     }()
+
+    /// Only the app you use puts a wheel in the menu bar. Test copies never do, unless started with `--menubar` to
+    /// test the wheel itself. Each copy that adds one gets its own row in System Settings › Menu Bar.
+    static let allowed: Bool = CommandLine.arguments.contains("--menubar") || !isTestCopy
+
+    /// A test copy takes itself out of macOS's app list as it starts (LaunchServices registers every copy that runs),
+    /// so System Settings › Menu Bar and "Open with" only know your Steerify. `scripts/clean-test-copies.sh` does the
+    /// same for copies left from before.
+    static func forgetTestCopy() {
+        guard isTestCopy, Bundle.main.bundleURL.pathExtension == "app" else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
+        p.arguments = ["-u", Bundle.main.bundleURL.path]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        // After launch: macOS registers the running app as it checks in, which would undo an earlier call.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { try? p.run() }
+    }
 
     /// `--fake-menubar-hidden`: the strip as it looks when macOS hides the wheel (screenshots of test copies).
     private init() { hidden = CommandLine.arguments.contains("--fake-menubar-hidden") }

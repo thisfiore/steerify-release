@@ -218,7 +218,7 @@ enum SteerifyMain {
             MainActor.assumeIsolated { DeployWakeCheck.run(CommandLine.arguments[i + 1]) }
             exit(0)
         }
-        MainActor.assumeIsolated { MenuBarWatch.clearHiddenFlag() }   // before the menu bar item exists
+        MainActor.assumeIsolated { MenuBarWatch.clearHiddenFlag(); MenuBarWatch.forgetTestCopy() }   // before the menu bar item exists
         SteerApp.main()
     }
 }

@@ -110,6 +110,7 @@ struct ReleaseScreen: View {
                     ReleaseSetup(project: project, done: { editing = false; model.reloadBoard() })
                 } else {
                     header
+                    ReleaseProducts(board: board, project: project)
                     readyCard
                     envCard
                     gitCard
@@ -117,6 +118,7 @@ struct ReleaseScreen: View {
             }
             .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 12)
         }
+        .overlay { ShipModal(projectId: project.id) }
         .task(id: project.release) { await loadGit(); await model.checkLive(project) }
         // A deploy finished, a live check found a new version, items turned live: show it now.
         .onChange(of: model.deployTick) { _, _ in Task { await loadGit() } }
