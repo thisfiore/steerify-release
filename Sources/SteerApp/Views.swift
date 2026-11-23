@@ -317,6 +317,7 @@ struct TerminalPane: View {
                     .padding(10)
                     .frame(width: S(190))
                     .background(Color(hex: 0x0b0c0f))
+                    .clipped()   // nothing in the list may spill over the terminal (request r261123-191258)
                     .overlay(alignment: .leading) { Rectangle().fill(Brand.line).frame(width: 1) }
                 }
             }

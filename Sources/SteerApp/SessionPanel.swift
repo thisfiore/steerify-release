@@ -172,9 +172,14 @@ struct SessionChip2: View {
                 }
                 if vertical, let turn {
                     // Column mode: the button gets its own row so the name keeps the full width.
-                    HStack(spacing: 6) {
-                        turnButton(turn)
-                        Text("your turn").font(.system(size: S(10))).foregroundStyle(Brand.violet.opacity(0.85)).lineLimit(1).fixedSize()
+                    // A long product name ("Ship Second-edition pages · 5") must never widen the column
+                    // (request r261123-191258): "your turn" goes first, then the name truncates.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            turnButton(turn, fixed: true)
+                            Text("your turn").font(.system(size: S(10))).foregroundStyle(Brand.violet.opacity(0.85)).lineLimit(1).fixedSize()
+                        }
+                        turnButton(turn, fixed: false)
                     }.padding(.top, 2)
                 } else if vertical, session.stuck != nil, session.status == .starting, session.running {
                     VStack(alignment: .leading, spacing: 4) {
@@ -239,7 +244,7 @@ struct SessionChip2: View {
     }
 
     /// "Test →", "Answer →", "Release →": opens the board item that waits on you.
-    private func turnButton(_ turn: BoardTurn) -> some View {
+    private func turnButton(_ turn: BoardTurn, fixed: Bool = true) -> some View {
         let ship = shipOf(turn)
         return Button {
             // A release waits: the product's ship sheet (choice ship-by-product), like every other ship button.
@@ -250,14 +255,15 @@ struct SessionChip2: View {
         } label: {
             HStack(spacing: 3) {
                 Text(ship?.title ?? turn.verb).font(.system(size: S(10.5), weight: .semibold))
-                Image(systemName: "arrow.right").font(.system(size: S(8), weight: .bold))
+                    .lineLimit(1).truncationMode(.middle)
+                Image(systemName: "arrow.right").font(.system(size: S(8), weight: .bold)).fixedSize()
             }
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(Capsule().fill(Brand.violet.opacity(0.14)))
             .overlay(Capsule().stroke(Brand.violet.opacity(0.5)))
             .foregroundStyle(Brand.violet)
         }
-        .buttonStyle(SteerButton()).pointerStyle(.link).fixedSize()
+        .buttonStyle(SteerButton()).pointerStyle(.link).fixedSize(horizontal: fixed, vertical: true)
         .help(ship.map { "Your turn: ship \($0.product.name) with its \($0.count) ready item\($0.count == 1 ? "" : "s")" } ?? "Your turn: open it on \(turn.tab.title.capitalized)")
     }
 

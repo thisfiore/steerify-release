@@ -2,6 +2,20 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.20 · 2026-11-23
+
+### In the app
+
+- **Sessions column: long Ship button fits** — Column stays its width · Long Ship names shorten · No text under the list
+
+### On the iPhone
+
+- **iPhone: errors you understand + report a bug** — Says why: no access / not pushed · Pixel picture + what to do · Try again, Report it · Report a bug / Suggest a feature
+
+### On steerify.dev
+
+- **Branded roadmap pages with a pixel mate** — Pages in your brand · Crab acts out each request · Party when it goes Live · Feedback via Steerify
+
 ## 0.5.19 · 2026-11-23
 
 ### In the app
