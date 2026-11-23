@@ -197,7 +197,10 @@ struct ReleaseProducts: View {
             var from = out[pr.id] ?? ProductState(); if a[i + 2] == "done" { from.version = "v0.5.12" }
             runs.start(ShipRun(key: key, projectId: p.id, product: pr, from: from, items: ready(pr, all).map(\.title)))
             if a[i + 2] == "done" { runs.finish(key, .done("v0.5.13")) }
-            if a[i + 2] == "failed" { runs.finish(key, .failed("“\(pr.deploy ?? "ship")” stopped with code 1: see its tab")) }
+            if a[i + 2] == "failed" {
+                runs.active[key]?.command = pr.deploy; runs.active[key]?.log = "lsregister: -u failed (exit 1)\nrelease.sh: line 88: build failed"
+                runs.finish(key, .failed("The release script stopped (code 1) before anything went out."))
+            }
         }
     }
 
@@ -286,6 +289,10 @@ struct ShipRun: Identifiable, Equatable {
     let started = Date()
     enum Phase: Equatable { case shipping, done(String), failed(String) }
     var phase: Phase = .shipping
+    /// The shell tab running the release script, and its last lines when it stopped (handed to Claude on a failure).
+    var shell: UUID?
+    var command: String?
+    var log = ""
 }
 
 @MainActor
@@ -314,17 +321,48 @@ final class ShipRuns: ObservableObject {
     func runDeploy(_ cmd: String, repo: Repo, in p: Project, model: AppModel, key: String) {
         let s = TerminalSession(project: p, repo: repo, kind: .shell, item: nil)
         s.shellCommand = cmd
-        s.onExit = { [weak self] code in
+        active[key]?.shell = s.id; active[key]?.command = cmd
+        s.onExit = { [weak self, weak s] code in
             Task { @MainActor in
                 guard let self else { return }
                 model.deployTick += 1
-                if code != 0 { self.finish(key, .failed("“\(cmd)” stopped with code \(code): see its tab")) }
+                if code != 0 {
+                    self.active[key]?.log = s.map { Self.tail($0) } ?? ""
+                    self.finish(key, .failed("The release script stopped (code \(code)) before anything went out."))
+                }
                 else { self.tick += 1 }   // the version check turns it into done
             }
         }
         _ = s.view
         model.sessions.append(s)
         model.selectedSession[p.id] = s.id
+    }
+
+    /// The last lines a shell tab printed (the part that says why a release stopped).
+    static func tail(_ s: TerminalSession, lines: Int = 60) -> String {
+        s.view.selectAll()                                   // SwiftTerm's public way to read the buffer
+        let text = s.view.getSelection() ?? ""
+        s.view.selectNone()
+        let all = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        var tail = Array(all.suffix(lines * 3).filter { !$0.isEmpty }.suffix(lines))
+        if tail.joined().count > 6000 { tail = Array(tail.suffix(25)) }
+        return tail.joined(separator: "\n")
+    }
+
+    /// A release that stopped: a Claude session gets the script, the log tail and the items, finds why, fixes, ships.
+    func fixWithClaude(_ key: String, model: AppModel) {
+        guard let r = active[key], case .failed = r.phase else { return }
+        var x = ItemRef(ref: "release:" + r.projectId)!; x.title = "Release: " + r.product.name
+        let log = r.log.isEmpty ? "(log not captured: read the shell tab)" : r.log
+        let script: String = r.command ?? r.product.deploy ?? "ship"
+        let waiting: String = r.items.isEmpty ? "none, just its unreleased commits" : r.items.joined(separator: "; ")
+        var brief = "The release of \(r.product.name) stopped. Script: “\(script)” (from \(r.from.version)). "
+        brief += "Last lines of its log:\n```\n\(log)\n```\n"
+        brief += "Find why it stopped, fix the cause (not the symptom), then run the release again. Items waiting: \(waiting). "
+        brief += "Tell me in two lines what went wrong and what you changed."
+        close(key)
+        model.start(projectId: r.projectId, item: x, intent: .ship, extraBrief: brief, fresh: true)
     }
 
     /// Products read again: a shipping one whose version changed is done.
@@ -348,6 +386,7 @@ final class ShipRuns: ObservableObject {
 
 /// Centred over the Release tab while a product ships, and for the confirmation.
 struct ShipModal: View {
+    @EnvironmentObject var model: AppModel
     @ObservedObject var runs = ShipRuns.shared
     let projectId: String
 
@@ -367,21 +406,48 @@ struct ShipModal: View {
                         Text("\(r.product.name) \(v) is out").font(.system(size: S(22), weight: .heavy)).foregroundStyle(Brand.cream)
                         Text("\(r.from.version) → \(v) · in \(Self.took(r.started))").font(.system(size: S(11.5), design: .monospaced)).foregroundStyle(Brand.green)
                     case .failed(let why):
-                        Text("\(r.product.name) didn't ship").font(.system(size: S(20), weight: .heavy)).foregroundStyle(Brand.red)
-                        Text(why).font(.system(size: S(12))).foregroundStyle(Brand.mute)
+                        // Not an alarm: nothing broke for anyone, the boat just stayed in the harbour (request r261123-110518).
+                        Text("\(r.product.name) stayed in the harbour").font(.system(size: S(20), weight: .heavy)).foregroundStyle(Brand.cream)
+                        Text("\(r.from.version) is still live · " + why).font(.system(size: S(12))).foregroundStyle(Brand.mute)
+                            .multilineTextAlignment(.center).frame(maxWidth: S(400))
                     }
+                    let failed: Bool = { if case .failed = r.phase { return true }; return false }()
                     if !r.items.isEmpty {
                         VStack(alignment: .leading, spacing: 5) {
+                            if failed { Text("STILL WAITING TO SHIP").font(Brand.label(8.5)).tracking(0.8).foregroundStyle(Brand.amber) }
                             ForEach(r.items.prefix(5), id: \.self) { t in
                                 HStack(spacing: 8) {
-                                    Text(r.phase == .shipping ? "▸" : "✦").foregroundStyle(r.phase == .shipping ? Brand.amber : Brand.green)
-                                    Text(t).font(.system(size: S(12.5))).foregroundStyle(Brand.ink).lineLimit(1)
+                                    let mark = r.phase == .shipping || failed
+                                    Text(mark ? "▸" : "✦").foregroundStyle(mark ? Brand.amber : Brand.green)
+                                    Text(t).font(.system(size: S(12.5))).foregroundStyle(failed ? Brand.mute : Brand.ink).lineLimit(1)
                                 }
                             }
                             if r.items.count > 5 { Text("+ \(r.items.count - 5) more").font(.system(size: S(11))).foregroundStyle(Brand.mute) }
                         }
                         .frame(maxWidth: S(360), alignment: .leading)
                     }
+                    if failed {
+                        HStack(spacing: 10) {
+                            Button { runs.fixWithClaude(k, model: model) } label: {
+                                Label("Fix it with Claude", systemImage: "sparkles").font(.system(size: S(13), weight: .semibold))
+                                    .padding(.horizontal, 16).padding(.vertical, 8)
+                                    .background(RoundedRectangle(cornerRadius: 7).fill(Brand.amber)).foregroundStyle(Color(hex: 0x1a1200))
+                            }
+                            .buttonStyle(.plain).keyboardShortcut(.defaultAction)
+                            .help("A Claude session gets the log, finds why it stopped, fixes it and ships again")
+                            if let sid = r.shell, model.sessions.contains(where: { $0.id == sid }) {
+                                Button { model.selectedSession[r.projectId] = sid; runs.close(k) } label: {
+                                    Text("See the log").font(.system(size: S(12), weight: .semibold)).foregroundStyle(Brand.cream)
+                                        .padding(.horizontal, 10).padding(.vertical, 8)
+                                }
+                                .buttonStyle(SteerButton())
+                            }
+                            Button { runs.close(k) } label: {
+                                Text("Later").font(.system(size: S(12))).foregroundStyle(Brand.mute).padding(.horizontal, 8).padding(.vertical, 8)
+                            }
+                            .buttonStyle(.plain).keyboardShortcut(.cancelAction)
+                        }
+                    } else {
                     Button { runs.close(k) } label: {
                         Text(r.phase == .shipping ? "Keep working · I'll tell you" : "Nice")
                             .font(.system(size: S(13), weight: .semibold))
@@ -390,6 +456,7 @@ struct ShipModal: View {
                             .foregroundStyle(r.phase == .shipping ? Brand.cream : Color(hex: 0x1a1200))
                     }
                     .buttonStyle(.plain).keyboardShortcut(.defaultAction)
+                    }
                 }
                 .padding(26)
                 .background(RoundedRectangle(cornerRadius: 14).fill(Brand.panel))

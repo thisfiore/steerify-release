@@ -105,6 +105,9 @@ struct AutoConsolidateBar: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 CountRing(left: left, total: Self.seconds, still: reduceMotion)
+            PierCountdown(left: left, total: Self.seconds, buoys: ps.count, still: reduceMotion)
+                .frame(maxWidth: .infinity).frame(height: S(78))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Bringing \(ps.count) key result\(ps.count == 1 ? "" : "s") up to date")
                         .font(.system(size: S(13.5), weight: .semibold)).foregroundStyle(Brand.cream)

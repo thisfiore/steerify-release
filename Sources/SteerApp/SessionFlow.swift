@@ -184,7 +184,9 @@ enum OriginPingDemo {
         guard let origin = b.decisions.compactMap(\.origin).first, let ref = ItemRef(ref: origin) else { log("no choice with an origin"); return }
         let kids = b.decisions.filter { $0.origin == origin }
         guard let s = m.start(projectId: p.id, item: ref, intent: .build, dry: true) else { log("no session"); return }
-        s.status = .idle
+        // `--origin-ping-busy`: the asking session is working, so answers must wait in READY as queued, never vanish.
+        let busy = CommandLine.arguments.contains("--origin-ping-busy")
+        s.status = busy ? .working : .idle
         m.evaluateNudges()   // sets the baseline before any answer
         log("session \(s.title) covers \(origin); choices: \(kids.map(\.id))")
         var step = 0
@@ -192,7 +194,12 @@ enum OriginPingDemo {
             guard step < kids.count else {
                 log("handled: \(kids.map { m.liveSession(for: "choice:" + $0.id, in: p) === s })")
                 log("session also covers: \(s.alsoRefs)")
-                NSApp.terminate(nil); return
+                if busy && !CommandLine.arguments.contains("--origin-ping-hold") {   // the session stops: the queued answers go to it, in one line
+                    s.status = .idle; m.rushNudges.insert(p.id); m.evaluateNudges()
+                    log("session idle → pinged: \(m.recentPings.map(\.ref)) · ready: \(m.nudges.map(\.ref))")
+                }
+                if !CommandLine.arguments.contains("--origin-ping-hold") { NSApp.terminate(nil) }
+                return
             }
             let d = kids[step]; step += 1
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {   // answers are ISO-stamped to the ms; keep them apart
@@ -200,7 +207,7 @@ enum OriginPingDemo {
                 m.board(for: p).setChoice(d, pick: d.options.first?.id, note: "demo")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                     m.evaluateNudges()
-                    log("answered \(d.id) → pinged: \(m.recentPings.count > before ? m.recentPings.prefix(m.recentPings.count - before).map(\.ref).joined(separator: ", ") : "no") · open siblings: \(m.openSiblings(of: "choice:" + d.id, in: p))")
+                    log("answered \(d.id) → pinged: \(m.recentPings.count > before ? m.recentPings.prefix(m.recentPings.count - before).map(\.ref).joined(separator: ", ") : "no") · open siblings: \(m.openSiblings(of: "choice:" + d.id, in: p)) · ready: \(m.nudges.map { "\($0.ref) [\($0.queuedNote ?? "\($0.kind)")]" })")
                     next()
                 }
             }

@@ -2,6 +2,19 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.16 · 2026-11-23
+
+### In the app
+
+- **Release stopped: calm card + Fix it with Claude** — No red "didn't ship" alarm · Says the old version is still live · Items shown as still waiting · Fix it with Claude: gets the log
+- **Chapter focus: ★ up to 3, Focus chip** — ★ on a chapter: up to 3 · Focused chapters first, numbered · ★ Focus chip on 3 tabs · Claude can set it too
+- **Permissions: one sheet with a pixel harbour** — Sheet when a permission is missing · Pixel flags light up per grant · Settings › Permissions, live status · No more bare prompt at launch
+- **Choice preview: → to option B on first open** — → arrow on first open · B and C thumbnails at once · Stays on the picture you view
+
+### On steerify.dev
+
+- **Public roadmap + Your requests page** — Public roadmap: Now, Next, What's new · Private page: your requests' status · Five steps, same everywhere · Status changes ready to email
+
 ## 0.5.15 · 2026-11-23
 
 ### In the app

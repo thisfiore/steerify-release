@@ -93,10 +93,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         if !envs.isEmpty { env["STEERIFY_ENVS"] = TestEnvs.describe(envs) }   // where to point To test links
         env.merge(extraEnv) { _, new in new }
         let shell = env["SHELL"] ?? "/bin/zsh"
-        v.startProcess(executable: shell, args: shellCommand.map { ["-l", "-c", $0 + "; s=$?; echo; echo \"[Steerify] exit $s\"; exit $s"] } ?? ["-l"],
-                       environment: env.map { "\($0.key)=\($0.value)" },
-                       execName: "-" + (shell as NSString).lastPathComponent,
-                       currentDirectory: workdir ?? repo.path)
+        var args = shellCommand.map { ["-l", "-c", $0 + "; s=$?; echo; echo \"[Steerify] exit $s\"; exit $s"] } ?? ["-l"]
         if kind == .claude {
             // Remote Control: the session can be continued in the Claude app; its link is read off the screen below.
             let rc = Prefs.remoteControlOn && !dry ? ["--remote-control", Self.shellQuote(String(title.prefix(60)))] : []
@@ -104,9 +101,21 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
                          "--mcp-config", Self.shellQuote(SessionHooks.mcpConfig.path)] + rc + (command ?? []).map { $0.hasPrefix("-") ? $0 : Self.shellQuote($0) }).joined(separator: " ")
             if !rc.isEmpty { watchRemoteLink(v) }
             let full = dry ? "echo " + Self.shellQuote(line) + "; pwd; git branch --show-current; env | grep ^STEERIFY_ | sort" : line
-            v.send(txt: Self.launchLine(full, id: id) + "\r")
+            args = Self.claudeArgs(launch: Self.launchLine(full, id: id), shell: shell)
         }
+        v.startProcess(executable: shell, args: args,
+                       environment: env.map { "\($0.key)=\($0.value)" },
+                       execName: "-" + (shell as NSString).lastPathComponent,
+                       currentDirectory: workdir ?? repo.path)
         return v
+    }
+
+    /// The shell's arguments for a Claude session. The launch line used to be typed into the new shell before it
+    /// was ready: when many shells started at once (a restore of ~40 sessions) some lost it, and the card said
+    /// "warming up" forever over an idle shell (request r261123-112615). Now the shell runs it itself (`-i` loads the
+    /// user's rc files, so `claude` is on the PATH as in a typed command), then stays as a normal login shell.
+    static func claudeArgs(launch: String, shell: String) -> [String] {
+        ["-l", "-i", "-c", launch + "; exec " + shellQuote(shell) + " -l"]
     }
 
     /// The text typed into the new shell to run `command`. It is typed before the shell is ready, while the

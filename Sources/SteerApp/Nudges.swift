@@ -3,7 +3,10 @@ import AppKit
 
 /// An answer of yours (verdict, note, pick, agreed requirement) and what Steerify does with it.
 struct Nudge: Identifiable, Equatable {
-    enum Kind: Equatable { case noSession(resumable: Bool), waiting(String), sent(String) }
+    /// queued: the session that asked it will get it by itself (it is busy, or the 30 s grace is running, or it asked
+    /// other choices still open); the row stays in READY meanwhile, so a pick never vanishes (choice ready-pick-flow).
+    enum Kind: Equatable { case noSession(resumable: Bool), waiting(String), sent(String), queued(String) }
+    var queuedNote: String? { if case .queued(let t) = kind { return t }; return nil }
     var id: String { projectId + "|" + ref }
     let projectId: String
     let ref: String            // the item the next step is about ("test:…", "choice:…", "reqs:…")
@@ -114,8 +117,15 @@ extension AppModel {
             for a in answers(p) where a.at > base && a.at > (done[p.id + "|" + a.ref] ?? "") {
                 let key = p.id + "|" + a.ref
                 let direct = sessions.first { $0.projectId == p.id && $0.covers(a.ref) && $0.running }
-                if direct == nil, originSession(for: a.ref, in: p) != nil, !openSiblings(of: a.ref, in: p).isEmpty {
-                    continue      // the asking session hears about it once its other choices are answered too
+                if direct == nil, let o = originSession(for: a.ref, in: p) {
+                    let open = openSiblings(of: a.ref, in: p).count
+                    if open > 0 {
+                        // The asking session hears about it once its other choices are answered too; until then it waits
+                        // in READY, visibly (request r261123-113330: it used to vanish).
+                        list.append(Nudge(projectId: p.id, ref: a.ref, title: a.title, reason: a.reason, intent: a.intent, at: a.at,
+                                          kind: .queued("\(open) more to answer · then “\(o.title)”")))
+                        continue
+                    }
                 }
                 if let s = direct ?? originSession(for: a.ref, in: p) {
                     switch s.status {
@@ -128,7 +138,10 @@ extension AppModel {
                     case .waiting:
                         if notified.insert(key + a.at).inserted { Notify.send("Steerify · \(s.title)", "The session needs your answer before it can take your \(a.reason).") }
                         list.append(Nudge(projectId: p.id, ref: a.ref, title: a.title, reason: a.reason, intent: a.intent, at: a.at, kind: .waiting(s.title)))
-                    default: break   // working / starting: it will be told when it stops
+                    default:
+                        // Working / starting: it will be told when it stops. Stays in READY meanwhile.
+                        list.append(Nudge(projectId: p.id, ref: a.ref, title: a.title, reason: a.reason, intent: a.intent, at: a.at,
+                                          kind: .queued("queued · sends to “\(s.title)” when it stops")))
                     }
                 } else if board(for: p).takenBySession(a.ref, since: a.at) {
                     continue      // a session already took this answer and ended: nothing to start, not yours to do
@@ -144,6 +157,10 @@ extension AppModel {
             guard let newest = items.map(\.at).max() else { continue }
             let waited = -(iso.date(from: newest)?.timeIntervalSinceNow ?? -999)
             if waited < pingDelay(p) && !rushNudges.contains(p.id) {
+                for a in items {
+                    list.append(Nudge(projectId: p.id, ref: a.ref, title: a.title, reason: a.reason, intent: a.intent, at: a.at,
+                                      kind: .queued("sends to “\(s.title)” in a moment")))
+                }
                 // Look again the moment the delay is up, not at the next minute tick (request r261121-203027).
                 let due = Date().addingTimeInterval(pingDelay(p) - waited + 0.5)
                 if nudgeRecheckAt.map({ $0 > due || $0 < Date() }) ?? true {
@@ -486,6 +503,12 @@ struct ReadyScreen: View {
                         Text(n.reason).font(.system(size: S(11.5), weight: .semibold)).foregroundStyle(Brand.cream).lineLimit(1)
                         let what = n.title.split(separator: ":", maxSplits: 1).count > 1 && many ? String(n.title.split(separator: ":", maxSplits: 1)[1]).trimmingCharacters(in: .whitespaces) : n.title
                         if what != g.title { Text("· " + what).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).lineLimit(1) }
+                        if let q = n.queuedNote {
+                            Text(q).font(.system(size: S(10.5), weight: .medium)).foregroundStyle(Brand.amber)
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Capsule().fill(Brand.amberDim)).lineLimit(1)
+                                .help("The session that asked it gets it by itself. Set sail starts a new session now instead.")
+                        }
                         Spacer(minLength: 0)
                         Button { model.markHandled(n) } label: { Image(systemName: "xmark").font(.system(size: S(8), weight: .bold)) }
                             .buttonStyle(SteerButton()).foregroundStyle(Brand.mute.opacity(0.7)).help("Not now")
@@ -500,7 +523,8 @@ struct ReadyScreen: View {
             }
             Spacer(minLength: 8)
             PixelCTA(title: resumable ? "Back to it" : "Set sail",
-                     subtitle: many ? "\(g.nudges.count) answers · 1 session" : (resumable ? "resume its conversation" : "Claude starts, briefed"),
+                     subtitle: g.nudges.allSatisfy({ $0.queuedNote != nil }) ? "now, or wait: it's queued"
+                        : many ? "\(g.nudges.count) answers · 1 session" : (resumable ? "resume its conversation" : "Claude starts, briefed"),
                      icon: "boat") { model.takeGroup(g) }
                 .help(many ? "One Claude session for all of these, briefed with every answer" : "A Claude session on it, already briefed")
         }
