@@ -43,6 +43,8 @@ SINCE=${PREV:-2026-11-18}   # first release: everything approved since the v0.5 
 mkdir -p build
 NOTES=build/release-notes-$VERSION.md
 node scripts/release-notes.mjs $VERSION $SINCE > $NOTES
+APPNOTES=build/app-notes-$VERSION.md   # the Mac app only: its "What's new" and the update panel (appcast)
+node scripts/release-notes.mjs $VERSION $SINCE --app > $APPNOTES
 if [ $DRY = 1 ]; then node scripts/changelog.mjs $VERSION $NOTES --out build/changelog-preview
 else
   node scripts/changelog.mjs $VERSION $NOTES
@@ -62,9 +64,9 @@ DMG=build/Steerify-$VERSION.dmg
 # 4c. Appcast for in-app updates (Sparkle): one item, the DMG signed with the EdDSA key in the login keychain.
 SPARKLE_BIN=.build/artifacts/sparkle/Sparkle/bin
 SIG=$($SPARKLE_BIN/sign_update --account steerify $DMG) || die "sign_update failed: is the Sparkle key in the keychain? (generate_keys --account steerify)"
-BUILDNO=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" build/Steerify.app/Contents/Info.plist)
+BUILDNO=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" build/release/Steerify.app/Contents/Info.plist)
 # Feature titles, newest first: the app shows them when you hover "Restart to update".
-DESC=$(grep '^- \*\*' $NOTES | sed -E 's/^- \*\*(.*)\*\*.*/\1/' | tail -r | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's#.*#<li>&</li>#' | tr -d '\n')
+DESC=$(grep '^- \*\*' $APPNOTES | sed -E 's/^- \*\*(.*)\*\*.*/\1/' | tail -r | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's#.*#<li>&</li>#' | tr -d '\n')
 cat > build/appcast.xml <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">

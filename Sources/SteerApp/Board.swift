@@ -219,6 +219,9 @@ final class BoardStore: ObservableObject {
     @Published private(set) var requirements: [Requirement] = []
     @Published private(set) var roadmap: [RoadItem] = [] { didSet { memo = [:] } }
     @Published private(set) var chapters: [Chapter] = []
+    /// Chapters in focus (board.json `focus`, up to 3, in order; request r261123-095911): first on the Roadmap,
+    /// a ★ Focus filter on the tabs.
+    @Published private(set) var focus: [String] = [] { didSet { memo = [:] } }
     @Published private(set) var areas: [(key: String, name: String)] = []
     @Published private(set) var goal: String = ""
     @Published private(set) var store: [String: Any] = ["choices": [String: Any](), "history": [Any]()] {
@@ -396,6 +399,9 @@ final class BoardStore: ObservableObject {
         }
 
         let trackList = board["tracks"] as? [[String: Any]] ?? []
+        let names = Set(trackList.map { str($0["name"]) })
+        let f = Array((board["focus"] as? [String] ?? []).filter { names.contains($0) }.prefix(3))
+        if f != focus { focus = f }
         chapters = trackList.map { t in
             Chapter(name: str(t["name"]), area: str(t["area"]), draft: t["draft"] as? Bool ?? false,
                     request: t["request"] as? String, objective: t["objective"] as? String)
@@ -1046,5 +1052,72 @@ extension BoardStore {
             for p in ps { _ = SteerifyMCP.call("set_roadmap_status", ["item": p.item, "status": p.to], board: dir) }
             DispatchQueue.main.async { self.reload() }
         }
+    }
+}
+
+// MARK: - Chapter focus (request r261123-095911, choices focus-how-many: up to 3 in order · focus-filter-look: ★ chip)
+
+extension BoardStore {
+    static let maxFocus = 3
+    /// 1-based place of a chapter in the focus, nil when it is not in focus.
+    func focusRank(_ chapter: String) -> Int? { focus.firstIndex(of: chapter).map { $0 + 1 } }
+
+    /// Put a chapter in focus (at the end) or take it off. Returns an error line to show, nil when it went through.
+    @discardableResult
+    func setFocus(_ chapter: String, on: Bool, done: ((String?) -> Void)? = nil) -> Bool {
+        if on, !focus.contains(chapter), focus.count >= Self.maxFocus { done?("\(Self.maxFocus) chapters are in focus already: take one off first"); return false }
+        let dir = project.boardDir
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = SteerifyMCP.call("set_focus", ["chapter": chapter, "on": on], board: dir)
+            DispatchQueue.main.async { self.reload(); done?(r.1 ? r.0 : nil) }
+        }
+        return true
+    }
+
+    /// Requests that belong to the focused chapters: the chapter's own request and the requests of its key results.
+    private var focusRequests: Set<String> {
+        memoized("focusRequests", durable: true) {
+            var out = Set<String>()
+            for c in chapters where focus.contains(c.name) { if let r = c.request { out.insert(r) } }
+            for r in roadmap where focus.contains(r.track) { if let q = r.request { out.insert(q) } }
+            return out
+        }
+    }
+    private func trackOfRoad(_ text: String) -> String? {
+        roadmap.first { $0.text == text || $0.id == BoardFiles.slug(text) }?.track
+    }
+    /// The focused chapter a board ref belongs to (test:, choice:, req:, road:, track:, request:), nil when none.
+    func focusChapter(of ref: String) -> String? {
+        guard !focus.isEmpty else { return nil }
+        return memoized("focusOf:" + ref, durable: true) { () -> String? in
+            let parts = ref.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return nil }
+            let id = parts[1]
+            switch parts[0] {
+            case "track": return focus.first { BoardFiles.slug($0) == id }
+            case "road": return roadmap.first { $0.id == id }.map(\.track).flatMap { focus.contains($0) ? $0 : nil }
+            case "request": return viaRequest(id)
+            case "test":
+                guard let s = ships.first(where: { $0.id == id }) else { return nil }
+                for r in s.roads { if let t = trackOfRoad(r), focus.contains(t) { return t } }
+                for c in s.choices { if let t = focusChapter(of: "choice:" + c) { return t } }
+                return nil
+            case "choice":
+                guard let d = decisions.first(where: { $0.id == id }), let o = d.origin else { return nil }
+                if o.hasPrefix("request:") { return viaRequest(String(o.dropFirst(8))) }
+                return o.hasPrefix("road:") || o.hasPrefix("track:") ? focusChapter(of: o) : nil
+            case "req":
+                guard let r = requirements.first(where: { $0.id == id }) else { return nil }
+                return focus.first { $0 == r.group || BoardFiles.slug($0) == BoardFiles.slug(r.group) }
+            default: return nil
+            }
+        }
+    }
+    func inFocus(_ ref: String) -> Bool { focusChapter(of: ref) != nil }
+    private func viaRequest(_ q: String?) -> String? {
+        guard let q, focusRequests.contains(q) else { return nil }
+        let f = focus
+        return chapters.first { f.contains($0.name) && $0.request == q }?.name
+            ?? roadmap.first { f.contains($0.track) && $0.request == q }?.track
     }
 }

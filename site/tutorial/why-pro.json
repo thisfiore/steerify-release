@@ -1,6 +1,6 @@
 {
  "title": "Steerify for people with 99 terminals",
- "seconds": 140.5,
+ "seconds": 141.5,
  "chapters": [
   {
    "id": "b01",
@@ -64,12 +64,12 @@
   },
   {
    "id": "b13",
-   "t": 122.04,
+   "t": 123.0,
    "label": "Where you left off"
   },
   {
    "id": "b14",
-   "t": 132.98,
+   "t": 133.95,
    "label": "One board"
   }
  ]

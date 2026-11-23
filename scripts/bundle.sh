@@ -27,7 +27,14 @@ FEED_URL=${STEERIFY_FEED_URL:-https://github.com/thisfiore/steerify-release/rele
 SPARKLE_PUBLIC_KEY=EU+btwrNxFG3oDaH2s+owVBTN4GXeMtwyDEoodK+3YU=
 
 swift build -c release
-APP=${STEERIFY_APP_OUT:-build/Steerify.app}   # STEERIFY_APP_OUT=build/test/Steerify.app: a test build that never replaces the app you run
+# Two identities, so macOS never confuses the app you run with a release (macOS 26 Menu Bar settings keep one record
+# per identity; a release re-signing your working copy left the wheel stuck off, 23 Nov):
+#   local build  → com.frenkfiore.steerify.dev, "Steerify Dev", build/Steerify.app (the app you run, ⌥⌘R)
+#   signed build → com.frenkfiore.steerify, "Steerify", build/release/Steerify.app (the DMG, the feed)
+if [ $SIGN = 1 ]; then BUNDLE_ID=com.frenkfiore.steerify; APP_NAME=Steerify; APP_DEFAULT=build/release/Steerify.app
+else BUNDLE_ID=com.frenkfiore.steerify.dev; APP_NAME="Steerify Dev"; APP_DEFAULT=build/Steerify.app; fi
+APP=${STEERIFY_APP_OUT:-$APP_DEFAULT}   # STEERIFY_APP_OUT=build/test/Steerify.app: a test build that never replaces the app you run
+mkdir -p "${APP:h}"
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/SteerApp "$APP/Contents/MacOS/Steerify"
 # Sparkle (in-app updates): the framework goes in Contents/Frameworks, found through this rpath.
@@ -47,14 +54,16 @@ mkdir -p "$APP/Contents/Resources/fonts" && cp fonts/Silkscreen-*.ttf fonts/Silk
 # The demo project (Tiny Todo, frozen by scripts/demo-freeze.mjs): "Try the demo project" copies it out.
 [ -d demo/tiny-todo ] && mkdir -p "$APP/Contents/Resources/demo" && cp -R demo/tiny-todo "$APP/Contents/Resources/demo/"
 # What's new (the version badge's panel): this version's notes, when release.sh wrote them before bundling.
-[ -f build/release-notes-$VERSION.md ] && cp build/release-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"
+# "What's new": the Mac app's own notes (release.sh writes both; older builds only had the full notes).
+if [ -f build/app-notes-$VERSION.md ]; then cp build/app-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"
+elif [ -f build/release-notes-$VERSION.md ]; then cp build/release-notes-$VERSION.md "$APP/Contents/Resources/whats-new.md"; fi
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>Steerify</string>
-  <key>CFBundleDisplayName</key><string>Steerify</string>
-  <key>CFBundleIdentifier</key><string>com.frenkfiore.steerify</string>
+  <key>CFBundleName</key><string>$APP_NAME</string>
+  <key>CFBundleDisplayName</key><string>$APP_NAME</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleExecutable</key><string>Steerify</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -63,7 +72,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.frenkfiore.steerify</string><key>CFBundleURLSchemes</key><array><string>steerify</string></array></dict></array>
+  <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>$BUNDLE_ID</string><key>CFBundleURLSchemes</key><array><string>steerify</string></array></dict></array>
   <key>CFBundleDocumentTypes</key><array><dict><key>CFBundleTypeName</key><string>Folder</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>public.folder</string></array></dict></array>
   <key>SUFeedURL</key><string>$FEED_URL</string>
   <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
@@ -100,6 +109,8 @@ if [ $DMG = 1 ]; then
   STAGE=build/dmg; rm -rf "$STAGE" "$OUT"; mkdir -p "$STAGE"
   cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
   hdiutil create -quiet -volname "Steerify $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO "$OUT"
+  # macOS registers the staging copy as one more "Steerify" (System Settings › Menu Bar picks the wrong one): forget it.
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$STAGE/Steerify.app" 2>/dev/null || true
   rm -rf "$STAGE"
   if [ -n "$SIGN_ID" ]; then
     codesign --force --timestamp --sign "$SIGN_ID" "$OUT"
@@ -117,5 +128,10 @@ if [ $DMG = 1 ]; then
   shasum -a 256 "$OUT"
 fi
 
+# First dev build: start from your current settings (projects order, tabs, menu bar…), once.
+if [ $SIGN = 0 ] && [ -z "${STEERIFY_APP_OUT:-}" ] && [ ! -f ~/Library/Preferences/com.frenkfiore.steerify.dev.plist ] \
+   && [ -f ~/Library/Preferences/com.frenkfiore.steerify.plist ]; then
+  defaults export com.frenkfiore.steerify - | defaults import com.frenkfiore.steerify.dev - && echo "settings copied to com.frenkfiore.steerify.dev"
+fi
 [ $OPEN = 1 ] && open "$APP"
 true

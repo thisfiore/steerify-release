@@ -99,6 +99,14 @@ struct BoardScreen: View {
     }()
     @AppStorage(Prefs.testLayout, store: Prefs.store) private var testLayout = "list"
     @State private var pendingScroll: AppModel.FocusRequest? = nil
+    /// ★ Focus on, per tab (choice focus-filter-look: off by default, remembered per tab). Comma list of tab ids.
+    @AppStorage("focusFilterTabs", store: Prefs.store) private var focusTabs = ""
+    private var focusOn: Bool { !board.focus.isEmpty && focusTabs.split(separator: ",").contains { $0 == tab.rawValue } }
+    private func setFocusOn(_ on: Bool) {
+        var t = Set(focusTabs.split(separator: ",").map(String.init)); if on { t.insert(tab.rawValue) } else { t.remove(tab.rawValue) }
+        focusTabs = t.sorted().joined(separator: ",")
+    }
+    private func focusOK(_ ref: String) -> Bool { !focusOn || board.inFocus(ref) }
     /// The roadmap item last asked for: stays open (chapter, Done) after the scroll, until the tab changes.
     @State private var revealRef: String? = nil
     @ObservedObject private var smart = SmartAreaModel.shared
@@ -145,7 +153,10 @@ struct BoardScreen: View {
             FilterBar(board: board, tab: tab, area: $area, state: $state, counts: counts, areaCounts: areaCounts, areas: areaList,
                       smartAt: smartAreas?.at, smartRunning: smart.running.contains(board.project.id),
                       regroup: tab == .road ? { Task { await smart.refresh(board, force: true) } } : nil,
-                      areaMenu: smartAreas == nil ? nil : AreaMenu(projectId: board.project.id))
+                      areaMenu: smartAreas == nil ? nil : AreaMenu(projectId: board.project.id),
+                      focus: [.test, .choice, .req].contains(tab) && !board.focus.isEmpty
+                        ? FocusChip(on: focusOn, count: focusCount, chapters: board.focus, toggle: { setFocusOn(!focusOn) }) : nil)
+            if tab == .road { AutoConsolidateBar(board: board).id(board.project.id) }
             ScrollViewReader { proxy in
                 ScrollView {
                     // The roadmap is lazy again, but in small rows: an open chapter is no longer one card taller than the
@@ -209,20 +220,7 @@ struct BoardScreen: View {
         case .release, .ready, .task:
             EmptyView()
         case .road:
-            let allProps = roadTracks.flatMap { board.consolidation(track: $0) }.filter(\.sure)
-            if !allProps.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "checklist").foregroundStyle(Brand.amber)
-                    Text("\(allProps.count) key result\(allProps.count == 1 ? "" : "s") look outdated: their deliveries were already approved or sent back.")
-                        .font(.system(size: S(12))).foregroundStyle(Brand.ink)
-                    Spacer()
-                    ActionButton(title: "Consolidate all", icon: "test", primary: true) {
-                        board.applyRoad(allProps); model.showToast("\(allProps.count) key results brought up to date")
-                    }
-                }
-                .padding(10).background(RoundedRectangle(cornerRadius: 8).fill(Brand.amberDim.opacity(0.7)))
-                .padding(.bottom, 10)
-            }
+            // Outdated key results: AutoConsolidateBar above the list (countdown, then the done scene).
             ForEach(roadTracks, id: \.self) { t in RoadTrackView(board: board, track: t, items: road.filter { $0.track == t }, reveal: revealRef) }
             if road.isEmpty { EmptyBoard(projectId: board.project.id, title: "ROADMAP CLEAR", line: "Either everything is done or nobody wrote it down.", kind: .road) }
         }
@@ -237,7 +235,7 @@ struct BoardScreen: View {
 
     func shipsIn(_ st: String, area sel: String?? = nil) -> [ShipItem] {
         board.ships.filter { s in
-            guard inArea([s.area], sel ?? area) else { return false }
+            guard inArea([s.area], sel ?? area), focusOK("test:" + s.id) else { return false }
             let x = board.shipState(s), pick = board.effectivePick(s)
             switch st {
             case "open": return x == .toTest || x == .retest
@@ -251,7 +249,7 @@ struct BoardScreen: View {
     }
     func choicesIn(_ st: String, area sel: String?? = nil) -> [BoardDecision] {
         board.decisions.filter { d in
-            guard inArea(d.areas, sel ?? area) else { return false }
+            guard inArea(d.areas, sel ?? area), focusOK("choice:" + d.id) else { return false }
             switch st {
             case "open": return !board.isDecided(d) && !board.isParked(d)
             case "decided": return board.isDecided(d)
@@ -262,7 +260,7 @@ struct BoardScreen: View {
     }
     func reqsIn(_ st: String, area sel: String?? = nil) -> [Requirement] {
         board.requirements.filter { r in
-            guard inArea([r.area], sel ?? area) else { return false }
+            guard inArea([r.area], sel ?? area), focusOK("req:" + r.id) else { return false }
             switch st {
             case "open": return board.isOpen(r)
             case "decide": return board.isOpen(r) && r.status == "question"
@@ -291,7 +289,47 @@ struct BoardScreen: View {
         let act = board.chapterActivity()
         let rest = list.enumerated().filter { !drafts.contains($0.element) }
             .sorted { (act[$0.element] ?? "", $1.offset) > (act[$1.element] ?? "", $0.offset) }.map(\.element)
-        return list.filter { drafts.contains($0) } + rest
+        // Chapters in focus first, in their order (request r261123-095911), then drafts, then the latest activity.
+        let focused = board.focus.filter { list.contains($0) }
+        return focused + (list.filter { drafts.contains($0) } + rest).filter { !focused.contains($0) }
+    }
+
+    /// Items of the focused chapters in the state and area shown now (the number on the ★ Focus chip).
+    private var focusCount: Int {
+        switch tab {
+        case .test: board.ships.filter { board.inFocus("test:" + $0.id) && shipsInState($0, state) && inArea([$0.area], area) }.count
+        case .choice: board.decisions.filter { board.inFocus("choice:" + $0.id) && choiceInState($0, state) && inArea($0.areas, area) }.count
+        case .req: board.requirements.filter { board.inFocus("req:" + $0.id) && reqInState($0, state) && inArea([$0.area], area) }.count
+        default: 0
+        }
+    }
+    private func shipsInState(_ s: ShipItem, _ st: String) -> Bool {
+        let x = board.shipState(s), pick = board.effectivePick(s)
+        switch st {
+        case "open": return x == .toTest || x == .retest
+        case "refine": return x == .waiting && pick == "refine"
+        case "broken": return x == .waiting && pick == "broken"
+        case "ok": return x == .ok
+        case "after": return x == .afterRelease
+        default: return true
+        }
+    }
+    private func choiceInState(_ d: BoardDecision, _ st: String) -> Bool {
+        switch st {
+        case "open": return !board.isDecided(d) && !board.isParked(d)
+        case "decided": return board.isDecided(d)
+        case "parked": return board.isParked(d)
+        default: return true
+        }
+    }
+    private func reqInState(_ r: Requirement, _ st: String) -> Bool {
+        switch st {
+        case "open": return board.isOpen(r)
+        case "decide": return board.isOpen(r) && r.status == "question"
+        case "confirm": return board.isOpen(r) && r.status != "question"
+        case "agreed": return board.isConfirmed(r)
+        default: return true
+        }
     }
 
     private func count(_ st: String) -> Int {
@@ -385,6 +423,8 @@ struct FilterBar: View {
     var regroup: (() -> Void)? = nil
     /// Feature areas: right-click a chip to rename, merge or hide it (kept across regroupings).
     var areaMenu: AreaMenu? = nil
+    /// ★ Focus chip (choice focus-filter-look), shown only when a chapter is in focus.
+    var focus: FocusChip? = nil
     /// Chips shown before "+ N more".
     static let maxChips = 12
 
@@ -410,6 +450,7 @@ struct FilterBar: View {
 
     private var stateRow: some View {
         HStack(spacing: 10) {
+            if let f = focus { focusChip(f) }
             HStack(spacing: 2) {
                 ForEach(states, id: \.0) { s in
                     let on = state == s.0, n = counts[s.0] ?? 0
@@ -432,6 +473,25 @@ struct FilterBar: View {
             }
             if tab == .test { LayoutSwitch() }
         }
+    }
+
+    private func focusChip(_ f: FocusChip) -> some View {
+        Button(action: f.toggle) {
+            HStack(spacing: 5) {
+                Image(systemName: f.on ? "star.fill" : "star").font(.system(size: S(10.5), weight: .bold))
+                Text("Focus").fontWeight(.semibold)
+                Text("\(f.count)").monospacedDigit().opacity(0.75)
+            }
+            .font(.system(size: S(12)))
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .foregroundStyle(f.on ? Color(hex: 0x1a1300) : Brand.amber)
+            .background(Capsule().fill(f.on ? Brand.amber : .clear))
+            .overlay(Capsule().stroke(Brand.amber.opacity(f.on ? 0 : 0.7)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(SteerButton())
+        .help(f.on ? "Showing only the chapters in focus · click to show everything"
+                   : "Show only what belongs to the chapters in focus: " + f.chapters.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " · "))
     }
 
     /// One tag per area: click to show only that area, click again (or All) to show everything.
@@ -1457,6 +1517,7 @@ struct RoadTrackView: View {
             }
             .buttonStyle(.plain)
             .help("Open this chapter")
+            FocusStar(board: board, chapter: track)
             SessionChip(projectId: board.project.id, ref: "track:" + BoardFiles.slug(track))
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1479,6 +1540,7 @@ struct RoadTrackView: View {
                     FeatureStrip(board: board, chapter: track)
                 }
                 Spacer(minLength: 0)
+                FocusStar(board: board, chapter: track)
                 Button { setCollapsed(true) } label: {
                     Image(systemName: "chevron.up").font(.system(size: S(10), weight: .bold)).foregroundStyle(Brand.mute)
                         .padding(5).contentShape(Rectangle())
@@ -2141,5 +2203,40 @@ struct AreaMenu {
         a.addButton(withTitle: "Rename"); a.addButton(withTitle: "Cancel")
         a.window.initialFirstResponder = f
         if a.runModal() == .alertFirstButtonReturn { SmartAreaModel.shared.rename(projectId, key, to: f.stringValue) }
+    }
+}
+
+// MARK: - Chapter focus (request r261123-095911)
+
+/// What the filter bar needs to draw the ★ Focus chip.
+struct FocusChip { let on: Bool; let count: Int; let chapters: [String]; let toggle: () -> Void }
+
+/// ★ on a chapter header: put it in focus (up to 3, in order: the number is its place) or take it off.
+struct FocusStar: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var board: BoardStore
+    let chapter: String
+    var body: some View {
+        let rank = board.focusRank(chapter)
+        Button {
+            let on = rank == nil
+            board.setFocus(chapter, on: on) { err in
+                if let err { model.showToast(err, projectId: board.project.id) }
+                else { model.showToast(on ? "★ In focus: “\(chapter)”" : "Out of focus: “\(chapter)”", projectId: board.project.id) }
+            }
+            if on, board.focus.count >= BoardStore.maxFocus {
+                model.showToast("\(BoardStore.maxFocus) chapters are in focus already: take one off first", projectId: board.project.id)
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: rank == nil ? "star" : "star.fill").font(.system(size: S(11), weight: .bold))
+                if let rank { Text("\(rank)").font(.system(size: S(10.5), weight: .bold)).monospacedDigit() }
+            }
+            .foregroundStyle(rank == nil ? Brand.mute : Brand.amber)
+            .padding(.horizontal, 5).padding(.vertical, 4).contentShape(Rectangle())
+        }
+        .buttonStyle(SteerButton())
+        .help(rank.map { "In focus (\($0) of \(board.focus.count)): first on the Roadmap, ★ Focus on the tabs · click to take it off" }
+              ?? "Put this chapter in focus (up to \(BoardStore.maxFocus)): first on the Roadmap, ★ Focus filter on the tabs")
     }
 }

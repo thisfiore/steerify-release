@@ -59,7 +59,8 @@ struct DecisionCard: View {
             if decided && !reopened && !changed { folded } else { guided(decided) }
         }
         .popover(item: $mock) { o in MockView(dir: board.project.boardDir, option: o).frame(width: 1080, height: 709) }
-        .onAppear { if !decided { load() } }
+        // Start drawing every option's picture now (not only the one shown), so Preview has B and C at once.
+        .onAppear { if !decided { load(); _ = images } }
         .onChange(of: board.loadedAt) { _, _ in
             guard loaded else { if !board.isDecided(d) { load() }; return }
             if !changed || (!noteFocused && draftPick == savedPick) { draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote }
@@ -505,6 +506,7 @@ struct DecisionCard: View {
     private func openPreview(_ img: String) {
         model.preview = PreviewState(projectId: board.project.id, ref: "choice:" + d.id, title: d.title,
                                      dir: board.project.boardDir, images: images, index: images.firstIndex(of: img) ?? 0, version: nil,
-                                     startInNoteMode: NSEvent.modifierFlags.contains(.command))
+                                     startInNoteMode: NSEvent.modifierFlags.contains(.command),
+                                     refresh: { [self] in images })
     }
 }

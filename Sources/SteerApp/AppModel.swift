@@ -104,7 +104,7 @@ final class AppModel: ObservableObject {
     func startAutomation() {
         guard statusWatcher == nil else { return }
         statusWatcher = StatusWatcher(model: self)
-        Notify.ask()
+        startPermissionCheck()          // was Notify.ask(): permissions asked with a reason (Permissions.swift)
         NotificationCenter.default.addObserver(forName: .steerifyBoardReloaded, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleNudges() }
         }

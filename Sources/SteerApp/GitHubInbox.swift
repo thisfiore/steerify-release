@@ -137,12 +137,13 @@ extension AppModel {
         guard !c.observing else { return }
         c.observing = true
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.syncGitHubIssues() }
+            MainActor.assumeIsolated { self?.syncGitHubIssues(); self?.syncFeedbackInbox() }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.syncGitHubIssues() }
+            MainActor.assumeIsolated { self?.syncGitHubIssues(); self?.syncFeedbackInbox() }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in self?.syncGitHubIssues() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in self?.syncGitHubIssues(); self?.syncFeedbackInbox() }
+        feedbackInboxTestHook()   // FeedbackInbox.swift: the users' feedback inbox runs on the same clock
     }
 
     /// `force`: ignore the 10-minute spacing (the --github-inbox test hook).

@@ -315,11 +315,15 @@ struct SteerApp: App {
                 m.preview = PreviewState(projectId: p.id, ref: ref, title: s.title, dir: p.boardDir, images: imgs,
                                          index: a.firstIndex(of: "--preview-index").flatMap { $0 + 1 < a.count ? Int(a[$0 + 1]) : nil }.map { min($0, max(imgs.count - 1, 0)) } ?? 0, version: s.version)
             } else if let d = b.decisions.first(where: { "choice:" + $0.id == ref }) {
-                // Choices: the option pictures (shots, or drawn mockups once rendered), 2 s in so mockups can render.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    let imgs = d.gallery.map(\.img) + d.options.compactMap { $0.shot ?? MockSnapshots.shared.picture(for: $0, boardDir: p.boardDir) }
-                    if !imgs.isEmpty { m.preview = PreviewState(projectId: p.id, ref: ref, title: d.title, dir: p.boardDir, images: imgs, index: 0, version: nil) }
+                // Choices: the option pictures (shots, or drawn mockups). Opened like a click on the card: at once, with
+                // whatever is drawn, then B, C… join as they render (`refresh`). Nothing drawn yet: try again in 1 s.
+                let imgs: @MainActor () -> [String] = { d.gallery.map(\.img) + d.options.compactMap { $0.shot ?? MockSnapshots.shared.picture(for: $0, boardDir: p.boardDir) } }
+                @MainActor func open(_ tries: Int) {
+                    let now = imgs()
+                    if !now.isEmpty { m.preview = PreviewState(projectId: p.id, ref: ref, title: d.title, dir: p.boardDir, images: now, index: 0, version: nil, refresh: imgs) }
+                    else if tries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { open(tries - 1) } }
                 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { open(8) }
             }
         }
         // Self-test of the writer on a scratch workspace: `--selftest-write <dir>` writes 3 verdicts and quits.

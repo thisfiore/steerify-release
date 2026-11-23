@@ -8,10 +8,13 @@ struct PreviewState: Identifiable {
     let ref: String                 // the item ("test:<id>", "choice:<id>"): pins are saved on it
     let title: String
     let dir: String                 // board folder (images are relative to it)
-    let images: [String]
+    var images: [String]
     var index: Int
     var version: Int?
     var startInNoteMode = false
+    /// The item's pictures as they are now. A choice's option pictures are drawn off-screen on first ask, so on the
+    /// first open only some exist: the preview asks again whenever a drawing lands (→ reaches B, C as they appear).
+    var refresh: (@MainActor () -> [String])? = nil
 }
 
 /// Full-window preview: ← / → between the item's images, pinch / ⌘+ / ⌘− / double-click to zoom, drag to pan,
@@ -58,6 +61,7 @@ struct PreviewOverlay: View {
         .focusable().focused($focused).focusEffectDisabled()
         .onAppear { focused = true; pinMode = state.startInNoteMode; load() }
         .onChange(of: state.index) { _, _ in resetView(); load() }
+        .onReceive(MockSnapshots.shared.$version) { _ in refreshImages() }
         .onKeyPress(.leftArrow) { step(-1); return .handled }
         .onKeyPress(.rightArrow) { step(1); return .handled }
         .onKeyPress(.escape) { if draft != nil { draft = nil } else { close() }; return .handled }
@@ -480,6 +484,16 @@ struct PreviewOverlay: View {
             let i = NSImage(contentsOfFile: full)
             await MainActor.run { image = i }
         }
+    }
+
+    /// New option pictures landed: take them in, staying on the picture being looked at.
+    private func refreshImages() {
+        guard let r = state.refresh else { return }
+        let now = r()
+        guard !now.isEmpty, now != state.images else { return }
+        let current = img
+        state.images = now
+        state.index = now.firstIndex(of: current) ?? min(state.index, now.count - 1)
     }
 
     private func step(_ d: Int) { if state.images.indices.contains(state.index + d) { state.index += d } }

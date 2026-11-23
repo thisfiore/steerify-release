@@ -46,6 +46,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
+                section("PERMISSIONS", "What Steerify and the Claude sessions inside it may do on this Mac.") { PermissionsSettings() }
                 section("TEXT SIZE", "Board, sidebar and terminal together.") {
                     HStack(spacing: 12) {
                         ForEach(Prefs.Size.allCases) { s in sizeCard(s) }

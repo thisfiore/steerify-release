@@ -67,6 +67,9 @@ enum SteerifyMCP {
         ["name": "set_roadmap_kind",
          "description": "Say what a key result is for: core (the chapter's objective is met when every core key result is done) or an extra that never holds the chapter back: test | tutorial | enhancement | later (an idea, not promised). item = exact text or its slug; kind \"\" = clear (Steerify guesses from the words). proposed: true = a draft the user keeps or undoes on the chapter (use it when tagging an existing chapter, intent tag).",
          "inputSchema": schema(["item": str, "kind": ["type": "string", "enum": ["core", "test", "tutorial", "enhancement", "later", ""]], "proposed": ["type": "boolean"]], ["item", "kind"])],
+        ["name": "set_focus",
+         "description": "Chapters in focus (up to 3, in order): Steerify lists them first on the Roadmap, filters every tab to them (★ Focus), pins their sessions and groups them first on Ready and Release. {chapter (exact name), on (true = add, false = take off), position? (1–3, default: last)}. Only when the user asks for it.",
+         "inputSchema": schema(["chapter": str, "on": ["type": "boolean"], "position": ["type": "integer"]], ["chapter", "on"])],
         ["name": "set_requirement_status",
          "description": "Set a requirement's status in board.json after checking the code: built (verified in the code, with evidence) | proposed | question. Never use it to answer for the user; their verdicts live in decisions.json.",
          "inputSchema": schema(["id": str, "status": ["type": "string", "enum": ["built", "proposed", "question"]], "evidence": str], ["id", "status"])],
@@ -215,6 +218,23 @@ enum SteerifyMCP {
                 }
                 if (!hit) throw new Error('No roadmap item ' + want);
                 out = (k || 'guessed') + ': ' + hit;
+                """)
+            if !r.1 { ui(["action": "refresh", "board": board]) }
+            return r
+        case "set_focus":
+            guard let ch = a["chapter"] as? String, let on = a["on"] as? Bool else { return ("chapter and on are required", true) }
+            let pos = (a["position"] as? Int).map { String($0) } ?? "null"
+            let r = editBoard(board, """
+                const ch = \(jsonString(ch)), on = \(on ? "true" : "false"), pos = \(pos);
+                const names = (b.tracks || []).map(t => t.name);
+                if (!names.includes(ch)) throw new Error('No chapter ' + ch);
+                let f = (Array.isArray(b.focus) ? b.focus : []).filter(n => names.includes(n) && n !== ch);
+                if (on) {
+                  if (f.length >= 3) throw new Error('3 chapters are in focus already: take one off first');
+                  const i = pos ? Math.max(0, Math.min(f.length, pos - 1)) : f.length; f.splice(i, 0, ch);
+                }
+                if (f.length) b.focus = f; else delete b.focus;
+                out = f.length ? 'in focus: ' + f.map((n, i) => (i + 1) + '. ' + n).join(' · ') : 'no chapter in focus';
                 """)
             if !r.1 { ui(["action": "refresh", "board": board]) }
             return r

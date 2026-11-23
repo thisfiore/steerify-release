@@ -2,6 +2,16 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.15 · 2026-11-23
+
+### In the app
+
+- **Update notes: Mac features only, no internal work** — What's new lists Mac features only · iPhone, site in own sections · Internal work left out · Same for the update panel
+- **Roadmap auto-consolidate: countdown + boat** — Roadmap counts down 10 s · Cancel stops it for good · Boat passes one buoy each · Undo puts them back
+- **Menu bar wheel back: Steerify Dev has its own identity** — Wheel back in the menu bar · Your build is Steerify Dev · Releases never touch your copy · Settings carried over
+- **Feedback inbox: form, API, status back** — Form: feature, bug, question · Shows what's sent first · Agents report via API · Lands in Requests, status back
+- **⌘J across projects · you stay in your project** — Claude never switches your project · Toast shows the other project's icon · ⌘J list: every project, with icons · Focused items first, from any project
+
 ## 0.5.14 · 2026-11-23
 
 ### In the app
@@ -13,7 +23,41 @@ Every Steerify release, newest first. Downloads: https://github.com/thisfiore/st
 ### On steerify.dev
 
 - **HQ: invite to TestFlight with one button** — INVITE button on Invites · Apple mails the TestFlight invite · SYNC marks who installed
-- **HQ Overview: key traffic KPIs** — Traffic strip on HQ Overview · Visitors, views, downloads, converts · Top channel + top source
+
+## 0.5.13 · 2026-11-23
+
+### In the app
+
+- **Release tab by product: cards + shipping modal** — One card per product · Web shows v51 · iPhone: version + build · Pixel boat, then fireworks modal
+- **Menu bar: only your Steerify adds a wheel** — Old test copies cleaned out · Test copies remove themselves · Test builds add no wheel
+- **iPhone: sync on the logo + search** — Sync dot next to Steerify · On the logo when name is long · Tap logo: sync sheet · 🔍 search top right
+- **iPhone Deploy: "Mac couldn't: Unknown kind"** — Mac app rebuilt with Deploy · Press Update on the Mac · Older Mac says: update it
+- **Process shells under the sessions** — Processes pinned under the sessions · Start, stop, restart, status dot · Click a row: its logs · Autostart ones start with the project
+- **iPhone Roadmap: same area chips as the Mac** — Roadmap chips = Mac's feature areas · Count on every chip · Biggest first, tap again clears · Your Mac renames/merges carry over
+- **Resume a draft chapter (iPhone + Mac)** — Drafts had no Resume (both apps) · iPhone: Add to roadmap / Discard · Then Resume shows at once · Mac applies it from the phone
+- **No more Intel warning: native Homebrew** — Tools now native Apple silicon · MongoDB 7 + Redis, same data · blender-mcp runs native · Old Intel brew kept, for now
+- **Menu bar wheel: one app for macOS** — Wheel comes back on restart · Banner: Show it button · No more Settings toggling
+
+### On steerify.dev
+
+- **HQ Overview: key traffic KPIs** — Traffic strip on HQ Overview · Visitors, views, downloads, converts · Top channel + top source · Live count, link to Traffic
+- **Site + README: the new shots** — iPhone on the site: new screens · Gallery opens on Mac + iPhone · README: hero + voice case
+
+## 0.5.12 · 2026-11-22
+
+### In the app
+
+- **Update: green, next to the logo** — Green Update next to the logo · Copy is just "Update" · Asks first if sessions work
+- **Recipes: start a book build, fill files, set up** — New project from a recipe · Picture of what you get · Files checklist, ✓ as you fill · Skills copied into the project
+- **iPhone top bar: long project name → logo only** — Long name: icon only · Name shows in full · Short name: unchanged
+- **iPhone: Release on Ready, Review and Tasks tabs** — Release card on Ready · Ship / Deploy: the Mac runs it · Review = To test + Choices · Tasks tab: OK, Redo, Run
+- **iPhone: every session keeps its own icon** — Each session shows its own icon · Your turn / working groups come back · Verb and next step on each row
+
+### On steerify.dev
+
+- **Changelogs updated on every release** — Website What's new: auto entry · CHANGELOG.md in the public repo · Same notes as GitHub Release · Backfilled 0.5.7–0.5.11
+- **Steerify web: the board page** — All 7 tabs, like the Mac · Preview: zoom, arrows, pins · Projects, settings, text size · Ready on Linux: tested
+- **Marketing shots: iPhone + 8 framed cases** — iPhone shots, both demo boards · 8 framed Mac + iPhone cases · Folder index with downloads · Terminal covered in sessions shot
 
 ## 0.5.11 · 2026-11-22
 

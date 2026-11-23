@@ -248,15 +248,15 @@ def wp_end(d, im, k):
     if k >= 3: ic = ICON.resize((120, 120), Image.LANCZOS); im.paste(ic, (110, 560), ic); d.text((260, 620), 'STEERIFY.DEV', font=PB(80), fill=C['amber'], anchor='lm')
     if k >= 4: d.text((114, 730), 'FREE. OPEN SOURCE. FOR MAC.', font=PR(32), fill=C['cream'])
 
-TAB = dict(ready=(19, 88, 176, 56), test=(221, 88, 214, 56), choices=(484, 88, 214, 56), reqs=(750, 88, 244, 56), road=(1044, 88, 165, 56), task=(1260, 88, 184, 56), release=(1494, 88, 162, 56))   # v0.5.6: TASKS sits between ROADMAP and RELEASE
+TAB = dict(ready=(15, 90, 198, 62), test=(228, 90, 234, 62), choices=(492, 90, 242, 62), reqs=(768, 90, 284, 62), road=(1086, 90, 206, 62), task=(1326, 90, 218, 62), release=(1570, 90, 198, 62))   # v0.5.11 shots: wider tabs, TASKS between ROADMAP and RELEASE
 LEFT, RIGHT = (0, 150, 1636, 1806), (1650, 150, 1350, 1806)
 BOTH = [(LEFT, 'THE BOARD', 'blue'), (RIGHT, 'CLAUDE CODE', 'amber')]
-BAR = [((14, 82, 1650, 68), '', 'amber')]
-# Boxes on the v0.5.6 demo shots (3000 px): the Next strip, the Tasks cards, the Ready cards, the session column.
-NEXT = (24, 184, 1592, 222)
-TK = dict(run=(24, 562, 1592, 150), check=(24, 784, 1592, 390), none=(24, 1188, 1592, 150), sched=(24, 1410, 1592, 150))
-LEFTOFF, WAITING = (14, 386, 1612, 480), (14, 880, 1612, 400)   # each with its heading inside
-SES = dict(all=(2625, 160, 365, 540), you=(2625, 240, 365, 160), row=(2625, 400, 365, 160), idle=(2625, 556, 365, 138))
+BAR = [((10, 84, 1764, 74), '', 'amber')]
+# Boxes on the v0.5.11 demo shots (3000 px): the Next strip (one line), the Tasks cards, the Ready cards, the session column.
+NEXT = (22, 180, 1594, 70)
+TK = dict(run=(22, 392, 1594, 160), check=(22, 610, 1594, 300), none=(22, 1674, 1594, 154), sched=(22, 1886, 1594, 68))
+LEFTOFF, WAITING = (19, 388, 1603, 462), (19, 885, 1603, 368)   # each with its heading inside
+SES = dict(all=(2630, 172, 358, 520), you=(2630, 266, 358, 122), row=(2630, 420, 358, 122), idle=(2630, 560, 358, 126))
 T = lambda name: [(TAB[name], '', 'amber')]
 # A screen is (shot, highlights per sentence, tag): shot may be a list of (from sentence, shot); '*' = every sentence.
 VIEWS = {
@@ -272,8 +272,8 @@ VIEWS = {
     'a12': end_card([(1, 'YOU DECIDE.', 70, 'cream'), (2, 'CLAUDE BUILDS.', 70, 'amber'), (3, 'FREE. FOR MAC. STEERIFY.DEV', 40, 'green')]) },
  'why-pro': {
     'b01': wp_hook, 'b02': wp_state, 'b03': wp_board, 'b04': ('request-mark', {}, 'FIX / REFINEMENT / FEATURE / TASK / QUESTION'), 'b05': ([(0, 'choices'), (1, 'choice-making')], {0: T('choices')}, 'SUGGESTED. BLEND. NOTE.'),
-    'b06': ('requirements', {'*': T('reqs')}, 'YOUR OK ON A DELIVERY MARKS THEM BUILT'), 'b07': ('sessions', {1: [(SES['all'], 'SESSIONS', 'amber')], 2: [(SES['row'], 'ROWING', 'blue')], 3: [(SES['you'], 'YOUR TURN', 'violet')], 4: [(SES['idle'], 'IDLE, OR DONE', 'grey')]}, 'ONE ITEM, ONE SESSION, ALREADY BRIEFED'), 'b08': wp_git,
-    'b09': ([(0, 'test'), (4, 'test-preview')], {0: T('test')}, 'THE LINK MUST OPEN THE FEATURE ITSELF'), 'b10': wp_release, 'b11': ('tasks', {0: T('task'), 1: T('task'), 2: [(TK['check'], 'A REPORT', 'amber')], 3: [(TK['sched'], 'A WEEKLY DATA PULL', 'amber')], 4: [(TK['run'], 'A TUTORIAL', 'amber')], 5: [(TK['sched'], 'ONCE, OR ON A SCHEDULE', 'amber')], 6: [(TK['check'], 'A RESULT WITH ITS CHECKS: OK, OR REDO', 'amber')], 7: [(TK['none'], 'NO RESULT? STEERIFY TELLS YOU', 'red')]}, None), 'b12': ('roadmap', {'*': [(NEXT, '', 'amber')]}, 'THE NEXT STRIP: AT MOST TWO THINGS, ONE BUTTON EACH'),
+    'b06': ('requirements', {'*': T('reqs')}, 'YOUR OK ON A DELIVERY MARKS THEM BUILT'), 'b07': ('sessions', {1: [(SES['all'], 'SESSIONS', 'amber')], 2: [(SES['row'], 'ROWING', 'blue')], 3: [(SES['you'], 'YOUR TURN', 'amber')], 4: [(SES['idle'], 'IDLE, OR DONE', 'grey')]}, 'ONE ITEM, ONE SESSION, ALREADY BRIEFED'), 'b08': wp_git,
+    'b09': ([(0, 'test'), (4, 'test-preview')], {0: T('test')}, 'THE LINK MUST OPEN THE FEATURE ITSELF'), 'b10': wp_release, 'b11': ('tasks', {0: T('task'), 1: T('task'), 2: [(TK['check'], 'A REPORT', 'amber')], 3: [(TK['sched'], 'A WEEKLY DATA PULL', 'amber')], 4: [(TK['run'], 'A TUTORIAL', 'amber')], 5: [(TK['sched'], 'ONCE, OR ON A SCHEDULE', 'amber')], 6: [(TK['check'], 'A RESULT WITH ITS CHECKS: OK, OR REDO', 'amber')], 7: [(TK['none'], 'NO RESULT? STEERIFY TELLS YOU', 'red')]}, None), 'b12': ('roadmap', {'*': [(NEXT, '', 'amber')]}, 'THE NEXT STRIP: ONE MOVE, ONE BUTTON'),
     'b13': ('ready', {1: [(LEFTOFF, '', 'amber')], 2: [(LEFTOFF, '', 'amber')], 3: [(WAITING, 'COMMAND J: THE NEXT THING', 'amber')]}, None),
     'b14': wp_end },
 }
@@ -331,6 +331,7 @@ def frame(i, k, pulse, who=(0, 0)):
             if label:   # inside the box's top-left corner, in the largest size that fits; left of a box too narrow for any
                 f = next((PB(z) for z in (30, 24, 20) if d.textlength(label, font=PB(z)) + 60 <= a[2] - a[0]), None); inside = f is not None; f = f or PB(30)
                 tw = d.textlength(label, font=f); lx, ly = (a[0] + 16, a[1] + 16) if inside else (a[0] - tw - 40, a[1])
+                if inside and a[3] - a[1] < 90: ly = a[1] - 62   # a thin box: the label sits on top of it
                 d.rectangle([lx, ly, lx + 28 + tw, ly + 56], fill=C[col]); d.text((lx + 14, ly + 28), label, font=f, fill=C['ink'], anchor='lm')
         if tag:
             tw = d.textlength(tag, font=PB(30)); d.rectangle([px + 24, py + pic.height - 84, px + 56 + tw, py + pic.height - 24], fill=C['amber'])
