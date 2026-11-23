@@ -1,6 +1,6 @@
 cask "steerify" do
-  version "0.5.13"
-  sha256 "fdb34e968c5f36fe33b2557ed28d41bb3c846682ea834f96691a82b5e0fe6b83"
+  version "0.5.14"
+  sha256 "00ecce966de308249498a58c61992caf40d3f18cba5b9da7798ffe765a921b91"
 
   url "https://github.com/thisfiore/steerify-release/releases/download/v#{version}/Steerify-#{version}.dmg"
   name "Steerify"

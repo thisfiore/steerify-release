@@ -361,7 +361,7 @@ struct TasksScreen: View {
     @State private var closed = false         // you closed the report panel
 
     var body: some View {
-        let _ = board.loadedAt
+        let _ = (board.loadedAt, board.sideAt)   // tasks.json is a side file: it redraws on sideAt
         let (tasks, runs) = TaskStore.load(board.project.boardDir)
         let byId = Dictionary(tasks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let now = runs.filter { $0.status == "running" }

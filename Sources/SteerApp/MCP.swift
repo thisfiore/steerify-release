@@ -56,7 +56,7 @@ enum SteerifyMCP {
          "description": "One board item with the user's verdict, notes, per-test notes and notes pinned on pictures. ref = test:<id> | choice:<id> | req:<id> | track:<slug> (roadmap chapter + items) | reqs:<slug> (requirements chapter).",
          "inputSchema": schema(["ref": str], ["ref"])],
         ["name": "deliver",
-         "description": "Put finished, tested work on the To test tab (same fields as deliver.mjs: id, title, area, status, kind (design = a mockup to approve, OK builds it | local = on the Mac / local server, OK sends it to the release | stage | prod = testable only once released: waits for the release, then comes back to To test), what, tested[], howTo[], tests[{label,url,check,img,focus?}], shots[{img,caption,focus?}], issues[], repos[], road: <exact roadmap item text> or a list, choices: [ids of the choices this builds], reqs: [ids of the requirements this delivery meets]). Always set road so Steerify can mark the roadmap when the user approves, choices when you built a choice (it then stops offering Build my pick), and reqs so the user's OK marks those requirements built. Same id = new version. what = 2–4 bullet lines (\"- Export button on Orders\\n- Uses your filters\"), each ≤ 6 words, no prose. Pictures full size and on the feature: crop each test picture to the feature at 2× (Retina), or give focus: [x,y,w,h] 0–1; never a whole window. Tests short and visual.",
+         "description": "Put finished, tested work on the To test tab (same fields as deliver.mjs: id, title, area, status, kind (design = a mockup to approve, OK builds it | local = on the Mac / local server, OK sends it to the release | stage | prod = testable only once released: waits for the release, then comes back to To test), what, tested[], howTo[], tests[{label,url,check,img,focus?}], shots[{img,caption,focus?}], issues[], repos[], road: <exact roadmap item text> or a list, choices: [ids of the choices this builds], reqs: [ids of the requirements this delivery meets], notesDone: [one line per note of the version before (get_item → user_notes order: card, tests, pinned), what you did, ≤ 8 words]). Always set road so Steerify can mark the roadmap when the user approves, choices when you built a choice (it then stops offering Build my pick), and reqs so the user's OK marks those requirements built. Same id = new version. what = 2–4 bullet lines (\"- Export button on Orders\\n- Uses your filters\"), each ≤ 6 words, no prose. Pictures full size and on the feature: crop each test picture to the feature at 2× (Retina), or give focus: [x,y,w,h] 0–1; never a whole window. Tests short and visual.",
          "inputSchema": schema(["item": ["type": "object"]], ["item"])],
         ["name": "ask_choice",
          "description": "Add a choice for the user to board.json decisions: {id, areas[], tags[], title, why, options:[{id,label,rec,points[],mock|shot|proto}]} with 2–4 options and exactly one rec:true. For UI choices use proto: a live prototype built with the project kit, \"protos/<choice id>.html?v=<A|B|C>\" (see kit/README.md in the board). Keep building what does not depend on it.",
@@ -506,16 +506,35 @@ enum SteerifyMCP {
                 if !notes.isEmpty {
                     notes["count"] = (notes["card"] == nil ? 0 : 1) + per.count + pins.count
                     out["user_notes"] = notes
-                    out["how_to_read_the_notes"] = "Every note is a required change, whatever the pick. pick ok + notes = OK once the notes are applied: apply them (small changes), test, then release; a note bigger than a tweak → re-deliver for a new check. pick refine / broken / none → fix them and re-deliver with the same id. Pinned: open img, look at x/y (0–1 from the top-left). Say per note what you did."
+                    out["how_to_read_the_notes"] = "Every note is a required change, whatever the pick. pick ok + notes = OK once the notes are applied: apply them (small changes), test, then release; a note bigger than a tweak → re-deliver for a new check. pick refine / broken / none → fix them and re-deliver with the same id. Pinned: open img, look at x/y (0–1 from the top-left). Say per note what you did: on the re-delivery set notesDone = one short line per note (≤ 8 words), in this order: card, tests by number, pinned. The new version starts clean and shows them as processed."
                 }
+            }
+            // Notes of an older version: already processed by an earlier delivery. Apart, never to act on again.
+            let tl = (it["tests"] as? [[String: Any]] ?? []).map { $0["label"] as? String ?? "" }
+            if let pn = BoardStore.previousNotes(entry: ver, version: cur, testLabels: tl, done: it["notesDone"] as? [String] ?? []), !pn.notes.isEmpty {
+                var j = pn.json
+                j["notes"] = (j["notes"] as? [[String: Any]] ?? []).map { n in
+                    var n = n; if let img = n["img"] as? String, !img.hasPrefix("/") { n["img"] = (board as NSString).appendingPathComponent(img) }; return n }
+                out["previous_notes"] = j
+                out["about_previous_notes"] = "Notes on v\(pn.v ?? cur - 1), processed by this version (done = what it said it did). Context only: act on user_notes."
             }
         case "choice":
             guard let d = (b["decisions"] as? [[String: Any]] ?? []).first(where: { $0["id"] as? String == parts[1] }) else { return ("no choice \(parts[1])", true) }
             var slim = d; slim["options"] = (d["options"] as? [[String: Any]] ?? []).map { o in o.filter { $0.key != "mock" } }
             out["choice"] = slim; out["answer"] = dec[parts[1]] ?? NSNull()
+            let entry = dec[parts[1]] as? [String: Any] ?? [:]
+            let revised = d["revisedAt"] as? String
+            if let pn = BoardStore.previousChoiceNotes(entry: entry, revisedAt: revised) {
+                out["previous_notes"] = pn.json
+                out["about_previous_notes"] = "The answer given before your last revision (\(revised ?? "")): processed. Context only."
+                if let r = revised, let at = entry["at"] as? String, at < r { out["answer"] = NSNull() }
+            }
             out["how_to_read_the_answer"] = "pick = the chosen option id (__note = the note is the answer); mix = other option ids to blend into it; note = how (and anything else). Multi-choices: pick is a list. pinned_notes = notes the user pinned on an option's picture: open img, look at x/y (0–1 from the top-left); each one on the picked option is a required change, build it and say per note what you did."
             let opts = d["options"] as? [[String: Any]] ?? []
-            let pins = ((dec[parts[1]] as? [String: Any])?["pins"] as? [[String: Any]]) ?? []
+            let pins = (((dec[parts[1]] as? [String: Any])?["pins"] as? [[String: Any]]) ?? []).filter { p in
+                guard let r = revised else { return true }
+                return ((p["at"] as? String) ?? r) >= r
+            }
             if !pins.isEmpty {
                 out["pinned_notes"] = pins.map { p -> [String: Any] in
                     let img = p["img"] as? String ?? ""

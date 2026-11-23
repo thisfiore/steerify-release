@@ -132,6 +132,7 @@ final class AppModel: ObservableObject {
         startTaskClock()
         startStartQueue()
         startPhoneInbox()
+        startGitHubInbox()
         startRelay()
         startBoardPublish()
     }
@@ -298,7 +299,7 @@ final class AppModel: ObservableObject {
             projects[i] = fresh
             boards[p.id] = nil              // rebuilt from the new manifest on next use
         }
-        board(for: projects.first { $0.id == p.id }!).reload()
+        board(for: projects.first { $0.id == p.id }!).reread()
     }
 
     // MARK: Sessions

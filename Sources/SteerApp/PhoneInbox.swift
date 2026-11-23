@@ -164,7 +164,7 @@ extension AppModel {
             guard let s = b.ships.first(where: { $0.id == sid }), let pick else { return "Not on To test: \(sid)" }
             let v = s.version   // same rules as BoardStore.setShip
             answers.append(("ship:" + sid, { c in
-                if (c["v"] as? Int) != v { c["pick"] = nil; c["tests"] = nil; c["v"] = v }
+                BoardStore.startVersion(&c, v)
                 c["pick"] = pick
                 if !note.isEmpty { c["note"] = note }
             }))
@@ -174,14 +174,15 @@ extension AppModel {
             guard let s = b.ships.first(where: { $0.id == sid }), let n = it["test"] as? Int, n >= 1, n <= s.tests.count else { return "Not on To test: \(sid)" }
             let v = s.version, ok = pick == "ok"   // same shape as BoardStore.setTest: tests["<i>"] = {ok: true} | {note}
             answers.append(("ship:" + sid, { c in
-                if (c["v"] as? Int) != v { c["pick"] = nil; c["tests"] = nil; c["v"] = v }
+                BoardStore.startVersion(&c, v)
                 var tests = c["tests"] as? [String: Any] ?? [:]
                 tests[String(n - 1)] = ok ? ["ok": true] : ["note": note]
                 c["tests"] = tests
             }))
         case "pick":
-            guard b.decisions.contains(where: { $0.id == ref }), let pick else { return "Choice not on the board: \(ref)" }
+            guard let dec = b.decisions.first(where: { $0.id == ref }), let pick else { return "Choice not on the board: \(ref)" }
             answers.append((ref, { c in                // same as BoardStore.setChoice
+                BoardStore.startRevision(&c, revisedAt: dec.revisedAt)
                 c["pick"] = pick
                 if !note.isEmpty { c["note"] = note }
                 c["parked"] = nil

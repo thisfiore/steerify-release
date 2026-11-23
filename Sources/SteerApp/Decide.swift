@@ -36,10 +36,12 @@ struct DecisionCard: View {
     @FocusState private var noteFocused: Bool
     @ObservedObject private var snaps = MockSnapshots.shared
 
-    private var savedPick: String? { board.verdict(d.id).pickString }
-    private var savedPicks: Set<String> { Set((board.verdict(d.id).pick as? [String]) ?? []) }
-    private var savedMix: Set<String> { Set(board.mix(d)) }
-    private var savedNote: String { board.verdict(d.id).note }
+    // Claude revised the choice after your answer: that answer is processed (recap above), the inputs start clean.
+    private var processed: Bool { board.answerProcessed(d) }
+    private var savedPick: String? { processed ? nil : board.verdict(d.id).pickString }
+    private var savedPicks: Set<String> { processed ? [] : Set((board.verdict(d.id).pick as? [String]) ?? []) }
+    private var savedMix: Set<String> { processed ? [] : Set(board.mix(d)) }
+    private var savedNote: String { processed ? "" : board.verdict(d.id).note }
     /// Folded (decided) cards load their drafts only when opened: writing five states as each card scrolls into view
     /// laid it out twice (Choices scroll budget). Not loaded = nothing changed.
     private var changed: Bool { loaded && ((d.multi ? draftPicks != savedPicks : (draftPick != savedPick || draftMix != savedMix)) || draftNote != savedNote) }
@@ -145,6 +147,9 @@ struct DecisionCard: View {
                         Button(showWhy ? "less" : "more") { showWhy.toggle() }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11)))
                     }
                 }
+            }
+            if !decided, let pn = board.processedNotes(d) {
+                ProcessedRecap(notes: pn, title: pn.notes.isEmpty ? "Revised after your answer" : "Revised after your \(pn.notes.count) note\(pn.notes.count == 1 ? "" : "s")")
             }
             if !d.gallery.isEmpty {
                 Gallery(dir: board.project.boardDir, items: d.gallery.map { GalleryItem(path: $0.img, caption: $0.caption) },

@@ -534,6 +534,7 @@ struct RequestRow: View {
                 Text(whereLine).font(.system(size: S(10.5))).foregroundStyle(Brand.mute).lineLimit(1)
             }
             Spacer(minLength: 6)
+            if r.fromGitHub, let u = r.context.flatMap(URL.init(string:)) { Button { NSWorkspace.shared.open(u) } label: { Text("#" + u.lastPathComponent).font(.system(size: S(10.5), weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Brand.mute).help(r.contextTitle ?? "GitHub issue") }
             if r.fromPhone { Image(systemName: "iphone").font(.system(size: S(10.5))).foregroundStyle(Brand.mute).help("Filed from the iPhone") }
             if !r.imgs.isEmpty { Label("\(r.imgs.count)", systemImage: "photo").font(.system(size: S(10.5))).foregroundStyle(Brand.mute) }
             Text(st.0).font(.system(size: S(10.5), weight: .semibold)).foregroundStyle(st.1)

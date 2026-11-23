@@ -85,6 +85,8 @@ struct ShipItem: Identifiable, Hashable {
     var kind: TestKind = .local
     /// The delivery said its kind (not guessed from the links).
     var kindSaid = false
+    /// What Claude did with each note of the previous version (same order as get_item's user_notes), for the recap.
+    var notesDone: [String] = []
     let version: Int
     let updated: String?
     var stamp: Int = 0
@@ -224,7 +226,7 @@ final class BoardStore: ObservableObject {
     }
     /// Verdicts as native dictionaries, converted once per change. Reading them straight from `store`
     /// re-bridged the whole decisions file on every lookup (the hot spot of 19 Nov).
-    private var choiceMap: [String: [String: Any]] = [:]
+    private(set) var choiceMap: [String: [String: Any]] = [:]
     @Published private(set) var loadedAt = Date.distantPast { didSet { memo = [:] } }
     /// Answers that are costly to work out and only change with the board (an item's thread, a session's stage).
     /// Emptied on every board change, and after 5 s for what lives outside the board files (the request log).
@@ -263,9 +265,98 @@ final class BoardStore: ObservableObject {
 
     static let debug = ProcessInfo.processInfo.environment["STEERIFY_DEBUG"] != nil
 
-    func reload() {
-        if Self.debug { FileHandle.standardError.write("reload \(project.id)\n".data(using: .utf8)!) }
-        let dir = project.boardDir
+    /// Size + modification date of each board file as last read: a reload re-reads only the files that changed
+    /// (a session start writes sessions.json; it no longer re-parses the 1 MB of board, To test and choices).
+    private var sigs: [String: FileSig] = [:]
+    /// Bumped when a board-folder file other than the four parsed here changes (requests, tasks, starts, labels,
+    /// areas, deploys, inbox): views that read those from disk redraw, the board's own answers stay cached.
+    @Published private(set) var sideAt = Date.distantPast { didSet { volatileMemo = [:] } }
+
+    private func changed(_ name: String) -> Bool {
+        let s = FileSig(path: (project.boardDir as NSString).appendingPathComponent(name))
+        defer { sigs[name] = s }
+        return sigs[name] != s
+    }
+
+    /// Re-read what changed on disk. `announce: false` stays quiet when no board file changed (FSEvents for files
+    /// that are not the board); callers that just wrote something themselves keep the default and always refresh.
+    @discardableResult
+    func reload(announce: Bool = true) -> Bool {
+        let dir = project.boardDir, t0 = Date()
+        let first = loadedAt == .distantPast
+        let boardChanged = changed("board.json"), shipsChanged = changed("delivered.json")
+        let storeChanged = changed("decisions.json"), linksChanged = changed("sessions.json")
+        if boardChanged || shipsChanged { readBoard(dir, boardChanged: boardChanged, shipsChanged: shipsChanged) }
+        if storeChanged {
+            let raw = BoardFiles.json(dir, "decisions.json") as? [String: Any] ?? [:]
+            store = raw["choices"] != nil ? raw : ["choices": [String: Any](), "history": [Any]()]
+        }
+        if linksChanged { links = SessionLinks.load(dir) }
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: project.manifest)[.modificationDate] as? Date) ?? nil
+        if !first, mtime != manifestTime {
+            let id = project.id
+            DispatchQueue.main.async { NotificationCenter.default.post(name: .steerifyManifestChanged, object: id) }
+        }
+        manifestTime = mtime
+        let any = boardChanged || shipsChanged || storeChanged
+        if Self.debug { FileHandle.standardError.write("reload \(project.id) board=\(boardChanged) ships=\(shipsChanged) choices=\(storeChanged) sessions=\(linksChanged) \(Int(Date().timeIntervalSince(t0) * 1000)) ms\n".data(using: .utf8)!) }
+        if any || first { loadedAt = Date() }
+        else if announce && !linksChanged { sideAt = Date() }   // a caller wrote a side file (requests, tasks…)
+        // Announce real reloads only (not the first load inside init), and never synchronously:
+        // listeners may ask the model for this very board.
+        if !first, any || linksChanged || announce {
+            DispatchQueue.main.async { NotificationCenter.default.post(name: .steerifyBoardReloaded, object: nil) }
+        }
+        return any || linksChanged
+    }
+
+    /// ⌘R: read every board file again, changed or not.
+    func reread() { sigs = [:]; reload() }
+
+    /// FSEvents: what changed in the board folder. Pictures, prototypes, perf numbers and backups change nothing
+    /// the app shows from the board; a side file only redraws what reads it.
+    fileprivate func filesChanged(_ paths: [String]?) {
+        let rel = paths.map { ps in ps.compactMap { BoardStore.relevant($0, in: project.boardDir) } }
+        if let rel, rel.isEmpty { return }
+        if rel.map({ $0.contains { BoardStore.parsed.contains($0) || $0 == "steerify.json" } }) ?? true {
+            if reload(announce: false) { return }
+        }
+        sideAt = Date()
+        DispatchQueue.main.async { NotificationCenter.default.post(name: .steerifyBoardReloaded, object: nil) }
+    }
+
+    static let parsed: Set<String> = ["board.json", "delivered.json", "decisions.json", "sessions.json"]
+    /// The board-relative path of a changed file, or nil when nothing reads it on a change.
+    nonisolated static func relevant(_ path: String, in dir: String) -> String? {
+        let base = (dir as NSString).standardizingPath + "/"
+        var r = (path as NSString).standardizingPath + (path.hasSuffix("/") ? "/" : "")
+        if r.hasPrefix(base) { r = String(r.dropFirst(base.count)) }
+        else if r + "/" == base { return "." }               // the folder itself (moved, rescanned)
+        else if let i = r.range(of: "/.steerify/") { r = String(r[i.upperBound...]) }   // /private/var vs /var
+        let top = r.split(separator: "/").first.map(String.init) ?? r
+        if ["img", "protos", "kit", "briefs", ".git"].contains(top) { return nil }
+        let name = (r as NSString).lastPathComponent
+        if name.hasPrefix(".") || name.hasSuffix(".prev.json") || name.hasSuffix(".tmp") || name.contains(".sb-") || name.hasSuffix("~") { return nil }
+        if ["perf.jsonl", "deliver.mjs", "README.md"].contains(name) { return nil }
+        return r
+    }
+
+    private func readBoard(_ dir: String, boardChanged: Bool, shipsChanged: Bool) {
+        if boardChanged { readBoardFile(dir) }
+        if shipsChanged { readShips(dir) }
+        var areaList = boardAreas
+        // Older boards have no areas map: derive them from what the items use.
+        if areaList.isEmpty {
+            let used = Set(ships.map(\.area) + decisions.flatMap(\.areas) + roadmap.map(\.area)).filter { !$0.isEmpty }
+            areaList = used.sorted().map { ($0, $0.capitalized) }
+        }
+        let next = areaList.sorted { $0.1 < $1.1 }.map { (key: $0.0, name: $0.1) }
+        if next.map(\.key) != areas.map(\.key) || next.map(\.name) != areas.map(\.name) { areas = next }
+    }
+
+    private var boardAreas: [(String, String)] = []
+
+    private func readBoardFile(_ dir: String) {
         let board = BoardFiles.json(dir, "board.json") as? [String: Any] ?? [:]
         goal = board["goal"] as? String ?? ""
 
@@ -273,6 +364,7 @@ final class BoardStore: ObservableObject {
         if let a = board["areas"] as? [String: Any] {
             for (k, v) in a { areaList.append((k, (v as? [String: Any])?["name"] as? String ?? k)) }
         }
+        boardAreas = areaList
 
         decisions = (board["decisions"] as? [[String: Any]] ?? []).map { d in
             let opts = (d["options"] as? [[String: Any]] ?? []).map { o in
@@ -295,29 +387,6 @@ final class BoardStore: ObservableObject {
             bd.origin = BoardDecision.origin(from: d["from"] as? String ?? d["request"] as? String, why: bd.why)
             return bd
         }
-
-        let del = BoardFiles.json(dir, "delivered.json")
-        let items = (del as? [String: Any])?["items"] as? [[String: Any]] ?? (del as? [[String: Any]] ?? [])
-        ships = items.map { it in
-            var si = ShipItem(id: str(it["id"]), title: str(it["title"]), area: str(it["area"]), status: str(it["status"]),
-                     what: (it["what"] as? [String])?.map { "- " + $0 }.joined(separator: "\n") ?? str(it["what"]), tested: it["tested"] as? [String] ?? [], howTo: it["howTo"] as? [String] ?? [],
-                     tests: (it["tests"] as? [[String: Any]] ?? []).map {
-                         ShipTest(label: str($0["label"]), url: $0["url"] as? String, check: $0["check"] as? String, img: $0["img"] as? String) },
-                     issues: it["issues"] as? [String] ?? [],
-                     shots: (it["shots"] as? [[String: Any]] ?? []).compactMap { s in (s["img"] as? String).map { (img: $0, caption: str(s["caption"])) } },
-                     version: it["version"] as? Int ?? 1, updated: (it["updated"] ?? it["added"]) as? String)
-            si.stamp = stamp(it)
-            si.repos = it["repos"] as? [String] ?? []
-            si.choices = (it["choices"] as? [String] ?? []).map { $0.hasPrefix("choice:") ? String($0.dropFirst(7)) : $0 }
-            si.reqs = (it["reqs"] as? [String] ?? []).map { $0.hasPrefix("req:") ? String($0.dropFirst(4)) : $0 }
-            si.roads = (it["road"] as? [String]) ?? ((it["road"] as? String).map { [$0] } ?? [])
-            si.kind = TestKind.of(it["kind"] as? String, urls: si.tests.compactMap(\.url))
-            si.kindSaid = !((it["kind"] as? String) ?? "").isEmpty
-            for x in (it["shots"] as? [[String: Any]] ?? []) + (it["tests"] as? [[String: Any]] ?? []) {
-                if let img = x["img"] as? String, let r = BoardFiles.focusRect(x["focus"]) { si.focus[img] = r }
-            }
-            return si
-        }.sorted { ($0.updated ?? "") > ($1.updated ?? "") }   // newest first, whatever the file order
 
         requirements = (board["requirements"] as? [[String: Any]] ?? []).flatMap { g in
             (g["items"] as? [[String: Any]] ?? []).map {
@@ -344,28 +413,32 @@ final class BoardStore: ObservableObject {
                                 kindProposed: meta?["kindProposed"] as? Bool ?? false)
             }
         }
+    }
 
-        // Older boards have no areas map: derive them from what the items use.
-        if areaList.isEmpty {
-            let used = Set(ships.map(\.area) + decisions.flatMap(\.areas) + roadmap.map(\.area)).filter { !$0.isEmpty }
-            areaList = used.sorted().map { ($0, $0.capitalized) }
-        }
-        areas = areaList.sorted { $0.1 < $1.1 }.map { (key: $0.0, name: $0.1) }
-
-        let raw = BoardFiles.json(dir, "decisions.json") as? [String: Any] ?? [:]
-        store = raw["choices"] != nil ? raw : ["choices": [String: Any](), "history": [Any]()]
-        links = SessionLinks.load(dir)
-        let first = loadedAt == .distantPast
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: project.manifest)[.modificationDate] as? Date) ?? nil
-        if !first, mtime != manifestTime {
-            let id = project.id
-            DispatchQueue.main.async { NotificationCenter.default.post(name: .steerifyManifestChanged, object: id) }
-        }
-        manifestTime = mtime
-        loadedAt = Date()
-        // Announce real reloads only (not the first load inside init), and never synchronously:
-        // listeners may ask the model for this very board.
-        if !first { DispatchQueue.main.async { NotificationCenter.default.post(name: .steerifyBoardReloaded, object: nil) } }
+    private func readShips(_ dir: String) {
+        let del = BoardFiles.json(dir, "delivered.json")
+        let items = (del as? [String: Any])?["items"] as? [[String: Any]] ?? (del as? [[String: Any]] ?? [])
+        ships = items.map { it in
+            var si = ShipItem(id: str(it["id"]), title: str(it["title"]), area: str(it["area"]), status: str(it["status"]),
+                     what: (it["what"] as? [String])?.map { "- " + $0 }.joined(separator: "\n") ?? str(it["what"]), tested: it["tested"] as? [String] ?? [], howTo: it["howTo"] as? [String] ?? [],
+                     tests: (it["tests"] as? [[String: Any]] ?? []).map {
+                         ShipTest(label: str($0["label"]), url: $0["url"] as? String, check: $0["check"] as? String, img: $0["img"] as? String) },
+                     issues: it["issues"] as? [String] ?? [],
+                     shots: (it["shots"] as? [[String: Any]] ?? []).compactMap { s in (s["img"] as? String).map { (img: $0, caption: str(s["caption"])) } },
+                     version: it["version"] as? Int ?? 1, updated: (it["updated"] ?? it["added"]) as? String)
+            si.stamp = stamp(it)
+            si.repos = it["repos"] as? [String] ?? []
+            si.choices = (it["choices"] as? [String] ?? []).map { $0.hasPrefix("choice:") ? String($0.dropFirst(7)) : $0 }
+            si.reqs = (it["reqs"] as? [String] ?? []).map { $0.hasPrefix("req:") ? String($0.dropFirst(4)) : $0 }
+            si.roads = (it["road"] as? [String]) ?? ((it["road"] as? String).map { [$0] } ?? [])
+            si.kind = TestKind.of(it["kind"] as? String, urls: si.tests.compactMap(\.url))
+            si.kindSaid = !((it["kind"] as? String) ?? "").isEmpty
+            si.notesDone = it["notesDone"] as? [String] ?? []
+            for x in (it["shots"] as? [[String: Any]] ?? []) + (it["tests"] as? [[String: Any]] ?? []) {
+                if let img = x["img"] as? String, let r = BoardFiles.focusRect(x["focus"]) { si.focus[img] = r }
+            }
+            return si
+        }.sorted { ($0.updated ?? "") > ($1.updated ?? "") }   // newest first, whatever the file order
     }
 
     /// Latest Claude conversation started for an item, if any.
@@ -476,6 +549,7 @@ final class BoardStore: ObservableObject {
 
     func setChoice(_ d: BoardDecision, pick: String?, note: String? = nil, mix: [String]? = nil) {
         update(d.id) { c in
+            Self.startRevision(&c, revisedAt: d.revisedAt)
             if let pick { c["pick"] = pick }
             if let note { c["note"] = note }
             if let mix { c["mix"] = mix.isEmpty ? nil : mix }
@@ -485,6 +559,7 @@ final class BoardStore: ObservableObject {
 
     func setChoiceMulti(_ d: BoardDecision, picks: [String], note: String) {
         update(d.id) { c in
+            Self.startRevision(&c, revisedAt: d.revisedAt)
             c["pick"] = picks.isEmpty ? ["__note"] : picks
             c["note"] = note
             c["parked"] = nil
@@ -499,7 +574,7 @@ final class BoardStore: ObservableObject {
 
     func setShip(_ s: ShipItem, pick: String?, note: String? = nil) {
         update("ship:" + s.id) { c in
-            if (c["v"] as? Int) != s.version { c["pick"] = nil; c["tests"] = nil; c["note"] = nil; c["v"] = s.version }
+            Self.startVersion(&c, s.version)
             if let pick { c["pick"] = pick }
             if let note { c["note"] = note }
         }
@@ -520,7 +595,7 @@ final class BoardStore: ObservableObject {
     /// Per-test answer, same shape as the web board: tests["<i>"] = {ok: true} or {note: "…"}; nil clears it.
     func setTest(_ s: ShipItem, index: Int, ok: Bool? = nil, note: String? = nil, refine: Bool? = nil) {
         update("ship:" + s.id) { c in
-            if (c["v"] as? Int) != s.version { c["pick"] = nil; c["tests"] = nil; c["note"] = nil; c["v"] = s.version }
+            Self.startVersion(&c, s.version)
             var tests = c["tests"] as? [String: Any] ?? [:]
             let k = String(index)
             if let note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { tests[k] = ["note": note, "refine": true] }
@@ -699,15 +774,20 @@ final class BoardStore: ObservableObject {
 
     private func watch() {
         var ctx = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
-        let cb: FSEventStreamCallback = { _, info, _, _, _, _ in
+        // File-level events: the paths say which files changed, so only those are read again (filesChanged).
+        let cb: FSEventStreamCallback = { _, info, n, paths, flags, _ in
             guard let info else { return }
             let me = Unmanaged<BoardStore>.fromOpaque(info).takeUnretainedValue()
-            if BoardStore.debug { FileHandle.standardError.write("fsevent\n".data(using: .utf8)!) }
-            DispatchQueue.main.async { me.reload() }
+            var list: [String]? = (Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue() as NSArray) as? [String]
+            for i in 0..<n where flags[i] & FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagRootChanged) != 0 {
+                list = nil   // the system lost track: read everything that changed
+            }
+            if BoardStore.debug { FileHandle.standardError.write("fsevent \(me.project.id)@\(UInt(bitPattern: info) % 100000) \(list ?? ["(all)"])\n".data(using: .utf8)!) }
+            DispatchQueue.main.async { MainActor.assumeIsolated { me.filesChanged(list) } }
         }
         guard let s = FSEventStreamCreate(nil, cb, &ctx, [project.boardDir] as CFArray,
                                           FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.25,
-                                          FSEventStreamCreateFlags(kFSEventStreamCreateFlagNoDefer)) else { return }
+                                          FSEventStreamCreateFlags(kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)) else { return }
         FSEventStreamSetDispatchQueue(s, .main)
         FSEventStreamStart(s)
         stream = s
@@ -715,6 +795,17 @@ final class BoardStore: ObservableObject {
 
     deinit {
         if let s = stream { FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s) }
+    }
+}
+
+/// What a file looks like on disk without reading it: a change of either means it was written.
+struct FileSig: Equatable {
+    var size: UInt64 = 0, mtime: Date?, inode: UInt64 = 0
+    init(path: String) {
+        guard let a = try? FileManager.default.attributesOfItem(atPath: path) else { return }
+        size = (a[.size] as? NSNumber)?.uint64Value ?? 0
+        mtime = a[.modificationDate] as? Date
+        inode = (a[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0   // atomic writes replace the file
     }
 }
 
@@ -799,6 +890,7 @@ enum SessionLinks {
 struct Pin: Hashable {
     let img: String; let x: Double; let y: Double; let note: String; let at: String?
     var opt: String? = nil          // choices: the option whose picture it is on
+    var v: Int? = nil               // To test: the version it was pinned on
 }
 
 extension BoardStore {
@@ -810,12 +902,22 @@ extension BoardStore {
         return "pin:" + ref
     }
 
+    /// The pins still open: on a To test item only those of its current version, on a choice only those left after
+    /// Claude's last revision. Older ones are processed: they leave the card and the viewer (they stay in the file).
     func pins(_ ref: String) -> [Pin] {
         let c = choiceMap[Self.key(for: ref)] ?? [:]
-        return (c["pins"] as? [[String: Any]] ?? []).compactMap {
+        let all = (c["pins"] as? [[String: Any]] ?? []).compactMap {
             guard let img = $0["img"] as? String, let x = $0["x"] as? Double, let y = $0["y"] as? Double else { return nil }
-            return Pin(img: img, x: x, y: y, note: $0["note"] as? String ?? "", at: $0["at"] as? String, opt: $0["opt"] as? String)
+            return Pin(img: img, x: x, y: y, note: $0["note"] as? String ?? "", at: $0["at"] as? String, opt: $0["opt"] as? String, v: $0["v"] as? Int)
+        } as [Pin]
+        if ref.hasPrefix("test:") {
+            guard let cur = ships.first(where: { "test:" + $0.id == ref })?.version else { return all }
+            return all.filter { ($0.v ?? cur) == cur }
         }
+        if ref.hasPrefix("choice:"), let r = decisions.first(where: { "choice:" + $0.id == ref })?.revisedAt {
+            return all.filter { ($0.at ?? r) >= r }
+        }
+        return all
     }
 
     /// Notes pinned on one option of a choice: saved with its id, or on its picture (shot or drawn mockup).

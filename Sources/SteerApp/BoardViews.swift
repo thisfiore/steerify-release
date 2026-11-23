@@ -818,7 +818,10 @@ struct ShipCard: View {
                 Text("\(board.areaName(item.area)) · v\(item.version)").font(.system(size: S(11))).foregroundStyle(Brand.mute).fixedSize()
                 SessionChip(projectId: board.project.id, ref: "test:" + item.id)
             }
-            if let prev {
+            if let pn = board.processedNotes(item), let ov = pn.v {
+                ProcessedRecap(notes: pn, title: pn.notes.isEmpty ? "New version v\(item.version). On v\(ov)"
+                               : "New version v\(item.version) · your \(pn.notes.count) note\(pn.notes.count == 1 ? "" : "s") on v\(ov)")
+            } else if let prev {
                 (Text("New version v\(item.version). On v\(prev.v) you said ").foregroundStyle(Brand.mute)
                  + Text(prev.pick).bold().foregroundStyle(prev.pick == "ok" ? Brand.green : Brand.amber)
                  + Text(prev.note.isEmpty ? "." : ": “\(prev.note.prefix(160))\(prev.note.count > 160 ? "…" : "")”").foregroundStyle(Brand.ink.opacity(0.8)))

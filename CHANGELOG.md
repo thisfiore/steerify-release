@@ -2,24 +2,18 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
-## 0.5.13 · 2026-11-23
+## 0.5.14 · 2026-11-23
 
 ### In the app
 
-- **Release tab by product: cards + shipping modal** — One card per product · Web shows v51 · iPhone: version + build · Pixel boat, then fireworks modal
-- **Menu bar: only your Steerify adds a wheel** — Old test copies cleaned out · Test copies remove themselves · Test builds add no wheel
-- **iPhone: sync on the logo + search** — Sync dot next to Steerify · On the logo when name is long · Tap logo: sync sheet · 🔍 search top right
-- **iPhone: every session keeps its own icon** — Each session shows its own icon · Your turn / working groups come back · Verb and next step on each row
-- **iPhone Deploy: "Mac couldn't: Unknown kind"** — Mac app rebuilt with Deploy · Press Update on the Mac · Older Mac says: update it
-- **Process shells under the sessions** — Processes pinned under the sessions · Start, stop, restart, status dot · Click a row: its logs · Autostart ones start with the project
-- **iPhone Roadmap: same area chips as the Mac** — Roadmap chips = Mac's feature areas · Count on every chip · Biggest first, tap again clears · Your Mac renames/merges carry over
-- **Resume a draft chapter (iPhone + Mac)** — Drafts had no Resume (both apps) · iPhone: Add to roadmap / Discard · Then Resume shows at once · Mac applies it from the phone
-- **No more Intel warning: native Homebrew** — Tools now native Apple silicon · MongoDB 7 + Redis, same data · blender-mcp runs native · Old Intel brew kept, for now
-- **Menu bar wheel: one app for macOS** — Wheel comes back on restart · Banner: Show it button · No more Settings toggling
+- **Processed notes leave the inputs** — New version starts with empty notes · Old pins leave card and viewer · Recap: ① note · processed — done · Revised choice starts clean
+- **Board reloads only what changed** — Session start: board stays still · Pictures saved: no reload · Only the changed file is read
+- **GitHub issues land on the board as requests** — New GitHub issues become requests · Screenshots come along · Nothing starts until you press Start · #number opens the issue
 
 ### On steerify.dev
 
-- **Site + README: the new shots** — iPhone on the site: new screens · Gallery opens on Mac + iPhone · README: hero + voice case
+- **HQ: invite to TestFlight with one button** — INVITE button on Invites · Apple mails the TestFlight invite · SYNC marks who installed
+- **HQ Overview: key traffic KPIs** — Traffic strip on HQ Overview · Visitors, views, downloads, converts · Top channel + top source
 
 ## 0.5.11 · 2026-11-22
 
