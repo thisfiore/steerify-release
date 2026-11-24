@@ -2,6 +2,23 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.23 · 2026-11-24
+
+### In the app
+
+- **Test preview: clear CTA order** — OK is the big button · Refine / Broken smaller below · Ship, Open with Claude full width · Divider before the optional ones
+- **Answer the people who file requests** — Claude drafts the reply · You edit and Send · Emailed + on their page · Agents read it (issue_status)
+- **Parallel sessions: branch warning + worktrees** — Toast when main folder switches branch · Fix requests get own folder · PR merged on GitHub detected · Settings explains each flow
+- **How technical are you? level picker** — Asked once on first launch · Settings: one wide row per level · What you'll see, how we say it · Change it in Settings → You
+- **Test links: pick the browser** — Settings: Open test links in · Right-click link: Open in… · Copy link too
+- **Roadmap: sort chapters by name / created** — Sort menu on the Roadmap · Name: Ch 1, 2 … 10 · Created: oldest first · Remembered per project
+- **Your level reaches Claude, per project** — Each project can have its own level · Recipe projects start as Explorer · Claude gets how to talk to you · Builder: nothing changes
+- **Release: product names bigger** — Product names 50% bigger · Brighter, easy to read · Same on the shipping card
+
+### On steerify.dev
+
+- **Landing: Anyone can steer** — Beginner · Semi-nerd · Full nerd · Same names in the app
+
 ## 0.5.22 · 2026-11-24
 
 ### In the app

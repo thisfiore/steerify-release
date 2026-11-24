@@ -219,7 +219,7 @@ struct ReleaseProducts: View {
             HStack(alignment: .center, spacing: 12) {
                 ProductArt(icon: pr.icon).frame(width: S(60), height: S(60))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(pr.name.uppercased()).font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.mute).lineLimit(1)
+                    Text(pr.name.uppercased()).font(Brand.label(12)).tracking(0.6).foregroundStyle(Brand.ink).lineLimit(1)
                     Text(st.version).font(.system(size: S(16), weight: .bold, design: .monospaced)).foregroundStyle(Brand.cream).lineLimit(1)
                     Text([st.date.map { Self.day($0) }, st.detail, st.source.isEmpty ? nil : st.source].compactMap { $0 }.joined(separator: " · "))
                         .font(.system(size: S(11))).foregroundStyle(Brand.mute)
@@ -601,7 +601,7 @@ struct ShippingCard: View {
             HStack(alignment: .center, spacing: 12) {
                 ProductArt(icon: product.icon).frame(width: S(60), height: S(60))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(product.name.uppercased()).font(Brand.label(9)).tracking(0.8).foregroundStyle(Brand.mute).lineLimit(1)
+                    Text(product.name.uppercased()).font(Brand.label(12)).tracking(0.6).foregroundStyle(Brand.ink).lineLimit(1)
                     Text("\(run.from.version) → \(done ?? "…")").font(.system(size: S(16), weight: .bold, design: .monospaced))
                         .foregroundStyle(Brand.cream).lineLimit(1).minimumScaleFactor(0.7)
                     TimelineView(.periodic(from: .now, by: 1)) { tl in

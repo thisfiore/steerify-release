@@ -94,6 +94,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         env["STEERIFY_SESSION"] = id.uuidString
         env["STEERIFY_BOARD"] = boardDir
         if let item { env["STEERIFY_ITEM"] = item.ref }
+        env["STEERIFY_LEVEL"] = Level.of(boardDir: boardDir, repoPath: repo.path).rawValue   // who is steering (Level.swift)
         let envs = TestEnvs.load(boardDir)
         if !envs.isEmpty { env["STEERIFY_ENVS"] = TestEnvs.describe(envs) }   // where to point To test links
         env.merge(extraEnv) { _, new in new }
@@ -105,7 +106,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
             let line = (["claude", "--settings", Self.shellQuote(SessionHooks.settings.path),
                          "--mcp-config", Self.shellQuote(SessionHooks.mcpConfig.path)] + rc + (command ?? []).map { $0.hasPrefix("-") ? $0 : Self.shellQuote($0) }).joined(separator: " ")
             if !rc.isEmpty { watchRemoteLink(v) }
-            let full = dry ? "echo " + Self.shellQuote(line) + "; pwd; git branch --show-current; env | grep ^STEERIFY_ | sort" : line
+            // Dry (test copies): echo what would run; STEERIFY_DRY_LOG set → the same lines go to that file too.
+            var full = dry ? "{ echo " + Self.shellQuote(line) + "; pwd; git branch --show-current; env | grep ^STEERIFY_ | sort; }" : line
+            if dry, let log = env["STEERIFY_DRY_LOG"] { full += " 2>&1 | tee -a " + Self.shellQuote(log) }
             args = Self.claudeArgs(launch: Self.launchLine(full, id: id), shell: shell)
         }
         launchedAt = Date()

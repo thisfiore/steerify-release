@@ -87,8 +87,8 @@ enum SteerifyMCP {
          "inputSchema": schema(["name": str, "area": str, "objective": str, "items": ["type": "array"],
                                 "requirements": ["type": "array", "items": ["type": "object"]], "request": str], ["name", "items"])],
         ["name": "update_request",
-         "description": "Record what a request became: {id, status (working | done | needs-you | discarded), became? [board refs: road:<slug>, track:<slug>, choice:<id>, test:<id>], note? (one line), kind? (fix | refine | feature | task | question: set it when the filed kind was wrong; Steerify learns from it)}. Keeps the request history in Steerify honest.",
-         "inputSchema": schema(["id": str, "status": str, "became": ["type": "array", "items": ["type": "string"]], "note": str, "kind": str], ["id"])],
+         "description": "Record what a request became: {id, status (working | done | needs-you | discarded), became? [board refs: road:<slug>, track:<slug>, choice:<id>, test:<id>], note? (one line), kind? (fix | refine | feature | task | question: set it when the filed kind was wrong; Steerify learns from it), answer? (only for a request from the project's users, i.e. the brief says \"Filed from: the project's feedback form\": the reply to that person or agent, plain text, their language, 1–6 short lines, no internal detail, no file paths. It is a DRAFT: the user edits and sends it from Steerify, then it is emailed and shown on their follow page)}. Keeps the request history in Steerify honest.",
+         "inputSchema": schema(["id": str, "status": str, "became": ["type": "array", "items": ["type": "string"]], "note": str, "kind": str, "answer": str], ["id"])],
         ["name": "add_request",
          "description": "File a request on the board for the user to start later, e.g. what came out of a discussion: {text (what is asked, in the user's words), kind (fix | refine | feature | task | question), chapter? (exact name of the feature chapter it is about), area?, from? (the board ref it came from: task:<id>, test:<id>, choice:<id>, road:<slug>)}. It lands on Ready → New requests (filed, no session): the user starts or discards it. A fix / refine also gets its key result in \"Fixes & refinements\" now. Don't file what you are about to do yourself in this session.",
          "inputSchema": schema(["text": str, "kind": str, "chapter": str, "area": str, "from": str], ["text"])],
@@ -376,6 +376,10 @@ enum SteerifyMCP {
                 if let st = a["status"] as? String { r["status"] = st }
                 if let bc = a["became"] as? [String] { r["became"] = Array(NSOrderedSet(array: (r["became"] as? [String] ?? []) + bc)) }
                 if let n = a["note"] as? String { r["note"] = n }
+                // A reply for the person who filed it (feedback form / agent): a draft until the user sends it (Answers.swift).
+                if let t = (a["answer"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty, r["reporter"] != nil {
+                    r["answerDraft"] = ["text": t, "at": RequestLog.now(), "by": "claude"]
+                }
                 // Claude's correction of the kind: the suggestion stays as `guess`, so the triage learns (TriageLessons).
                 if let k = (a["kind"] as? String).flatMap(RequestKind.init(rawValue:)), k.rawValue != r["kind"] as? String {
                     if r["guess"] == nil { r["guess"] = r["kind"] }

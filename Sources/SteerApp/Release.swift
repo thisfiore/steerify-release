@@ -27,6 +27,9 @@ struct RepoGit: Identifiable {
     let dirty: Int
     let unpushed: Int
     let readyBranches: [(name: String, ahead: Int)]
+    /// Feature branches whose pull request is already merged on GitHub (the owner merged it there): shipped upstream,
+    /// waiting only for pull + deploy + cleanup (choice parallel-sessions-branch-safety A).
+    var mergedPRs: [(name: String, url: String)] = []
 }
 
 enum Git {
@@ -46,7 +49,23 @@ enum Git {
         return p.terminationStatus == 0 ? String(data: d, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
     }
 
-    static func state(_ repo: Repo, releaseBranch: String, ignoring: String? = nil) -> RepoGit? {
+    /// Pull requests merged on GitHub, by head branch → url (`gh`, one call). Empty without gh or a GitHub remote.
+    static func mergedPRs(_ dir: String) -> [String: String] {
+        guard let gh = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh"].first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return [:] }
+        let p = Process(); p.executableURL = URL(fileURLWithPath: gh); p.currentDirectoryURL = URL(fileURLWithPath: dir)
+        p.arguments = ["pr", "list", "--state", "merged", "--limit", "50", "--json", "headRefName,url"]
+        let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
+        let done = DispatchSemaphore(value: 0); p.terminationHandler = { _ in done.signal() }
+        guard (try? p.run()) != nil else { return [:] }
+        let d = out.fileHandleForReading.readDataToEndOfFile(); done.wait()
+        guard p.terminationStatus == 0, let a = (try? JSONSerialization.jsonObject(with: d)) as? [[String: Any]] else { return [:] }
+        var m: [String: String] = [:]
+        for o in a { if let h = o["headRefName"] as? String, let u = o["url"] as? String, m[h] == nil { m[h] = u } }
+        return m
+    }
+
+    /// `withPRs`: also ask GitHub which feature branches are merged there (network: only off the main thread).
+    static func state(_ repo: Repo, releaseBranch: String, ignoring: String? = nil, withPRs: Bool = false) -> RepoGit? {
         guard repo.exists, let branch = run(repo.path, ["rev-parse", "--abbrev-ref", "HEAD"]) else { return nil }
         // The board folder (verdicts, sessions…) changes all the time: it is not unshipped work.
         var pathspec = ["--", "."]
@@ -58,7 +77,13 @@ enum Git {
         where b != releaseBranch {
             if let n = Int(run(repo.path, ["rev-list", "--count", "\(releaseBranch)..\(b)"]) ?? ""), n > 0 { ready.append((b, n)) }
         }
-        return RepoGit(name: repo.name, branch: branch, dirty: dirty, unpushed: unpushed, readyBranches: ready)
+        var merged: [(String, String)] = []
+        if withPRs, ready.contains(where: { $0.0.hasPrefix("steer/") }) {
+            let prs = mergedPRs(repo.path)
+            merged = ready.compactMap { b in prs[b.0].map { (b.0, $0) } }
+            ready.removeAll { b in prs[b.0] != nil }   // squash-merged upstream: no longer "ahead", only to tidy up
+        }
+        return RepoGit(name: repo.name, branch: branch, dirty: dirty, unpushed: unpushed, readyBranches: ready, mergedPRs: merged)
     }
 }
 
@@ -151,7 +176,7 @@ struct ReleaseScreen: View {
                 var x = ItemRef(ref: "release:" + project.id)!; x.title = "Release: " + project.name
                 model.start(projectId: project.id, item: x, intent: .ship)
             }
-            .disabled(ready.isEmpty && !git.contains { $0.unpushed > 0 || !$0.readyBranches.isEmpty })
+            .disabled(ready.isEmpty && !git.contains { $0.unpushed > 0 || !$0.readyBranches.isEmpty || !$0.mergedPRs.isEmpty })
             .help("A Claude session ships everything ready, following this project's release setup, and marks the items live")
             }
         }
@@ -237,7 +262,13 @@ struct ReleaseScreen: View {
                             ForEach(g.readyBranches, id: \.name) { b in
                                 Text("\(b.name) +\(b.ahead)").font(.system(size: S(11), design: .monospaced)).foregroundStyle(Brand.green)
                             }
-                            if g.dirty == 0 && g.unpushed == 0 && g.readyBranches.isEmpty { Text("clean").font(.system(size: S(11))).foregroundStyle(Brand.mute) }
+                            ForEach(g.mergedPRs, id: \.name) { b in
+                                Link(destination: URL(string: b.url) ?? URL(fileURLWithPath: "/")) {
+                                    Text("\(b.name) merged on GitHub ↗").font(.system(size: S(11), design: .monospaced)).foregroundStyle(Brand.blue)
+                                }
+                                .help("The pull request was merged on GitHub. Prepare release pulls it, deploys, marks its card live and removes the feature folder.")
+                            }
+                            if g.dirty == 0 && g.unpushed == 0 && g.readyBranches.isEmpty && g.mergedPRs.isEmpty { Text("clean").font(.system(size: S(11))).foregroundStyle(Brand.mute) }
                         }
                         if let d = target?.deploy, !d.isEmpty { Text("deploy: \(d)").font(.system(size: S(11), design: .monospaced)).foregroundStyle(Brand.mute).lineLimit(1) }
                         if let t = Deploys.load(project.boardDir).last(where: { $0.repo == g.name }) {
@@ -291,7 +322,7 @@ struct ReleaseScreen: View {
         let repos = project.repos.filter { cfg.repos[$0.name] != nil }
         let board = URL(fileURLWithPath: project.boardDir).standardizedFileURL.path
         let result = await Task.detached(priority: .utility) {
-            repos.compactMap { Git.state($0, releaseBranch: cfg.repos[$0.name]?.branch ?? "main", ignoring: board) }
+            repos.compactMap { Git.state($0, releaseBranch: cfg.repos[$0.name]?.branch ?? "main", ignoring: board, withPRs: WorkFlow.of(project) == .pr) }
         }.value
         git = result
         // The ready card's reasons read the same cache: keep them in step with what the repos card shows.

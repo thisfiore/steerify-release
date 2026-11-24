@@ -140,6 +140,7 @@ struct SettingsView: View {
     @ViewBuilder private var page: some View {
         switch pane {
         case .you:
+            if let p = model.project { ProjectLevelRow(project: p).id(p.id) }
             LevelPicker(inSettings: true)
         case .look:
             group("TEXT SIZE", "Board, sidebar and terminal together.") {
@@ -179,6 +180,9 @@ struct SettingsView: View {
                     pref("phone", "Open sessions on your phone", "New Claude sessions start with Remote Control: tap one in Steerify for iPhone to continue it in the Claude app. Needs a claude.ai login (Pro, Max, Team, Enterprise).", $remoteControl)
                 }
             }
+            group("TEST LINKS", nil) {
+                rows { TestBrowserRow() }
+            }
             group("ROADMAP", nil) {
                 rows {
                     pref("map", "Auto-consolidate", "Opening Roadmap counts down 10 s, then moves forward the key results whose deliveries you approved or sent back. Off: one Consolidate all button instead.", $autoConsolidate)
@@ -190,6 +194,7 @@ struct SettingsView: View {
             group("DEFAULT FOR NEW PROJECTS", nil) {
                 FlowPicker(flow: Binding(get: { WorkFlow(rawValue: defaultFlow) ?? .main }, set: { defaultFlow = $0.rawValue }))
             }
+            group("SESSIONS SIDE BY SIDE", nil) { FlowGuide() }
         case .iphone:
             card { PhonePairingView() }
             Text("The phone icon at the end of the tab bar opens the pairing code too (green while the phone is connected).")

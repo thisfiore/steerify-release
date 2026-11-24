@@ -93,7 +93,7 @@ enum FeedbackInbox {
         let tracks = (board["tracks"] as? [[String: Any]] ?? []).map { keep($0, ["name", "area", "objective", "items", "draft", "rolling"]) }
         let live = (delivered["items"] as? [[String: Any]] ?? []).map { keep($0, ["id", "title", "area", "status", "updated", "added", "what", "road"]) }
         let reqs = RequestLog.raw(p.boardDir).filter { $0["reporter"] != nil }
-            .map { keep($0, ["id", "title", "text", "kind", "status", "became", "at", "reporter", "feedback"]) }
+            .map { keep($0, ["id", "title", "text", "kind", "status", "became", "at", "reporter", "feedback", "answer"]) }
         return ["feedback": keep(feedback, ["title", "areas", "hide", "keyResults"]), "tracks": tracks, "delivered": live, "requests": reqs]
     }
 }
@@ -104,6 +104,7 @@ final class FeedbackInboxClock {
     var running = false
     var last: [String: Date] = [:]
     var sentHash: [String: Int] = [:]
+    var again = false      // a forced run asked while one was running (an answer sent): run once more right after
 }
 
 @MainActor
@@ -120,6 +121,7 @@ extension AppModel {
 
     func syncFeedbackInbox(force: Bool = false, done: (() -> Void)? = nil) {
         let c = FeedbackInboxClock.shared
+        if c.running, force { c.again = true }
         guard TaskClock.enabled || force, AppModel.mayWriteBoards, !c.running else { done?(); return }
         let due = projects.compactMap { p -> (Project, String, String, [String: Any], String)? in
             guard let cfg = FeedbackInbox.config(p) else { return nil }
@@ -157,7 +159,7 @@ extension AppModel {
                 if !filed.isEmpty { _ = await FeedbackInbox.call("POST", api + "/ack", secret: sec, json: ["ids": filed]) }
             }
             c.running = false
-            done?()
+            if c.again { c.again = false; syncFeedbackInbox(force: true, done: done) } else { done?() }
         }
     }
 

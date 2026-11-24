@@ -74,7 +74,7 @@ And this is the real app, on the demo project that comes with it:
   </tr>
   <tr>
     <td width="50%"><img src="site/assets/shots/demo/web/ship.jpg" alt="Ship"><br><b>Ship.</b> Release by product: the Mac app, the site, the iPhone. One button each; fireworks when it's out.</td>
-    <td width="50%"><img src="site/assets/shots/demo/web/level.jpg" alt="Your level"><br><b>Your level.</b> Explorer, Tinkerer or Builder. Steerify and Claude talk to you the way you work.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/level.jpg" alt="Your level"><br><b>Your level.</b> Beginner, Semi-nerd or Full nerd. Steerify and Claude talk to you the way you work.</td>
   </tr>
 </table>
 

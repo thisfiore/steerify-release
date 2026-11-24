@@ -18,7 +18,7 @@ final class AppModel: ObservableObject {
     @Published var sidebarVisible: Bool = Prefs.store.object(forKey: Prefs.sidebarVisible) as? Bool ?? true {
         didSet { Prefs.store.set(sidebarVisible, forKey: Prefs.sidebarVisible) }
     }
-    @Published var sessions: [TerminalSession] = [] { didSet { adoptLabels(sessions); TurnMemo.watch(sessions: sessions, boards: Array(boards.values), model: self) } }
+    @Published var sessions: [TerminalSession] = [] { didSet { adoptLabels(sessions); TurnMemo.watch(sessions: sessions, boards: Array(boards.values), model: self); BranchGuard.shared.update(self) } }
     @Published var selectedSession: [String: UUID] = [:]   // per project
     @Published var boardState: [String: BoardState] = [:]
     /// The image preview open over the window (nil = closed).
@@ -396,6 +396,7 @@ final class AppModel: ObservableObject {
         var brief = "Steerify: this session belongs to the board item \(item.ref) (\"\(title)\") of the project \(p.name). "
             + "The board folder is $STEERIFY_BOARD. Work on this item directly with the steerify skill; never ask which item to work on."
         if let extraBrief { brief += "\n\n" + extraBrief }
+        if let lb = Level.of(p).sessionBrief { brief += "\n\n" + lb }   // who is steering: how to talk, what to ask
         // Branches and releases (Flow.swift): code work may get the feature's own folder + branch.
         let place = workplace(for: item, intent: intent, repo: repo, in: p)
         let workdir = place.dir == repo.path ? nil : place.dir

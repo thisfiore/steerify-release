@@ -1,0 +1,61 @@
+/* "Anyone can steer": the same project at three levels (Beginner · Semi-nerd · Full nerd), drawn as a pixel app window. */
+.lv { display: grid; grid-template-columns: minmax(0, .75fr) minmax(0, 1.45fr); gap: 40px; align-items: start; margin-top: 44px }
+.lv > * { min-width: 0 }
+.lv-pick { display: grid; gap: 10px }
+.lv-who { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; text-align: left; padding: 12px 14px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--ink); font: inherit; cursor: pointer; transition: border-color .2s, background .2s }
+.lv-who:hover { border-color: var(--line2) }
+.lv-who canvas { width: 64px; height: 64px; image-rendering: pixelated }
+.lv-who b { display: block; font: 700 14px/1.2 var(--f-pix); letter-spacing: .06em; color: var(--cream) }
+.lv-who span { display: block; font-size: 14.5px; color: var(--mute); margin-top: 3px; line-height: 1.35 }
+.lv-who[aria-pressed="true"] { background: var(--panel2); border: 2px solid var(--c); padding: 11px 13px }
+.lv-who[aria-pressed="true"] b { color: var(--c) }
+.lv-note { margin-top: 6px; font-size: 14px; color: var(--mute) }
+
+/* the pixel window */
+.lv-win { border: 2px solid #2c3038; border-radius: 10px; background: var(--panel); overflow: hidden; box-shadow: 0 40px 90px -40px #000;
+  font-family: var(--f-pix); font-size: 12px; letter-spacing: .02em }
+.lv-bar { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 2px solid var(--line); background: var(--bg) }
+.lv-bar i { width: 9px; height: 9px; background: var(--line2) } .lv-bar i:first-child { background: #f87171 }
+.lv-bar .t { margin-left: 8px; color: var(--cream) } .lv-bar .sp { flex: 1 }
+.lv-pill { padding: 3px 7px; border: 2px solid var(--line2); color: var(--mute); font-size: 11px; white-space: nowrap }
+.lv-body { display: grid; grid-template-columns: 1fr var(--term, 0px); min-height: 380px; transition: grid-template-columns .45s ease }
+.lv-board { padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0 }
+.lv-tabs { display: flex; gap: 12px; color: var(--mute); font-size: 11px; border-bottom: 2px solid var(--line); padding-bottom: 8px; flex-wrap: wrap }
+.lv-tabs .on { color: var(--amber) }
+.lv-card { border: 2px solid var(--line); background: var(--panel2); padding: 10px 12px; display: grid; gap: 7px }
+.lv-card .k { font-size: 10px; color: var(--mute) }
+.lv-card .msg { font: 15px/1.4 var(--f-sans); letter-spacing: 0; color: var(--ink) }
+.lv-opts { display: flex; gap: 8px; flex-wrap: wrap }
+.lv-opts span { border: 2px solid var(--line2); padding: 5px 8px; font: 13px/1.2 var(--f-sans); letter-spacing: 0; color: var(--ink) }
+.lv-opts span.rec { border-color: var(--c) }
+.lv-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap }
+.lv-go { background: var(--c); color: #1a1200; padding: 7px 12px; font-weight: 700; white-space: nowrap }
+.lv-steps { color: var(--mute); font-size: 11px }
+.lv-term { background: #0c0c0c; border-left: 2px solid var(--line); overflow: hidden; font: 11.5px/1.6 var(--f-mono); color: #cfcfcf; min-width: 0 }
+.lv-term > div { padding: 12px; white-space: nowrap }
+.lv-term .c { color: #d97757 } .lv-term .g { color: var(--green) } .lv-term .m { color: var(--mute) }
+.lv-fold { display: none; padding: 8px 12px; border-top: 2px solid var(--line); background: #0c0c0c; color: var(--mute); font-size: 11px }
+.lv-fold b { color: #d97757; font-weight: 400 }
+.lv-fade { transition: opacity .25s } .lv-fade.out { opacity: 0 }
+.lv-diff { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px }
+.lv-diff div { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel) }
+.lv-diff b { display: block; font: 700 10px var(--f-pix); letter-spacing: .08em; color: var(--mute) }
+.lv-diff span { font-size: 14.5px; color: var(--ink) }
+
+@media (max-width: 900px) {
+  .lv { grid-template-columns: 1fr }
+  .lv-pick { grid-template-columns: repeat(3, 1fr) }
+  .lv-who { grid-template-columns: 1fr; justify-items: center; text-align: center }
+  .lv-who span { display: none }
+  .lv-note { grid-column: 1 / -1 }
+}
+@media (max-width: 640px) {
+  .lv-body { grid-template-columns: 1fr !important }
+  .lv-term { display: none }
+  .lv-diff { grid-template-columns: 1fr }
+  .lv-pill { display: none }
+  .lv-who { padding: 10px 6px } .lv-who canvas { width: 48px; height: 48px }
+  .lv-who b { font-size: 11px; letter-spacing: .02em }
+}
+@media (prefers-reduced-motion: reduce) { .lv-body, .lv-fade { transition: none } }

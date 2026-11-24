@@ -144,6 +144,8 @@ extension AppModel {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in self?.syncGitHubIssues(); self?.syncFeedbackInbox() }
         feedbackInboxTestHook()   // FeedbackInbox.swift: the users' feedback inbox runs on the same clock
+        branchGuardTestHook()     // BranchGuard.swift
+        answerSendTestHook()      // Answers.swift
     }
 
     /// `force`: ignore the 10-minute spacing (the --github-inbox test hook).

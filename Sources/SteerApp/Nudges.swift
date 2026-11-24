@@ -434,7 +434,7 @@ struct ReadyScreen: View {
         let sent = model.recentPings.filter { $0.projectId == projectId }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
-                if let p = project { RequestsWaiting(project: p) }
+                if let p = project { AnswersWaiting(project: p); RequestsWaiting(project: p) }
                 if !rel.isEmpty, let p = project {
                     HStack(spacing: 10) {
                         Text("READY TO RELEASE").font(Brand.label(10)).tracking(0.9).foregroundStyle(Brand.green)

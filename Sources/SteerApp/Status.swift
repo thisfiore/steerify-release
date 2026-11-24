@@ -112,6 +112,7 @@ final class StatusWatcher {
 
     func refresh() {
         guard let model else { return }
+        BranchGuard.shared.update(model)   // a session that ended no longer keeps its checkout watched
         var changed = false
         for s in model.sessions where s.kind == .claude {
             if !s.running { if s.status != .ended { s.status = .ended; changed = true }; continue }

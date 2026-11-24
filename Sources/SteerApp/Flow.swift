@@ -20,9 +20,13 @@ enum WorkFlow: String, CaseIterable, Identifiable, Codable {
          .pr: "Each feature on a branch, opened as a pull request. Your OK merges it."][self]!
     }
     var lines: [String] {
-        [.main: ["one folder, one branch", "commit only your own changes", "build before every commit"],
+        [.main: ["one folder, one branch", "commit only your own changes", "warns if a session switches branch"],
          .worktree: ["steer/<feature> in its own folder", "sessions never share a checkout", "OK → merge into main, folder removed"],
-         .pr: ["steer/<feature> in its own folder", "pushed + pull request on GitHub", "OK → PR merged, folder removed"]][self]!
+         .pr: ["steer/<feature> in its own folder", "pushed + pull request on GitHub", "OK or a merge on GitHub → shipped"]][self]!
+    }
+    /// When to pick it, in one line (the cards + Settings → Branches).
+    var bestFor: String {
+        [.main: "One session at a time.", .worktree: "Several sessions in parallel.", .pr: "Someone reviews and merges on GitHub."][self]!
     }
 
     /// Intents that write code get the feature's folder; the others (release, ship, look…) work in the main checkout.
@@ -84,7 +88,10 @@ extension AppModel {
         let flow = WorkFlow.of(p)
         let base = p.release?.repos[repo.name]?.branch ?? "main"
         var env = ["STEERIFY_FLOW": flow.rawValue, "STEERIFY_REPO_MAIN": repo.path, "STEERIFY_RELEASE_BRANCH": base]
-        guard flow != .main, WorkFlow.codeIntents.contains(intent), ["road", "choice", "test", "request"].contains(item.kind) else {
+        // A fix / refinement filed as a request is code work too: its intake fixes it (choice parallel-sessions-branch-safety A).
+        let codeIntake = intent == .intake && item.kind == "request"
+            && [.fix, .refine].contains(RequestLog.cached(p.boardDir).first { $0.id == item.id }?.kind)
+        guard flow != .main, WorkFlow.codeIntents.contains(intent) || codeIntake, ["road", "choice", "test", "request"].contains(item.kind) else {
             return (repo.path, "", env)   // the repo's own checkout; Claude still learns the mode
         }
         // One folder per feature: the roadmap key result the item belongs to, else the item itself.
@@ -120,6 +127,8 @@ struct FlowPicker: View {
                             if on { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.amber) }
                         }
                         FlowDiagram(flow: f).frame(height: 38)
+                        Text(f.bestFor).font(.system(size: S(11), weight: .semibold)).foregroundStyle(on ? Brand.cream : Brand.ink)
+                            .fixedSize(horizontal: false, vertical: true)
                         ForEach(f.lines, id: \.self) { l in
                             Text("· " + l).font(.system(size: S(11))).foregroundStyle(Brand.ink.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
                         }
@@ -131,6 +140,36 @@ struct FlowPicker: View {
                 }.buttonStyle(SteerButton())
             }
         }
+    }
+}
+
+/// Settings → Branches: what each mode means for sessions running side by side (request r261124-074236).
+struct FlowGuide: View {
+    private let rows: [(icon: String, title: String, text: String)] = [
+        ("rectangle.stack", "Parallel sessions on main share one folder",
+         "If one session switches or creates a branch, the folder moves for all of them. Steerify warns at once (a toast naming the repo and the branch) and again when it is back."),
+        ("square.split.2x1", "Worktree per feature keeps them apart",
+         "build, fix and plan (and fixes filed as requests) get their own folder next to the repo, on steer/<feature>. A branch switch in one never touches another. The board stays in the main folder."),
+        ("arrow.triangle.pull", "Pull requests: merge in Steerify or on GitHub",
+         "Your OK on the card merges the PR. If the owner merges it on GitHub instead, the Release tab shows “merged on GitHub”: Prepare release pulls it, deploys, marks the card live and removes the folder."),
+        ("slider.horizontal.3", "Per project",
+         "This is the default for projects that don't choose. Each project can pick its own in Release → Edit setup."),
+    ]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(rows, id: \.title) { r in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: r.icon).font(.system(size: 12)).foregroundStyle(Brand.amber).frame(width: 18).padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(r.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Brand.cream)
+                        Text(r.text).font(.system(size: 11.5)).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Brand.panel2))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.line))
     }
 }
 

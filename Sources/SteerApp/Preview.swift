@@ -389,37 +389,44 @@ struct PreviewOverlay: View {
             header("YOUR VERDICT · v\(s.version)", Brand.cream)
             let notes = board.shipNotes(s)
             NotesForClaude(notes: notes, pick: pick)
+            // The verdict is the main call to action: OK full width and large, Refine / Broken smaller under it.
+            verdictButton(s, "ok", notes.isEmpty ? "✓ OK" : "✓ OK + notes", Brand.green, pick, large: true)
             HStack(spacing: 6) {
-                verdictButton(s, "ok", notes.isEmpty ? "✓ OK" : "✓ OK + notes", Brand.green, pick)
                 verdictButton(s, "refine", "↻ Refine", Brand.amber, pick)
                 verdictButton(s, "broken", "✕ Broken", Brand.red, pick)
             }
             NoteField(placeholder: "Note for Claude (what to change)…", initial: board.shipNote(s), marked: !board.shipNote(s).isEmpty) { board.setShip(s, pick: nil, note: $0) }
             if let r = itemRef {
-                VStack(alignment: .leading, spacing: 6) {
+                // Optional next steps, set apart from the verdict: full width, one per line.
+                VStack(alignment: .leading, spacing: 8) {
                     if board.shipState(s) == .waiting {
-                        ActionButton(title: "Fix my notes", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .fix) }
+                        ActionButton(title: "Fix my notes", primary: true, large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .fix) }
                     }
                     if pick == "ok" && s.status != "live" {
                         if let ship = model.shipLabel(s, in: board.project) {
-                            ActionButton(title: ship.title, icon: "ship", primary: true) { close(); model.askShip(item: s, in: board.project) }
+                            ActionButton(title: ship.title, icon: "ship", primary: true, large: true) { close(); model.askShip(item: s, in: board.project) }
                         } else {
-                            ActionButton(title: board.shipNotes(s).isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true) { close(); model.start(projectId: state.projectId, item: r, intent: .release) }
+                            ActionButton(title: board.shipNotes(s).isEmpty ? "Release" : "Apply notes + release", icon: "ship", primary: true, large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .release) }
                         }
                     }
-                    ClaudeButton(title: "Open with Claude") { close(); model.start(projectId: state.projectId, item: r, intent: .look) }
-                }.padding(.top, 2)
+                    ClaudeButton(title: "Open with Claude", large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .look) }
+                }
+                .padding(.top, 12)
+                .overlay(alignment: .top) { Rectangle().fill(Brand.line).frame(height: 1) }
+                .padding(.top, 8)
             }
         }
     }
 
-    private func verdictButton(_ s: ShipItem, _ k: String, _ title: String, _ c: Color, _ pick: String?) -> some View {
-        Button { board.setShip(s, pick: k) } label: {
-            Text(title).font(.system(size: S(11.5), weight: .semibold))
-                .frame(maxWidth: .infinity).padding(.vertical, 6)
+    private func verdictButton(_ s: ShipItem, _ k: String, _ title: String, _ c: Color, _ pick: String?, large: Bool = false) -> some View {
+        let r: CGFloat = large ? 8 : 6
+        return Button { board.setShip(s, pick: k) } label: {
+            Text(title).font(.system(size: S(large ? 13.5 : 11.5), weight: large ? .bold : .semibold))
+                .frame(maxWidth: .infinity).padding(.vertical, large ? 9 : 6)
                 .foregroundStyle(pick == k ? Color.black : c)
-                .background(RoundedRectangle(cornerRadius: 6).fill(pick == k ? c : .clear))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(c.opacity(0.7)))
+                .background(RoundedRectangle(cornerRadius: r).fill(pick == k ? c : .clear))
+                .overlay(RoundedRectangle(cornerRadius: r).stroke(c.opacity(0.7)))
+                .contentShape(Rectangle())
         }.buttonStyle(SteerButton())
     }
 

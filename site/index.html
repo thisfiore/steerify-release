@@ -41,6 +41,8 @@
 <script src="assets/github.js?v=2" defer></script>
 <script src="assets/harbour.js?v=2" defer></script>
 <link rel="stylesheet" href="assets/menu.css?v=1">
+<link rel="stylesheet" href="assets/levels.css?v=1">
+<script src="assets/levels.js?v=1" defer></script>
 <script src="assets/menu.js?v=2" defer></script>
 <script src="assets/iphone.js?v=1" defer></script>
 <script src="/assets/hit.js?v=1" defer></script>
@@ -141,6 +143,50 @@
     </div>
   </section>
 
+  <section id="anyone" style="padding-top:0">
+    <div class="wrap" data-levels>
+      <span class="eyebrow">For anyone who builds</span>
+      <h2 style="margin-top:14px">Code or no code. Anyone can steer.</h2>
+      <p class="lead" style="margin-top:14px">Tell Steerify how technical you are. Its screens and Claude's words change to fit you. The work behind them stays the same.</p>
+      <div class="lv">
+        <div class="lv-pick" role="group" aria-label="How technical are you?">
+          <button class="lv-who" data-lv="explorer" style="--c:#4ade80" aria-pressed="true"><canvas data-px="explorer" width="24" height="24" aria-hidden="true"></canvas><div><b>BEGINNER</b><span>I have an idea. Code is not my thing.</span></div></button>
+          <button class="lv-who" data-lv="tinkerer" style="--c:#c4a7ff" aria-pressed="false"><canvas data-px="tinkerer" width="24" height="24" aria-hidden="true"></canvas><div><b>SEMI-NERD</b><span>I use apps and spreadsheets. I can follow along.</span></div></button>
+          <button class="lv-who" data-lv="builder" style="--c:#d97757" aria-pressed="false"><canvas data-px="builder" width="24" height="24" aria-hidden="true"></canvas><div><b>FULL NERD</b><span>I read code, use git and ship myself.</span></div></button>
+          <p class="lv-note">Started from an AI Traction recipe? You start as a Beginner, and Claude follows the recipe's answers.</p>
+        </div>
+        <div>
+          <div class="lv-win" role="img" aria-label="The same bakery project shown at the chosen level: the words on the cards, the choice, the release button and the terminal change">
+            <div class="lv-bar"><i></i><i></i><i></i><span class="t">NONNA'S BAKERY</span><span class="sp"></span><span class="lv-pill"></span></div>
+            <div class="lv-fade">
+              <div class="lv-body">
+                <div class="lv-board">
+                  <div class="lv-tabs"></div>
+                  <div class="lv-card"><span class="k">READY TO LOOK AT</span><span class="msg" data-done></span></div>
+                  <div class="lv-card"><span class="k">A CHOICE FOR YOU</span><span class="msg" data-ask></span><div class="lv-opts"></div></div>
+                  <div class="lv-row"><span class="lv-go"></span><span class="lv-steps"></span></div>
+                </div>
+                <div class="lv-term"><div>
+                  <div class="c">● Building the menu page</div>
+                  <div class="m">$ git switch -c steer/menu</div>
+                  <div>  edit  app/menu/page.tsx</div>
+                  <div>  edit  lib/orders.ts</div>
+                  <div class="m">$ npm test</div>
+                  <div class="g">  ✓ 14 passed</div>
+                  <div class="m">$ git push -u origin steer/menu</div>
+                  <div class="c">● Delivered to To test</div>
+                </div></div>
+              </div>
+              <div class="lv-fold">▸ <b>Claude</b> is working · open the terminal</div>
+            </div>
+          </div>
+          <div class="lv-diff"><div><b>WORDS</b><span></span></div><div><b>YOU DECIDE</b><span></span></div><div><b>ON SCREEN</b><span></span></div></div>
+        </div>
+      </div>
+      <p class="aside" style="margin-top:18px">Same boat. Different oars.</p>
+    </div>
+  </section>
+
   <section id="how">
     <div class="wrap">
       <span class="eyebrow">How it works</span>
@@ -220,7 +266,7 @@
         <figure data-label="Request"><a href="assets/shots/demo/request-mark.png"><img src="assets/shots/demo/web/request-mark.jpg" width="1600" height="1043" alt="The New request sheet: a screenshot with a numbered dot and a marked area, the request text pointing at them, sorted as a refinement and filed under a chapter" loading="lazy"></a><figcaption><span><b>Request</b> · Mark the picture, say what's wrong. Steerify files it as a fix, a feature or a task.</span></figcaption></figure>
         <figure data-label="Search"><a href="assets/shots/demo/search.png"><img src="assets/shots/demo/web/search.jpg" width="1600" height="1043" alt="The search palette: results for "due" grouped by roadmap and choices" loading="lazy"></a><figcaption><span><b>Search</b> · One search across sessions, choices, roadmap and requests.</span></figcaption></figure>
         <figure data-label="Ship"><a href="assets/shots/demo/ship.png"><img src="assets/shots/demo/web/ship.jpg" width="1600" height="1043" alt="The Release tab after shipping: a pixel boat with a crate and fireworks, App v0.5.13 is out, v0.5.12 to v0.5.13" loading="lazy"></a><figcaption><span><b>Ship</b> · Release by product: the Mac app, the site, the iPhone. One button each; fireworks when it's out.</span></figcaption></figure>
-        <figure data-label="Your level"><a href="assets/shots/demo/level.png"><img src="assets/shots/demo/web/level.jpg" width="1600" height="1043" alt="How technical are you? Three pixel characters: Explorer, Tinkerer, Builder, each with what you'll see and how Steerify says it" loading="lazy"></a><figcaption><span><b>Your level</b> · Explorer, Tinkerer or Builder. Steerify and Claude talk to you the way you work.</span></figcaption></figure>
+        <figure data-label="Your level"><a href="assets/shots/demo/level.png"><img src="assets/shots/demo/web/level.jpg" width="1600" height="1043" alt="How technical are you? Three pixel characters: Beginner, Semi-nerd, Full nerd, each with what you'll see and how Steerify says it" loading="lazy"></a><figcaption><span><b>Your level</b> · Beginner, Semi-nerd or Full nerd. Steerify and Claude talk to you the way you work.</span></figcaption></figure>
         <figure data-label="Report a bug"><a href="assets/shots/demo/report-bug.png"><img src="assets/shots/demo/web/report-bug.jpg" width="1600" height="1043" alt="The Spotted a bug? sheet: Bug, Feature, Question, a pixel crab, the text fields and exactly what is sent with it" loading="lazy"></a><figcaption><span><b>Report a bug</b> · Bug, feature or question, from inside the app. You see what is sent, and it moves to fixed.</span></figcaption></figure>
       </div>
     </div>
@@ -340,7 +386,7 @@
           <div><h3>How you start</h3>
             <ul class="tech">
               <li><b>Add a project.</b> Drop a folder on Steerify, or pick one. Steerify creates a <code>.steerify/</code> board inside it: plain JSON files that travel with your repo. <b>Set up with Claude</b> reads the project and fills the board in while you watch.</li>
-              <li><b>Say how technical you are.</b> Explorer, Tinkerer or Builder, asked once. It sets what you see (terminal, git, release buttons) and how Claude talks to you. Change it in Settings.</li>
+              <li><b>Say how technical you are.</b> Beginner, Semi-nerd or Full nerd, asked once. It sets what you see (terminal, git, release buttons) and how Claude talks to you. Change it in Settings.</li>
               <li><b>The skill installs itself.</b> <code>~/.claude/skills/steerify</code> teaches every Claude Code session the same loop.</li>
               <li><b>Start an item.</b> It opens <code>claude '/steerify build &lt;item&gt;'</code> in the right repo, in a real terminal.</li>
             </ul>

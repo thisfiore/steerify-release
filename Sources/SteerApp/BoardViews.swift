@@ -101,6 +101,7 @@ struct BoardScreen: View {
     @State private var pendingScroll: AppModel.FocusRequest? = nil
     /// ★ Focus on, per tab (choice focus-filter-look: off by default, remembered per tab). Comma list of tab ids.
     @AppStorage("focusFilterTabs", store: Prefs.store) private var focusTabs = ""
+    @AppStorage(Prefs.roadOrder, store: Prefs.store) private var roadOrder = ""
     private var focusOn: Bool { !board.focus.isEmpty && focusTabs.split(separator: ",").contains { $0 == tab.rawValue } }
     private func setFocusOn(_ on: Bool) {
         var t = Set(focusTabs.split(separator: ",").map(String.init)); if on { t.insert(tab.rawValue) } else { t.remove(tab.rawValue) }
@@ -301,8 +302,16 @@ struct BoardScreen: View {
         let list = Array((NSOrderedSet(array: road.map(\.track)).array as! [String]).reversed())
         let drafts = Set(board.chapters.filter(\.draft).map(\.name))
         let act = board.chapterActivity()
-        let rest = list.enumerated().filter { !drafts.contains($0.element) }
-            .sorted { (act[$0.element] ?? "", $1.offset) > (act[$1.element] ?? "", $0.offset) }.map(\.element)
+        let others = list.filter { !drafts.contains($0) }
+        let rest: [String]
+        // The order picked in the Sort menu (choice roadmap-chapter-order), per project.
+        switch RoadOrder.mode(board.project.id, in: roadOrder) {
+        case .name: rest = others.sorted(by: RoadOrder.nameLess)
+        case .created: rest = others.reversed()
+        case .activity:
+            rest = others.enumerated()
+                .sorted { (act[$0.element] ?? "", $1.offset) > (act[$1.element] ?? "", $0.offset) }.map(\.element)
+        }
         // Chapters in focus first, in their order (request r261123-095911), then drafts, then the latest activity.
         let focused = board.focus.filter { list.contains($0) }
         return focused + (list.filter { drafts.contains($0) } + rest).filter { !focused.contains($0) }
@@ -485,6 +494,7 @@ struct FilterBar: View {
                 Button("Clear") { area = nil; state = "open" }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11.5)))
             }
             if tab == .test { LayoutSwitch() }
+            if tab == .road { RoadOrderMenu(projectId: board.project.id) }
         }
     }
 
@@ -1174,6 +1184,7 @@ struct TestRow: View {
                 if let u0 = test.url, case let u = TestEnvs.boardFile(u0, board: model.projects.first { $0.id == projectId }?.boardDir ?? "") ?? u0, !TestEnvs.dead(u), let url = URL(string: u) {
                     Button(test.label) { if url.scheme == "steerify" { model.handle(url) } else { openTestLink(url) } }
                         .buttonStyle(.link).pointerStyle(.link).font(.system(size: S(12), weight: .medium))
+                        .contextMenu { OpenInMenu(url: url) }
                 } else { Text(test.label).font(.system(size: S(12), weight: .medium)) }
                 if let c = test.check { Text(c).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true) }
                 if let f = feedback {
@@ -2071,6 +2082,7 @@ struct TestChapter: View {
                             .background(RoundedRectangle(cornerRadius: 7).fill(vague == nil ? Color(hex: 0x3b6ff5) : .clear))
                             .overlay(RoundedRectangle(cornerRadius: 7).stroke(vague == nil ? .clear : Brand.amber.opacity(0.7)))
                     }.buttonStyle(SteerButton()).help(vague.map { "This link opens \($0): \(u)\nSend it back with Refine to get a direct link." } ?? u)
+                    .contextMenu { OpenInMenu(url: url) }
                 }
             }
             // The note box is always there and takes the rest of the row: writing a note is one click.
@@ -2269,8 +2281,10 @@ struct FocusStar: View {
 
 /// Opens a test link. A local page with a query (protos/x.html?v=B) goes to the browser directly: Finder drops the
 /// query of a file URL, and the prototype would open on its first variant.
-func openTestLink(_ url: URL) {
-    if url.isFileURL, url.query != nil, let browser = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.com")!) {
+/// `in`: a browser picked from the right-click menu; otherwise the one set in Settings (request r261124-145319-fbb8c4c0).
+func openTestLink(_ url: URL, in app: URL? = nil) {
+    let web = url.scheme == "http" || url.scheme == "https" || (url.isFileURL && ["html", "htm"].contains(url.pathExtension.lowercased()))
+    if let browser = app ?? (web ? TestBrowser.chosen : nil) ?? (url.isFileURL && url.query != nil ? TestBrowser.systemDefault : nil) {
         NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: NSWorkspace.OpenConfiguration())
     } else {
         NSWorkspace.shared.open(url)
