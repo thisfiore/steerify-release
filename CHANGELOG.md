@@ -15,7 +15,7 @@ Every Steerify release, newest first. Downloads: https://github.com/thisfiore/st
 
 ### On the iPhone
 
-- **iPhone: SB pictures arrive (side branch)** — SB test pictures show on iPhone · Only open items, max 1600 px · Never in SB's main history · Blank picture still says why
+- **iPhone: pictures kept out of git still arrive (side branch)** — Test pictures show on iPhone · Only open items, max 1600 px · Never in the project's main history · Blank picture still says why
 
 ## 0.5.21 · 2026-11-24
 
