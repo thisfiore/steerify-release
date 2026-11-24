@@ -434,6 +434,7 @@ struct ReadyScreen: View {
         let sent = model.recentPings.filter { $0.projectId == projectId }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
+                if let p = project { RequestsWaiting(project: p) }
                 if !rel.isEmpty, let p = project {
                     HStack(spacing: 10) {
                         Text("READY TO RELEASE").font(Brand.label(10)).tracking(0.9).foregroundStyle(Brand.green)
@@ -472,6 +473,7 @@ struct ReadyScreen: View {
                 if let p = project, !groups.isEmpty || !rel.isEmpty || !(model.whereYouLeftOff(p).isEmpty && model.nextSteps(p).isEmpty) {
                     LeftOffSection(project: p).padding(.top, groups.isEmpty && rel.isEmpty ? 6 : 18)
                 }
+                if let p = project { RequestsRecent(project: p).padding(.top, 8) }
                 if !sent.isEmpty {
                     Text("SENT TO A SESSION").font(Brand.label(9)).tracking(0.9).foregroundStyle(Brand.mute).padding(.top, 8)
                     ForEach(sent) { n in

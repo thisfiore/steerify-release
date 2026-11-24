@@ -443,7 +443,7 @@ struct PreviewOverlay: View {
             if let r = itemRef {
                 VStack(alignment: .leading, spacing: 8) {
                     if board.isDecided(d) && !board.isBuilt(d) {
-                        ActionButton(title: "Build my pick", primary: true, large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .build) }
+                        ActionButton(title: DecisionCard.buildTitle(d, board: board), primary: true, large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .build) }
                     }
                     ClaudeButton(title: "Discuss this with Claude", large: true) { close(); model.start(projectId: state.projectId, item: r, intent: .look) }
                 }.padding(.top, 4)

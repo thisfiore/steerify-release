@@ -1,3 +1,4 @@
+import CryptoKit
 import AppKit
 import Foundation
 
@@ -333,12 +334,82 @@ enum BoardPublish {
         // Ahead of GitHub? (just committed, or earlier board commits not pushed yet)
         _ = Git.run(root, ["fetch", "-q", "origin", branch])
         let ahead = Int(Git.run(root, ["rev-list", "--count", "origin/\(branch)..HEAD"]) ?? "0") ?? 0
-        guard ahead > 0 else { return false }
+        // Pictures kept out of git: their own side branch (choice phone-pictures-gitignored).
+        let pictures = PicturesBranch.run(root: root, rel: rel, boardDir: boardDir)
+        guard ahead > 0 else { return pictures }
         let behind = Int(Git.run(root, ["rev-list", "--count", "HEAD..origin/\(branch)"]) ?? "0") ?? 0
         if behind > 0, Git.run(root, ["pull", "-q", "--rebase", "--autostash", "origin", branch]) == nil {
             _ = Git.run(root, ["rebase", "--abort"])          // not clean: leave it, try again on the next change
             return false
         }
-        return Git.run(root, ["push", "-q", "origin", branch]) != nil
+        return Git.run(root, ["push", "-q", "origin", branch]) != nil || pictures
+    }
+}
+
+/// Pictures the phone needs that the repo keeps out of git (e.g. SB: board/img/ in .gitignore, "client assets: never
+/// commit"). Choice phone-pictures-gitignored, pick A: only the pictures of open To test items and open choices, at most
+/// 1600 px, go to the side branch `steerify-pictures` as ONE parentless commit, replaced each time (force push), so they
+/// never enter main's history and old ones vanish. The phone reads a picture there when main does not have it.
+enum PicturesBranch {
+    static let branch = "steerify-pictures"
+
+    /// The pictures the phone shows (same rule as the iPhone's BoardSync.pictures).
+    static func needed(_ boardDir: String) -> [String] {
+        func json(_ n: String) -> [String: Any]? {
+            FileManager.default.contents(atPath: (boardDir as NSString).appendingPathComponent(n)).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
+        }
+        var out = Set<String>()
+        for it in json("delivered.json")?["items"] as? [[String: Any]] ?? [] where (it["status"] as? String) != "live" {
+            for t in (it["tests"] as? [[String: Any]] ?? []) + (it["shots"] as? [[String: Any]] ?? []) { if let i = t["img"] as? String { out.insert(i) } }
+        }
+        for d in json("board.json")?["decisions"] as? [[String: Any]] ?? [] where d["built"] == nil {
+            for o in d["options"] as? [[String: Any]] ?? [] {
+                if let s = o["shot"] as? String { out.insert(s) }
+                if let pr = o["proto"] as? String, let f = pr.split(separator: "?").first { out.insert(String(f)) }
+            }
+        }
+        return out.filter { !$0.hasPrefix("http") && !$0.contains("..") }.sorted()
+    }
+
+    /// A copy at most 1600 px wide (pictures only), cached by path + date + size so sips runs once per picture.
+    static func small(_ file: String) -> String {
+        let ext = (file as NSString).pathExtension.lowercased()
+        guard ["jpg", "jpeg", "png"].contains(ext),
+              let a = try? FileManager.default.attributesOfItem(atPath: file),
+              let m = (a[.modificationDate] as? Date)?.timeIntervalSince1970, let size = a[.size] as? Int else { return file }
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Steerify/phone-pictures")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let key = SHA256.hash(data: Data((file + "\(Int(m))-\(size)").utf8)).prefix(10).map { String(format: "%02x", $0) }.joined()   // stable across launches
+        let out = dir.appendingPathComponent(key + "." + ext).path
+        if FileManager.default.fileExists(atPath: out) { return out }
+        let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/sips")
+        p.arguments = ["-Z", "1600", file, "--out", out]; p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return file }
+        p.waitUntilExit()
+        return p.terminationStatus == 0 && FileManager.default.fileExists(atPath: out) ? out : file
+    }
+
+    /// true = the branch changed on GitHub. Nothing ignored and no branch yet = nothing to do.
+    static func run(root: String, rel: String, boardDir: String) -> Bool {
+        func path(_ f: String) -> String { rel.isEmpty ? f : rel + "/" + f }
+        let ignored = needed(boardDir).filter { f in
+            FileManager.default.fileExists(atPath: (boardDir as NSString).appendingPathComponent(f))
+                && Git.run(root, ["check-ignore", "-q", path(f)]) != nil
+        }
+        _ = Git.run(root, ["fetch", "-q", "origin", "+refs/heads/\(branch):refs/remotes/origin/\(branch)"])
+        let remoteTree = Git.run(root, ["rev-parse", "-q", "--verify", "origin/\(branch)^{tree}"])
+        if ignored.isEmpty && remoteTree == nil { return false }
+        // A throwaway index: the working tree and the real index are never touched.
+        let index = NSTemporaryDirectory() + "steerify-pictures-\(UUID().uuidString).index"
+        defer { try? FileManager.default.removeItem(atPath: index) }
+        let env = ["GIT_INDEX_FILE": index]
+        guard Git.run(root, ["read-tree", "--empty"], env: env) != nil else { return false }
+        for f in ignored {
+            guard let blob = Git.run(root, ["hash-object", "-w", "--", small((boardDir as NSString).appendingPathComponent(f))]) else { continue }
+            _ = Git.run(root, ["update-index", "--add", "--cacheinfo", "100644,\(blob),\(path(f))"], env: env)
+        }
+        guard let tree = Git.run(root, ["write-tree"], env: env), tree != remoteTree else { return false }
+        guard let commit = Git.run(root, ["commit-tree", tree, "-m", "Pictures for the iPhone (\(ignored.count), replaced each time)"]) else { return false }
+        return Git.run(root, ["push", "-q", "--force", "origin", "\(commit):refs/heads/\(branch)"]) != nil
     }
 }

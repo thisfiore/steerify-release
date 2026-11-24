@@ -276,47 +276,132 @@ extension AppModel {
 struct RecipeGallery: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject private var lib = RecipeLibrary.shared
+    @State private var query = ""
+    @State private var category: String? = nil
+    @State private var standards: [Standard] = []
+    @FocusState private var focused: Bool
+
+    private var onStandards: Bool { model.galleryTab == "standards" }
+    private func hit(_ hay: String) -> Bool {
+        query.lowercased().split(separator: " ").allSatisfy { hay.contains($0) }
+    }
+    private var shownStandards: [Standard] {
+        standards.filter { (category == nil || $0.category == category) && hit($0.haystack) }
+    }
+    private var shownRecipes: [Recipe] {
+        lib.recipes.filter { r in
+            (category == nil || (r.book ?? "Recipes") == category)
+                && hit([r.name, r.line, r.youGet, r.who, r.book ?? ""].joined(separator: " ").lowercased())
+        }
+    }
+    private var categories: [String] {
+        var seen: [String] = []
+        for c in onStandards ? standards.map(\.category) : lib.recipes.map({ $0.book ?? "Recipes" }) where !seen.contains(c) { seen.append(c) }
+        return seen
+    }
 
     var body: some View {
         ZStack {
             Color.black.opacity(0.6).ignoresSafeArea().onTapGesture { model.recipesOpen = false }
-            VStack(alignment: .leading, spacing: S(14)) {
+            VStack(alignment: .leading, spacing: S(12)) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("START FROM A RECIPE").font(Brand.label(13)).tracking(1.4).foregroundStyle(Brand.cream)
-                        Text("A ready folder for one build of the book AI Traction. You fill a few plain files; Claude asks, proposes and builds; you decide.")
+                        Text("RECIPES & STANDARDS").font(Brand.label(13)).tracking(1.4).foregroundStyle(Brand.cream)
+                        Text(onStandards
+                             ? "Add a standard to \(model.project?.name ?? "your project"): Claude installs it step by step and puts it on To test."
+                             : "Start a new project from a recipe: a ready folder for one build of the book AI Traction. You fill a few plain files; Claude asks, proposes and builds.")
                             .font(.system(size: S(12.5))).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                     Button { model.recipesOpen = false } label: { Image(systemName: "xmark").foregroundStyle(Brand.mute) }
                         .buttonStyle(.plain).keyboardShortcut(.cancelAction).help("Close")
                 }
-                switch lib.state {
-                case .ready:
+                HStack(spacing: 6) {
+                    tab("standards", "Standards · add to this project", standards.count)
+                    tab("recipes", "Recipes · new project", lib.recipes.count)
+                    Spacer(minLength: 12)
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(Brand.mute)
+                        TextField("Search: feedback, widget, content…", text: $query).textFieldStyle(.plain).focused($focused)
+                            .font(.system(size: S(12.5))).foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 9).padding(.vertical, 5).frame(width: S(250))
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Brand.bg)).overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.line2))
+                }
+                if categories.count > 1 {
+                    HStack(spacing: 6) {
+                        chip(nil, "All")
+                        ForEach(categories, id: \.self) { chip($0, $0) }
+                    }
+                }
+                if onStandards {
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: S(250)), spacing: S(14))], spacing: S(14)) {
-                            ForEach(lib.recipes) { r in RecipeCard(recipe: r) { model.startRecipe(r) } }
+                        VStack(alignment: .leading, spacing: S(10)) {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: S(250)), spacing: S(14))], spacing: S(14)) {
+                                ForEach(shownStandards) { StandardCard(standard: $0, project: model.project) }
+                            }
+                            if shownStandards.isEmpty { empty }
+                            Text("More standards are coming: release notes, test environments, a design kit.")
+                                .font(.system(size: S(11))).foregroundStyle(Brand.mute)
                         }
                     }
-                case .failed(let why):
-                    VStack(spacing: 10) {
-                        Text(why).font(.system(size: S(12.5))).foregroundStyle(Brand.red).multilineTextAlignment(.center)
-                        ActionButton(title: "Try again", icon: "play") { lib.load(force: true) }
-                    }.frame(maxWidth: .infinity, minHeight: S(200))
-                default:
-                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Getting the recipes…").foregroundStyle(Brand.mute) }
-                        .frame(maxWidth: .infinity, minHeight: S(200))
+                } else {
+                    switch lib.state {
+                    case .ready:
+                        ScrollView {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: S(250)), spacing: S(14))], spacing: S(14)) {
+                                ForEach(shownRecipes) { r in RecipeCard(recipe: r) { model.startRecipe(r) } }
+                            }
+                            .overlay(alignment: .top) { if shownRecipes.isEmpty { empty } }
+                        }
+                    case .failed(let why):
+                        VStack(spacing: 10) {
+                            Text(why).font(.system(size: S(12.5))).foregroundStyle(Brand.red).multilineTextAlignment(.center)
+                            ActionButton(title: "Try again", icon: "play") { lib.load(force: true) }
+                        }.frame(maxWidth: .infinity, minHeight: S(200))
+                    default:
+                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Getting the recipes…").foregroundStyle(Brand.mute) }
+                            .frame(maxWidth: .infinity, minHeight: S(200))
+                    }
                 }
                 Text("Steerify is independent and open source, not affiliated with Anthropic.")
                     .font(.system(size: S(10.5))).foregroundStyle(Brand.mute.opacity(0.8))
             }
             .padding(S(24))
-            .frame(width: S(860), height: S(620))
+            .frame(width: S(880), height: S(640))
             .background(RoundedRectangle(cornerRadius: 16).fill(Brand.panel))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.line2))
             .shadow(color: .black.opacity(0.6), radius: 30, y: 14)
         }
-        .onAppear { lib.load() }
+        .onAppear { lib.load(); standards = StandardLibrary.all() }
+        .onChange(of: model.galleryTab) { _, _ in category = nil }
+    }
+
+    private var empty: some View {
+        Text("Nothing matches “\(query)”.").font(.system(size: S(12))).foregroundStyle(Brand.mute).frame(maxWidth: .infinity).padding(.vertical, 30)
+    }
+
+    private func tab(_ id: String, _ title: String, _ n: Int) -> some View {
+        let on = model.galleryTab == id
+        return Button { model.galleryTab = id } label: {
+            HStack(spacing: 6) {
+                Text(title.uppercased()).font(Brand.label(9.5)).tracking(0.7)
+                Text("\(n)").font(.system(size: S(10), weight: .semibold).monospacedDigit()).opacity(0.75)
+            }
+            .foregroundStyle(on ? Color.black : Brand.ink)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(PixelBox().fill(on ? Brand.amber : Brand.panel2))
+        }.buttonStyle(.plain).pointerStyle(.link)
+    }
+
+    private func chip(_ c: String?, _ title: String) -> some View {
+        let on = category == c
+        return Button { category = c } label: {
+            Text(title).font(.system(size: S(11), weight: on ? .semibold : .regular))
+                .foregroundStyle(on ? Brand.amber : Brand.mute)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .overlay(Capsule().stroke(on ? Brand.amber : Brand.line2))
+        }.buttonStyle(.plain).pointerStyle(.link)
     }
 }
 

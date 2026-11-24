@@ -410,7 +410,7 @@ struct TabBar: View {
     /// What needs you: refine/broken + untested on To test, open choices, unreviewed requirements.
     private func badge(_ t: BoardTab) -> Int {
         switch t {
-        case .ready: return model.groupedNudges(board.project.id).count + model.releasable(board.project.id).count
+        case .ready: return model.groupedNudges(board.project.id).count + model.releasable(board.project.id).count + model.waitingRequests(board.project).count
         case .test: return board.ships.filter { [.toTest, .retest].contains(board.shipState($0)) }.count
         case .choice: return board.decisions.filter { !board.isDecided($0) && !board.isParked($0) }.count
         case .req: return board.requirements.filter { $0.status == "question" && board.isOpen($0) }.count

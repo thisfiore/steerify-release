@@ -7,6 +7,7 @@ enum SkillInstaller {
 
     static func install() {
         installKit()
+        installStandards()
         guard let src = Bundle.main.url(forResource: "SKILL", withExtension: "md", subdirectory: "skills/steerify"),
               let bundled = try? String(contentsOf: src, encoding: .utf8) else { return }
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills/steerify")
@@ -37,6 +38,22 @@ enum SkillInstaller {
         for name in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] {
             let a = src.appendingPathComponent(name), b = dir.appendingPathComponent(name)
             guard let data = try? Data(contentsOf: a), (try? Data(contentsOf: b)) != data else { continue }
+            try? data.write(to: b, options: .atomic)
+        }
+    }
+
+    /// The standards (~/.claude/skills/steerify/standards/<id>/standard.json + INSTALL.md): what Claude follows when
+    /// you press Install on one (StandardsGallery.swift). Steerify's own files, kept current.
+    static func installStandards() {
+        guard let src = Bundle.main.url(forResource: "standards", withExtension: nil, subdirectory: "skills/steerify") else { return }
+        let fm = FileManager.default
+        let dst = fm.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills/steerify/standards")
+        guard let e = fm.enumerator(at: src, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+        for case let a as URL in e {
+            let rel = String(a.path.dropFirst(src.path.count + 1)), b = dst.appendingPathComponent(rel)
+            if (try? a.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { try? fm.createDirectory(at: b, withIntermediateDirectories: true); continue }
+            guard let data = try? Data(contentsOf: a), (try? Data(contentsOf: b)) != data else { continue }
+            try? fm.createDirectory(at: b.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: b, options: .atomic)
         }
     }

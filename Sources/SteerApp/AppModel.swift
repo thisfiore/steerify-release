@@ -25,6 +25,8 @@ final class AppModel: ObservableObject {
     @Published var preview: PreviewState?
     /// ⌘K palette.
     @Published var paletteOpen = false
+    @Published var requestsListOpen = false           // Board › All Requests… (RequestsList.swift)
+    @Published var galleryTab = "recipes"             // "standards" | "recipes": the Recipes & Standards gallery's tab
     @Published var recipesOpen = false                // "Start from a recipe" gallery (Recipes.swift)
     @Published var levelOpen = false                  // "How technical are you?" (Level.swift): first launch, until answered
     /// ⌘N: the New request sheet, pinned to the project it was opened in (nil = closed). A session that
@@ -453,7 +455,8 @@ final class AppModel: ObservableObject {
         if q["dry"] != "1" && !CommandLine.arguments.contains("--background") { NSApp.activate(ignoringOtherApps: true) }
     }
 
-    private func open(_ s: TerminalSession) -> TerminalSession {
+    @discardableResult
+    func open(_ s: TerminalSession) -> TerminalSession {
         _ = s.view   // start the process now: sessions keep working while their tab is hidden
         sessions.append(s)
         selectedSession[s.projectId] = s.id
@@ -502,10 +505,13 @@ final class AppModel: ObservableObject {
     }
 
     /// Reopen last time's sessions: Claude conversations resumed (history kept), shells in their repos.
+    /// Once per launch, whatever model asks: two restores would run two `claude --resume` on the same chat.
+    private static var restored = false
     func restoreSessions() {
-        guard sessions.isEmpty, !CommandLine.arguments.contains("--background") || CommandLine.arguments.contains("--test-persist"),
+        guard !Self.restored, sessions.isEmpty, !CommandLine.arguments.contains("--background") || CommandLine.arguments.contains("--test-persist"),
               let d = Prefs.store.data(forKey: "openSessions"),
               let list = try? JSONDecoder().decode([SavedSession].self, from: d) else { return }
+        Self.restored = true
         var interrupted: [InterruptedSession] = []
         defer { if !CommandLine.arguments.contains("--background") || CommandLine.arguments.contains("--test-persist") { ResumeInterrupted.shared.present(interrupted) } }
         for saved in list {

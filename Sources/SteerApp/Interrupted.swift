@@ -215,6 +215,9 @@ final class ResumeInterrupted: ObservableObject {
 
     func close() { withAnimation(.easeOut(duration: 0.2)) { open = false }; sailing = false }
 
+    /// How long a nudge waits for its session to be ready before saying so (a loaded Mac restoring many sessions).
+    static let readyLimit: TimeInterval = 10 * 60
+
     /// Send each ticked conversation its nudge, once it is ready (its SessionStart hook came in).
     func resume(_ model: AppModel) {
         let picked = found.filter(\.tick)
@@ -222,22 +225,37 @@ final class ResumeInterrupted: ObservableObject {
         withAnimation(.easeInOut(duration: 0.3)) { sailing = true }
         for s in picked where !demo {
             Task { @MainActor in
-                // Up to 3 minutes for the session to be ready: with many sessions restoring at launch, Claude's
-                // SessionStart can take well over 40 s, and a nudge given up on silently is a resume that never happens.
-                for _ in 0..<360 {
-                    if let t = model.sessions.first(where: { $0.claudeId == s.claudeId }) {
-                        guard t.running else { NSLog("resume-interrupted: \(s.claudeId.prefix(8)) closed before it was ready"); return }
+                // Scheduled, not timed: the nudge waits for THIS session to be ready (SessionStart → idle), however long
+                // the launch takes with every session restoring at once. Re-looked up each turn, so a Restart of a stuck
+                // start (same chat, new terminal) is followed. Only `idle` counts: `waiting` is a prompt on screen
+                // (permission, trust, a question) and typing the nudge there would answer it.
+                let start = Date()
+                var said = ""
+                while Date().timeIntervalSince(start) < Self.readyLimit {
+                    let t = model.sessions.first(where: { $0.claudeId == s.claudeId })
+                    let state = t.map { "\($0.status)\($0.stuck.map { " (\($0.reason))" } ?? "")" } ?? "gone"
+                    if state != said { said = state; NSLog("resume-interrupted: \(s.claudeId.prefix(8)) waiting, \(state) · \(Int(Date().timeIntervalSince(start))) s") }
+                    if let t {
                         if t.status == .working { NSLog("resume-interrupted: \(s.claudeId.prefix(8)) already working"); return }
-                        if t.status == .idle || t.status == .waiting {
+                        if t.status == .idle {
                             let ok = await Self.deliver(InterruptedReader.nudge(s), to: t)
-                            NSLog("resume-interrupted: \(ok ? "Claude took it" : "NOT taken after 3 tries") · \(s.claudeId.prefix(8)) (\(s.why.rawValue))")
+                            NSLog("resume-interrupted: \(ok ? "Claude took it" : "NOT taken after 3 tries") · \(s.claudeId.prefix(8)) (\(s.why.rawValue)) after \(Int(Date().timeIntervalSince(start))) s")
                             if !ok { model.showToast("“\(s.title)” didn't pick up the resume: open it and press Enter", projectId: s.projectId) }
+                            return
+                        }
+                        // Claude never started (chat not found, not installed) or the session was closed: waiting won't
+                        // help. 30 s of grace, so a Restart of the stuck start (picked up above) still gets the nudge.
+                        if (t.stuck?.stopped == true || !t.running), Date().timeIntervalSince(start) > 30 {
+                            let why = t.running ? (t.stuck?.reason ?? "stopped") : "closed"
+                            NSLog("resume-interrupted: \(s.claudeId.prefix(8)) \(why), nothing sent")
+                            if t.running { model.showToast("“\(s.title)” couldn't start (\(why)): Restart it, then say go", projectId: s.projectId) }
                             return
                         }
                     }
                     try? await Task.sleep(nanoseconds: 500_000_000)
                 }
-                NSLog("resume-interrupted: \(s.claudeId.prefix(8)) not ready after 3 min, nothing sent")
+                NSLog("resume-interrupted: \(s.claudeId.prefix(8)) not ready after \(Int(Self.readyLimit / 60)) min, nothing sent")
+                model.showToast("“\(s.title)” wasn't ready after \(Int(Self.readyLimit / 60)) min: open it and say go", projectId: s.projectId)
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in self?.close() }
@@ -249,6 +267,9 @@ final class ResumeInterrupted: ObservableObject {
     /// (the text may be sitting in the box), then clear the line (Ctrl-U) and type it again.
     private static func deliver(_ text: String, to t: TerminalSession) async -> Bool {
         try? await Task.sleep(nanoseconds: 1_500_000_000)
+        // Ready means idle with nothing on screen: if it moved on meanwhile (you typed, a prompt came), type nothing.
+        guard t.running, t.status == .idle else { NSLog("resume-interrupted: moved to \(t.status) before the nudge, nothing typed"); return t.status == .working }
+        let before = t.statusAt
         for attempt in 0..<4 {
             switch attempt {
             case 0: t.submit(text)
@@ -258,7 +279,9 @@ final class ResumeInterrupted: ObservableObject {
             for _ in 0..<16 {
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 guard t.running else { return false }
-                if t.status == .working { return true }
+                // Taken = UserPromptSubmit (working). A prompt that came after typing (a permission right away) counts
+                // too: retrying would type into it. Any other new hook is not proof (seen live: a late hook, nudge lost).
+                if t.status == .working || (t.status == .waiting && t.statusAt != before) { return true }
             }
             NSLog("resume-interrupted: not taken yet (try \(attempt + 1)), status \(t.status)")
         }

@@ -21,7 +21,9 @@ struct ItemRef: Hashable {
 enum Intent: String, CaseIterable {
     case fix, release, plan, build, check, look, resume, ship, consolidate, choose, intake
     case tag                      // track:<slug>: Claude proposes core vs extras for every key result (you keep or undo)
+    case install                  // request:<id>: add a standard to the project (StandardsGallery.swift)
     case run                      // task:<id>: reach the task's outcome, hand in the result (Tasks.swift)
+    case discuss                  // any item: talk about it with the user, then file what they ask for (choice talk-about-run)
     case initialize = "init"     // setup:<project>: Claude reads the project, interviews you, drafts the board
 }
 

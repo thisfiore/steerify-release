@@ -189,7 +189,7 @@ extension AppModel {
         guard !CommandLine.arguments.contains("--background") else {
             FileHandle.standardError.write("[feedback-inbox] \(p.id): \(n) new\n".data(using: .utf8)!); return
         }
-        let msg = n == 1 ? "1 new request from \(p.name)'s users: it's in Requests" : "\(n) new requests from \(p.name)'s users: they're in Requests"
+        let msg = n == 1 ? "1 new request from \(p.name)'s users: it's in Ready" : "\(n) new requests from \(p.name)'s users: they're in Ready"
         _ = SteerifyMCP.call("notify", ["message": msg], board: p.boardDir)
     }
 }

@@ -554,6 +554,7 @@ struct RequestRow: View {
     private var whereLine: String {
         let b = model.board(for: project)
         var parts: [String] = []
+        if let who = r.reporter { parts.append("from " + who) } else if r.fromGitHub { parts.append("GitHub issue") }
         if let ch = b.chapters.first(where: { $0.request == r.id }) { parts.append("→ chapter “\(ch.name)”") }
         else if r.kind == .fix || r.kind == .refine { parts.append("→ \(RequestLog.fixesChapter)" + (r.chapter.map { " · \($0)" } ?? "")) }
         else if let c = r.chapter { parts.append("→ " + c) }

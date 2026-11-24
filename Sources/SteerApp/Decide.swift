@@ -121,7 +121,7 @@ struct DecisionCard: View {
                         Button("Change") { load(); withAnimation(.easeOut(duration: 0.18)) { reopened = true } }
                             .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
                         VStack(spacing: 6) {
-                            ActionButton(title: "Build my pick", primary: true, large: true) { model.start(projectId: board.project.id, item: ref, intent: .build) }
+                            ActionButton(title: Self.buildTitle(d, board: board), primary: true, large: true) { model.start(projectId: board.project.id, item: ref, intent: .build) }
                             ClaudeButton(title: "Discuss this with Claude", large: true) { model.start(projectId: board.project.id, item: ref, intent: .look) }
                         }.frame(width: S(250))
                     }
@@ -177,7 +177,7 @@ struct DecisionCard: View {
             HStack(alignment: .bottom, spacing: 6) {
                 // Once picked, building it is the main call to action: as big as "Your choice", Claude under it, same size.
                 VStack(spacing: 8) {
-                    if decided && !board.isBuilt(d) { ActionButton(title: "Build my pick", primary: true, large: true) { model.start(projectId: board.project.id, item: ref, intent: .build) } }
+                    if decided && !board.isBuilt(d) { ActionButton(title: Self.buildTitle(d, board: board), primary: true, large: true) { model.start(projectId: board.project.id, item: ref, intent: .build) } }
                     ClaudeButton(title: "Discuss this with Claude", large: true) { model.start(projectId: board.project.id, item: ref, intent: .look) }
                 }.frame(maxWidth: 340)
                 Spacer()
@@ -435,7 +435,7 @@ struct DecisionCard: View {
                 Button(action: done) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark").font(.system(size: S(11), weight: .bold))
-                        Text(decided && !changed ? "Decided" : "Done").font(.system(size: S(13), weight: .bold))
+                        Text(decided && !changed ? "Saved" : Self.saveTitle(pick: d.multi ? !draftPicks.isEmpty : draftPick != nil, note: !draftNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)).font(.system(size: S(13), weight: .bold))
                     }
                     .foregroundStyle(canSave && changed ? Color(hex: 0x1a1200) : Brand.mute)
                     .padding(.horizontal, 18).padding(.vertical, 8)
@@ -444,7 +444,7 @@ struct DecisionCard: View {
                 .buttonStyle(SteerButton()).disabled(!canSave || !changed)
                 .keyboardShortcut(.return, modifiers: noteFocused ? .command : [.command, .shift])
                 .help("Save your answer (⌘↩ while typing)")
-                Text(changed ? "Not saved yet" : decided ? "Saved · Claude can build it" : "Choose an option or write your answer").font(.system(size: S(11))).foregroundStyle(changed ? Brand.amber : Brand.mute)
+                Text(changed ? "Not saved yet" : decided ? "Next: build it" : "Choose an option or write your answer").font(.system(size: S(11))).foregroundStyle(changed ? Brand.amber : Brand.mute)
                 Spacer()
                 if changed && (savedPick != nil || !savedNote.isEmpty || !savedPicks.isEmpty) {
                     Button("Undo changes") { draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote }
@@ -495,6 +495,20 @@ struct DecisionCard: View {
     static func chooseTitle(_ L: String, multi: Bool, chosen: Bool, notes: Bool) -> String {
         let t = chosen ? (multi ? "Picked" : "Your choice") : multi ? "Pick \(L)" : "Choose \(L)"
         return notes ? t + " + Notes" : t
+    }
+
+    /// The answer bar's save button: says what gets saved ("Save choice with note").
+    static func saveTitle(pick: Bool, note: Bool) -> String {
+        !pick && note ? "Save my answer" : note ? "Save choice with note" : "Save choice"
+    }
+    /// The build button names the saved answer: "Build A with note", "Build A + C", "Build my answer".
+    static func buildTitle(_ d: BoardDecision, board: BoardStore) -> String {
+        let v = board.verdict(d.id)
+        let note = !v.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let ids: [String] = d.multi ? ((v.pick as? [String]) ?? []) : (v.pickString.map { [$0] + board.mix(d) } ?? [])
+        let letters = d.options.filter { ids.contains($0.id) }.map { letter($0, in: d) }
+        guard !letters.isEmpty else { return note ? "Build my answer" : "Build my pick" }
+        return "Build " + letters.joined(separator: " + ") + (note ? " with note" : "")
     }
 
     /// "A · Typed blocks" → "A"; labels without a letter get one from their place.

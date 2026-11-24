@@ -1,0 +1,22 @@
+{
+ "id": "feedback",
+ "name": "Feedback from your users",
+ "line": "Your users report a bug, ask for a feature or ask a question; it lands on your board and they follow it to Live.",
+ "category": "Users",
+ "tags": ["feedback", "bugs", "widget", "MCP", "roadmap", "web app"],
+ "icon": "crab",
+ "youGet": [
+  "A feedback form link, no account needed",
+  "A widget for your web app: bug · feature · question, screenshot",
+  "A report tool for your MCP / API, so agents report too",
+  "A public roadmap page with your logo and colours",
+  "Status mails: Received → Planned → In progress → Ready to test → Live"
+ ],
+ "changes": [
+  "steerify.json → feedback (inbox, title, brand, public areas)",
+  "One script tag in your web app's layout (if it has one)",
+  "A report tool + a short guide in your MCP server (if it has one)"
+ ],
+ "steps": ["Inbox", "Brand", "Widget", "MCP / API", "Roadmap page"],
+ "installed": "feedback.inbox"
+}

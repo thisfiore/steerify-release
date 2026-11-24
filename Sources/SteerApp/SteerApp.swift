@@ -67,6 +67,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.terminate(nil)
             }
         }
+        // Test hook: `--talk-run <run id> [seconds]`: the Session / Talk to Claude button of that task run (Tasks.swift).
+        if let i = a.firstIndex(of: "--talk-run"), i + 1 < a.count {
+            let id = a[i + 1], at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 4
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                guard let pid = m.selectedProjectId, let p = m.projects.first(where: { $0.id == pid }),
+                      let run = TaskStore.load(p.boardDir).runs.first(where: { $0.id == id }) else { NSLog("talk-run: no run \(id)"); return }
+                NSLog("talk-run: \(id) → \(m.runTalk(projectId: pid, run: run))")
+                m.talkAboutRun(projectId: pid, run: run)
+            }
+        }
         // Test hook: `--type-note "<placeholder>" "<text>" [wait|leave]` focuses the first note box with that
         // placeholder 3 s in and types the text through its field editor (as a person would). `wait` does nothing else;
         // `leave` switches to the Roadmap tab 0.1 s later (the box goes away before any debounce).
@@ -248,6 +258,7 @@ struct SteerApp: App {
         // Test hook: `open Steerify.app --args --open-shells N` opens N shell sessions (perf measuring).
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--project"), i + 1 < a.count, m.projects.contains(where: { $0.id == a[i + 1] }) { m.selectedProjectId = a[i + 1] }
+        if a.contains("--requests-list") { m.requestsListOpen = true }   // Board › All Requests… (RequestsList.swift)
         // `--drop <folder>`: as if the folder were dropped on the window (`--drop-answer new|add` skips the question).
         if let i = a.firstIndex(of: "--drop"), i + 1 < a.count {
             let f = a[i + 1]
@@ -284,6 +295,11 @@ struct SteerApp: App {
         if let i = a.firstIndex(of: "--add-folder"), i + 1 < a.count { m.addWorkspace(folder: a[i + 1]) }
         // Test hooks: `--recipes-open` shows the recipe gallery; `--recipe-start <id> <folder>` starts that recipe there.
         if a.contains("--recipes-open") { m.recipesOpen = true }
+        if a.contains("--standards-open") { m.galleryTab = "standards"; m.recipesOpen = true }
+        // `--install-standard <id>` (with --dry-sessions): as if Install were pressed on that standard, 2 s in.
+        if let i = a.firstIndex(of: "--install-standard"), i + 1 < a.count, let s = StandardLibrary.all().first(where: { $0.id == a[i + 1] }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if let p = m.project { m.installStandard(s, in: p) } }
+        }
         // "How technical are you?": asked on first launch until answered (`--level-open` shows it in tests).
         if a.contains("--level-open") || (Level.chosen == nil && !a.contains("--background")) { m.levelOpen = true }
         if let i = a.firstIndex(of: "--recipe-start"), i + 2 < a.count {
@@ -522,7 +538,8 @@ struct SteerApp: App {
                 Button("Reload board") { model.reloadBoard() }.keyboardShortcut("r", modifiers: .command)
                 Button("Restart to Update") { model.confirmRestartForUpdate() }.keyboardShortcut("r", modifiers: [.command, .option])
                 Button("Add project…") { model.addWorkspace() }.keyboardShortcut("o", modifiers: [.command, .shift])
-                Button("New Project from a Recipe…") { model.recipesOpen = true }
+                Button("New Project from a Recipe…") { model.galleryTab = "recipes"; model.recipesOpen = true }
+                Button("Add a Standard to This Project…") { model.galleryTab = "standards"; model.recipesOpen = true }.disabled(model.project == nil)
                 Button("Try the Demo Project") { model.openDemo() }
                 Button("Show steerify.json") { if let p = model.project { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p.manifest)]) } }
             }
@@ -535,6 +552,8 @@ struct SteerApp: App {
             CommandMenu("Board") {
                 Button("Search Sessions and Items…") { model.paletteOpen.toggle() }.keyboardShortcut("k", modifiers: .command)
                 Button("Next Thing for You") { model.jumpNext() }.keyboardShortcut("j", modifiers: .command)
+                Button("All Requests…") { model.requestsListOpen.toggle() }.keyboardShortcut("r", modifiers: [.command, .shift])
+                    .disabled(model.project == nil)
                 Divider()
                 ForEach(Array(BoardTab.allCases.enumerated()), id: \.offset) { i, t in
                     Button(t.title.capitalized) { boardTab = t }

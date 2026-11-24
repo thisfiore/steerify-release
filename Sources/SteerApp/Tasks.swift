@@ -82,6 +82,7 @@ struct TaskRun: Identifiable, Hashable {
     let why: String?              // no result: why
     let note: String?             // your Redo note
     let report: TaskReport?       // the standard report, when Claude filled it in
+    var talk: String? = nil       // the Claude session started to talk about this run (Talk to Claude), if any
     var checksFailed: Int { checks.filter { !$0.ok }.count }
 }
 
@@ -168,7 +169,7 @@ enum TaskStore {
                            deadline: u["deadline"] as? String, finished: u["finished"] as? String, session: u["session"] as? String,
                            term: u["term"] as? String, summary: s(res["summary"]), files: res["files"] as? [String] ?? [], counts: counts,
                            checks: checks, late: u["late"] as? Bool ?? false, why: u["why"] as? String, note: u["note"] as? String,
-                           report: TaskReport(res["report"]))
+                           report: TaskReport(res["report"]), talk: u["talk"] as? String)
         }
         return (tasks, runs.sorted { $0.started > $1.started })
     }
@@ -350,6 +351,73 @@ extension AppModel {
         if !ok { runTask(projectId: projectId, taskId: run.task, note: note) }
         board(for: p).reload()
     }
+
+    /// Where a run card's Session button goes (choice talk-about-run, A: one smart button).
+    enum RunTalk { case live(TerminalSession), resume(String), fresh }
+    func runTalk(projectId: String, run: TaskRun) -> RunTalk {
+        if let s = sessions.first(where: { s in s.projectId == projectId && s.running
+            && ((s.claudeId != nil && (s.claudeId == run.session || s.claudeId == run.talk)) || (run.term != nil && s.id.uuidString == run.term)) }) { return .live(s) }
+        // The run's own conversation first (it knows what it did), else the talk already started about it: never a second one.
+        if let c = run.session, SessionLinks.resumable(c) { return .resume(c) }
+        if let c = run.talk, SessionLinks.resumable(c) { return .resume(c) }
+        return .fresh
+    }
+
+    /// Talk to Claude about a run: its live session → shown; its conversation still on this Mac → resumed to discuss
+    /// the result; nothing left → a fresh session briefed with the task and the run's result. Never a new run,
+    /// never a verdict: a follow-up the user asks for goes on the board (Redo note, task, request, key result).
+    func talkAboutRun(projectId: String, run: TaskRun) {
+        guard let p = projects.first(where: { $0.id == projectId }) else { return }
+        let t = TaskStore.load(p.boardDir).tasks.first { $0.id == run.task }
+        var item = ItemRef(ref: "task:" + run.task)!
+        item.title = t?.title ?? run.task; item.area = t?.area
+        selectedProjectId = p.id
+        let state = ["running": "still running", "done": "finished, waiting for your OK or Redo", "ok": "approved",
+                     "noresult": "no result" + (run.why.map { ": " + $0 } ?? ""), "redo": "sent back", "retried": "no result, retried"][run.status] ?? run.status
+        switch runTalk(projectId: projectId, run: run) {
+        case .live(let s):
+            selectedSession[p.id] = s.id
+        case .resume(let cid):
+            let link = board(for: p).links.last { $0.claudeSession == cid }
+            guard let repo = link.flatMap({ l in p.repos.first { $0.name == l.repo && $0.exists } }) ?? BoardFiles.repo(for: item.area, in: p) else { return }
+            let ask = "/steerify discuss task:\(run.task) — the user reopened run \(run.id) (\(state)) to talk about its result. "
+                + "Say in ≤ 2 lines where it stands, then wait for them. Don't redo the run or call finish_task unless they ask; "
+                + "a follow-up they ask for goes on the board (Redo note, add_task, add_request, add_roadmap_item)."
+            let s = TerminalSession(project: p, repo: repo, kind: .claude, item: item, command: ["--resume", cid, ask],
+                                    dry: CommandLine.arguments.contains("--dry-sessions"), claudeId: cid)
+            if let d = link?.dir, FileManager.default.fileExists(atPath: d) { s.workdir = d }
+            s.title = SessionName.short(item.title ?? item.ref, intent: Intent.discuss.rawValue)
+            open(s)
+        case .fresh:
+            let s = start(projectId: p.id, item: item, intent: .discuss, dry: CommandLine.arguments.contains("--dry-sessions"),
+                          extraBrief: runBrief(run, task: t, state: state), fresh: true)
+            if let cid = s?.claudeId { TaskStore.setRun(p.boardDir, id: run.id) { $0["talk"] = cid }; board(for: p).reload() }
+        }
+    }
+
+    /// What a fresh "talk about this run" session knows: the task, then the run's result as Steerify shows it.
+    func runBrief(_ run: TaskRun, task t: BoardTask?, state: String) -> String {
+        var b = ["TALK ABOUT A TASK RUN — task:\(run.task) \"\(t?.title ?? run.task)\", run \(run.id) (\(state); started \(run.started.prefix(16))"
+                 + (run.finished.map { ", finished \($0.prefix(16))" } ?? "") + ")."]
+        if let t {
+            b.append("Outcome: \(t.outcome)")
+            if let sop = t.sop { b.append("Follows: \(sop)") }
+        }
+        if !run.summary.isEmpty { b.append("Result: \(run.summary)") }
+        if let r = run.report {
+            if !r.headline.isEmpty { b.append("Headline: \(r.headline)") }
+            if !r.kpis.isEmpty { b.append("KPIs: " + r.kpis.map { "\($0.value) \($0.label)" }.joined(separator: " · ")) }
+            if !r.points.isEmpty { b.append("Points: " + r.points.joined(separator: " · ")) }
+        }
+        if !run.checks.isEmpty { b.append("Checks:\n" + run.checks.map { ($0.ok ? "- ✓ " : "- ✗ ") + $0.text }.joined(separator: "\n")) }
+        if !run.counts.isEmpty { b.append("Counts: " + run.counts.joined(separator: ", ")) }
+        if !run.files.isEmpty { b.append("Files (relative to the board):\n" + run.files.map { "- " + $0 }.joined(separator: "\n")) }
+        if let n = run.note { b.append("Your Redo note on it: \"\(n)\"") }
+        b.append("This session is for talking about the result with the user, not a new run: never call finish_task and never redo the work unless they ask. "
+                 + "Follow the steerify skill, intent `discuss`: open the files when they help, answer, and turn what they ask for into board items "
+                 + "(Redo with a note, add_task, add_request, add_roadmap_item), saying where each one went.")
+        return b.joined(separator: "\n\n")
+    }
 }
 
 // MARK: - The Tasks tab: Now · To check · Scheduled · Ready · Done
@@ -473,7 +541,7 @@ struct RunRow: View {
                     .frame(minWidth: S(140), alignment: .leading).layoutPriority(1)
                     Spacer(minLength: 8)
                     if rep == nil { status; actions(ref).fixedSize() }
-                    else if run.status == "ok" { status }
+                    else if run.status == "ok" { status; actions(ref).fixedSize() }
                     else { Text(clock(run.finished)).font(.system(size: S(11.5))).foregroundStyle(Brand.mute) }
                 }
                 if let rep {
@@ -517,9 +585,9 @@ struct RunRow: View {
             pill("RUNNING" + (left.map { " · \($0) MIN LEFT" } ?? ""), Brand.claude)
         case "done":
             if run.checksFailed > 0 { pill("\(run.checksFailed) CHECK\(run.checksFailed == 1 ? "" : "S") FAILED", Brand.red) }
-            Text("finished " + clock(run.finished)).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
+            Text("finished " + clock(run.finished)).font(.system(size: S(11.5))).foregroundStyle(Brand.mute).lineLimit(1).fixedSize()
         case "noresult": pill((run.why ?? "No result").uppercased(), Brand.red)
-        case "ok": Text("OK · " + clock(run.finished)).font(.system(size: S(11.5))).foregroundStyle(Brand.green)
+        case "ok": Text("OK · " + clock(run.finished)).font(.system(size: S(11.5))).foregroundStyle(Brand.green).lineLimit(1).fixedSize()
         default: EmptyView()
         }
     }
@@ -529,6 +597,7 @@ struct RunRow: View {
         case "running":
             ActionButton(title: "Jump to session", icon: "term") { model.openCombo(projectId: board.project.id, ref: ref, startNew: false) }
         case "done":
+            sessionButton
             ActionButton(title: "OK", icon: "test", primary: true) { model.setRunVerdict(projectId: board.project.id, run: run, ok: true, note: nil) }
             ActionButton(title: "Redo", icon: "task") { redo.toggle() }
         case "noresult":
@@ -536,9 +605,30 @@ struct RunRow: View {
                 TaskStore.setRun(board.project.boardDir, id: run.id) { $0["status"] = "retried" }
                 model.runTask(projectId: board.project.id, taskId: run.task)
             }
-            ActionButton(title: "Session", icon: "term") { model.openCombo(projectId: board.project.id, ref: ref, startNew: false) }
-        default: EmptyView()
+            sessionButton
+        default: sessionButton
         }
+    }
+
+    /// One smart button (choice talk-about-run, A): the live session, else this run's conversation, else a fresh talk.
+    @ViewBuilder private var sessionButton: some View {
+        switch model.runTalk(projectId: board.project.id, run: run) {
+        case .live:
+            ActionButton(title: "Session", icon: "term") { model.talkAboutRun(projectId: board.project.id, run: run) }
+                .help("Show this run's session")
+        case .resume:
+            ActionButton(title: "Session · " + ago(run.finished ?? run.started), icon: "term") { model.talkAboutRun(projectId: board.project.id, run: run) }
+                .help("Reopen this run's conversation to talk about the result")
+        case .fresh:
+            ActionButton(title: "Talk to Claude", icon: "term") { model.talkAboutRun(projectId: board.project.id, run: run) }
+                .help("A new session that knows the task and this result")
+        }
+    }
+
+    private func ago(_ s: String) -> String {
+        guard let d = TaskStore.date(s) else { return "earlier" }
+        let m = Int(-d.timeIntervalSinceNow / 60)
+        return m < 60 ? "\(max(m, 1)) min ago" : m < 1440 ? "\(m / 60) h ago" : "\(m / 1440) d ago"
     }
 
     private var result: some View {

@@ -89,6 +89,9 @@ enum SteerifyMCP {
         ["name": "update_request",
          "description": "Record what a request became: {id, status (working | done | needs-you | discarded), became? [board refs: road:<slug>, track:<slug>, choice:<id>, test:<id>], note? (one line), kind? (fix | refine | feature | task | question: set it when the filed kind was wrong; Steerify learns from it)}. Keeps the request history in Steerify honest.",
          "inputSchema": schema(["id": str, "status": str, "became": ["type": "array", "items": ["type": "string"]], "note": str, "kind": str], ["id"])],
+        ["name": "add_request",
+         "description": "File a request on the board for the user to start later, e.g. what came out of a discussion: {text (what is asked, in the user's words), kind (fix | refine | feature | task | question), chapter? (exact name of the feature chapter it is about), area?, from? (the board ref it came from: task:<id>, test:<id>, choice:<id>, road:<slug>)}. It lands on Ready → New requests (filed, no session): the user starts or discards it. A fix / refine also gets its key result in \"Fixes & refinements\" now. Don't file what you are about to do yourself in this session.",
+         "inputSchema": schema(["text": str, "kind": str, "chapter": str, "area": str, "from": str], ["text"])],
         ["name": "add_task",
          "description": "Put a task on the Tasks tab: work Claude DOES for the user with existing tools and standards (a tutorial from the SOP, a data collection, a report), never code. {id? (slug), title, outcome (what done looks like, concrete: what file / where / how many), checks: [how to tell the result is right, 2–5 short lines], sop? (the standard, skill or doc it follows), brief? (anything else), every? (\"mon 08:00\", \"mon,thu 09:30\", \"weekdays 08:00\", \"daily 07:00\"; omit = once), maxMinutes? (default 120: no result by then = No result), area?, request? (request id), runNow? (true: this session runs it now; you get the run id)}. Same id = update the task. Steerify starts scheduled runs itself and watches each run for a result.",
          "inputSchema": schema(["id": str, "title": str, "outcome": str, "checks": ["type": "array", "items": ["type": "string"]], "sop": str, "brief": str,
@@ -97,6 +100,9 @@ enum SteerifyMCP {
          "description": "Hand in the result of a task run (the only way a run ends well). {run? (run id from the brief) or task (task id: closes its running run), summary (1–2 lines: what you produced), files: [paths relative to the board, absolute paths or URLs to open the result], counts?: {name: number} (records, pages, …), checks: [{text, ok}] (every check of the task, honestly), failed? (true: you could not reach the outcome; say why in summary), report (the standard report Steerify draws, keep text minimal: {headline (≤ 10 words: what you got), kpis: [{value, label}] 2–4 big numbers, steps: [{text (2–3 words), n (a count: \"244 · 60 d\"), done (false = still pending)}] 3–6 = what was done, rows?: {title (what the bars measure), ref? (what the reference mark is, e.g. \"competitor avg\"), items: [{name, value (number), ref? (number), show? (\"56 · 0.6×\"), tag (2–3 words)}]} one per item, points: [≤ 3 bullets, ≤ 8 words each], details? (the full file, shown folded; default files[0])})}. The run goes to To check on the Tasks tab; the user says OK or Redo.",
          "inputSchema": schema(["run": str, "task": str, "summary": str, "files": ["type": "array", "items": ["type": "string"]], "counts": ["type": "object"],
                                 "checks": ["type": "array", "items": ["type": "object"]], "failed": ["type": "boolean"], "report": ["type": "object"]], ["summary"])],
+        ["name": "feedback_setup",
+         "description": "The Feedback standard (standards/feedback/INSTALL.md in the steerify skill): {title?} registers this project's feedback inbox once (secret in the Keychain, steerify.json → feedback); {brand?: {name, logo (path in the board folder or https), home, bg, card, card2, line, ink, mute, accent, accentInk, font, heading}} gives the form, widget and roadmap page the product's look; {areas?, hide?} picks the public chapters. Safe to call again. Returns the form, roadmap, widget snippet and the endpoint for agents.",
+         "inputSchema": schema(["title": str, "brand": ["type": "object"], "areas": ["type": "array", "items": str], "hide": ["type": "array", "items": str]])],
         ["name": "notify",
          "description": "Tell the user in the Steerify window (a toast), optionally jumping to an item. Use after delivering, when a choice is waiting, or when you need them.",
          "inputSchema": schema(["message": str, "ref": str], ["message"])],
@@ -285,6 +291,10 @@ enum SteerifyMCP {
             if r.1 { return r }
             ui(["action": "refresh", "message": "Release setup updated", "board": board])
             return ("release setup saved in steerify.json", false)
+        case "feedback_setup":
+            let r = FeedbackSetup.run(a, board: board)
+            if !r.1 { ui(["action": "refresh", "message": "Feedback set up", "board": board]) }
+            return r
         case "set_environments":
             guard let envs = a["environments"] as? [[String: Any]],
                   envs.allSatisfy({ ($0["name"] as? String ?? "").isEmpty == false && TestEnvs.host($0["url"] as? String ?? "") != nil }) else {
@@ -376,6 +386,32 @@ enum SteerifyMCP {
             if !ok { return ("no request \(id)", true) }
             ui(["action": "refresh", "board": board])
             return ("request \(id) updated", false)
+        case "add_request":
+            guard let text = (a["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return ("text is required", true) }
+            let guess = RequestTriage.classify(text, chapters: [], context: nil, lessons: TriageLessons.load(board)).kind
+            let kind = (a["kind"] as? String).flatMap(RequestKind.init(rawValue:)) ?? guess
+            let chapter = (a["chapter"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let area = (a["area"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let from = (a["from"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            var id = RequestLog.newId()
+            let taken = Set(RequestLog.raw(board).compactMap { $0["id"] as? String })
+            if taken.contains(id) { var n = 2; while taken.contains("\(id)-\(n)") { n += 1 }; id += "-\(n)" }
+            var became: [String] = []
+            if kind == .fix || kind == .refine {
+                let first = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+                let line = (kind == .fix ? "Fix: " : "") + (first.count > 120 ? String(first.prefix(117)) + "…" : first)
+                let r = call("add_roadmap_item", ["chapter": RequestLog.fixesChapter, "text": line, "status": "todo", "area": area ?? "",
+                                                  "request": id, "for": chapter ?? "", "create": true], board: board)
+                if !r.1 { became.append("road:" + BoardFiles.slug(line)) }
+            }
+            let ok = RequestLog.edit(board, id: id, create: true) { r in
+                r["at"] = RequestLog.now(); r["text"] = text; r["kind"] = kind.rawValue; r["guess"] = guess.rawValue
+                r["chapter"] = chapter; r["imgs"] = [String](); r["status"] = "filed"; r["became"] = became; r["area"] = area
+                r["client"] = "claude"; r["context"] = from; r["contextTitle"] = from.map { "From a Claude session on " + $0 } ?? "From a Claude session"
+            }
+            if !ok { return ("could not write requests.json", true) }
+            ui(["action": "refresh", "board": board])
+            return ("filed request:\(id) (\(kind.rawValue)\(chapter.map { ", " + $0 } ?? "")): it waits on Ready → New requests; the user starts or discards it", false)
         case "add_task":
             guard let title = a["title"] as? String, let outcome = a["outcome"] as? String else { return ("title and outcome are required", true) }
             let id = (a["id"] as? String).flatMap { $0.isEmpty ? nil : BoardFiles.slug($0) } ?? BoardFiles.slug(title)
@@ -398,7 +434,7 @@ enum SteerifyMCP {
             if let e = a["every"] as? String, let s = TaskSchedule(e) { msg += " (\(s.describe); Steerify starts each run and briefs a fresh session)" }
             if a["runNow"] as? Bool == true {
                 let env = ProcessInfo.processInfo.environment
-                if let run = TaskStore.addRun(board, task: id, due: nil, late: false, session: nil, term: env["STEERIFY_SESSION"], note: nil) {
+                if let run = TaskStore.addRun(board, task: id, due: nil, late: false, session: env["CLAUDE_CODE_SESSION_ID"], term: env["STEERIFY_SESSION"], note: nil) {
                     msg += ". Run \(run) started in this session: reach the outcome, then finish_task with run \"\(run)\"."
                 }
             }
@@ -410,12 +446,12 @@ enum SteerifyMCP {
             var runId = a["run"] as? String
             if runId == nil, let t = a["task"] as? String {
                 runId = runs.first { $0.task == t && $0.status == "running" }?.id
-                    ?? TaskStore.addRun(board, task: t, due: nil, late: false, session: nil, term: ProcessInfo.processInfo.environment["STEERIFY_SESSION"], note: nil)
+                    ?? TaskStore.addRun(board, task: t, due: nil, late: false, session: ProcessInfo.processInfo.environment["CLAUDE_CODE_SESSION_ID"], term: ProcessInfo.processInfo.environment["STEERIFY_SESSION"], note: nil)
             }
             if let r = runId, !TaskStore.raw(board).runs.contains(where: { $0["id"] as? String == r }),
                let t = r.split(separator: "@").first.map(String.init), TaskStore.raw(board).tasks.contains(where: { $0["id"] as? String == t }) {
                 runId = runs.first { $0.task == t && $0.status == "running" }?.id
-                    ?? TaskStore.addRun(board, task: t, due: nil, late: false, session: nil, term: ProcessInfo.processInfo.environment["STEERIFY_SESSION"], note: nil)
+                    ?? TaskStore.addRun(board, task: t, due: nil, late: false, session: ProcessInfo.processInfo.environment["CLAUDE_CODE_SESSION_ID"], term: ProcessInfo.processInfo.environment["STEERIFY_SESSION"], note: nil)
             }
             guard let rid = runId, TaskStore.raw(board).runs.contains(where: { $0["id"] as? String == rid }) else {
                 return ("no such run; pass run (from your brief) or task", true)
@@ -426,6 +462,8 @@ enum SteerifyMCP {
             TaskStore.setRun(board, id: rid) { r in
                 r["status"] = failed ? "noresult" : "done"; r["finished"] = TaskStore.now(); r["result"] = result
                 if failed { r["why"] = "Claude couldn't reach the outcome" }
+                // The conversation that did the run, so Session on its card can reopen it later (choice talk-about-run).
+                if r["session"] == nil, let c = ProcessInfo.processInfo.environment["CLAUDE_CODE_SESSION_ID"], !c.isEmpty { r["session"] = c }
             }
             let bad = (a["checks"] as? [[String: Any]] ?? []).filter { $0["ok"] as? Bool != true }.count
             let task = TaskStore.load(board).runs.first { $0.id == rid }?.task ?? ""

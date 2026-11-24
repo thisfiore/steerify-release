@@ -76,6 +76,7 @@ struct BoardRequest: Identifiable, Hashable {
     let note: String?             // Claude's one line on what happened
     let area: String?
     var title: String? = nil      // 2–4 words naming it (Apple Intelligence), written once when its session starts
+    var reporter: String? = nil   // who sent it from outside (feedback form / widget / MCP): their name
     var client: String? = nil     // where it was filed: "mac" | "iphone" (nil = older requests, from the Mac)
     var fromPhone: Bool { client == "iphone" || contextTitle == "From the iPhone" }
     var fromFeedback: Bool { client == "feedback" }   // the project's own users, via the feedback form / API (FeedbackInbox.swift)
@@ -103,7 +104,8 @@ enum RequestLog {
                          chapter: r["chapter"] as? String, imgs: r["imgs"] as? [String] ?? [], context: r["context"] as? String,
                          contextTitle: r["contextTitle"] as? String, status: (r["status"] as? String) ?? "filed",
                          became: r["became"] as? [String] ?? [], note: r["note"] as? String, area: r["area"] as? String,
-                         title: r["title"] as? String, client: r["client"] as? String)
+                         title: r["title"] as? String, reporter: ((r["reporter"] as? [String: Any])?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                         client: r["client"] as? String)
         }.sorted { $0.at > $1.at }
     }
 

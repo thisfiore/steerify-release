@@ -47,6 +47,7 @@ struct ContentView: View {
                     }
                 }
                 .overlay { if model.paletteOpen { PaletteView() } }
+                .overlay { if model.requestsListOpen { RequestsListView(project: p).id(p.id) } }
                 .overlay {   // "Connect your iPhone" (the phone icon at the end of the tab bar)
                     if let pid = model.pairingProjectId, let pp = model.projects.first(where: { $0.id == pid }) {
                         ZStack {

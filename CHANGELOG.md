@@ -2,6 +2,21 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.22 · 2026-11-24
+
+### In the app
+
+- **Requests you can find: Ready + All Requests (⇧⌘R)** — New requests on top of Ready · Start or ✕ discard each · Board › All Requests… ⇧⌘R · Search, filter, who sent it
+- **Resume after quit: waits for each session** — Message waits for its session · Never typed into a prompt · Tells you if one can't start
+- **Choices: Save choice with note, then Build A with note** — Done → Save choice with note · Build my pick → Build A with note · Own words → Save my answer
+- **Close N done keeps pinned sessions** — Close N done skips pinned · Count leaves pinned out · Pinned session stays open
+- **Recipes & Standards gallery + Feedback standard** — Standards tab next to Recipes · Search, categories, tags · Install with Claude, briefed · Feedback standard, first one
+- **Talk to Claude about a task run** — Session button on every run · Reopens that run's conversation · Else Talk to Claude, briefed · Claude files follow-ups
+
+### On the iPhone
+
+- **iPhone: SB pictures arrive (side branch)** — SB test pictures show on iPhone · Only open items, max 1600 px · Never in SB's main history · Blank picture still says why
+
 ## 0.5.21 · 2026-11-24
 
 ### In the app

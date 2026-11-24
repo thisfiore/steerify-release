@@ -30,10 +30,11 @@ struct RepoGit: Identifiable {
 }
 
 enum Git {
-    static func run(_ dir: String, _ args: [String]) -> String? {
+    static func run(_ dir: String, _ args: [String], env: [String: String] = [:]) -> String? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         p.arguments = ["-C", dir] + args
+        if !env.isEmpty { p.environment = ProcessInfo.processInfo.environment.merging(env) { _, n in n } }
         let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
         // Never waitUntilExit here: on the main thread it spins the run loop, SwiftUI then updates
         // in the middle of a view update and aborts (crash 19 Nov, Release tab).
