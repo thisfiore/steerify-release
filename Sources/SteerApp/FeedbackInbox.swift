@@ -91,7 +91,7 @@ enum FeedbackInbox {
         let delivered = readJSON((p.boardDir as NSString).appendingPathComponent("delivered.json"))
         let keep = { (o: [String: Any], keys: [String]) in o.filter { keys.contains($0.key) } }
         let tracks = (board["tracks"] as? [[String: Any]] ?? []).map { keep($0, ["name", "area", "objective", "items", "draft", "rolling"]) }
-        let live = (delivered["items"] as? [[String: Any]] ?? []).map { keep($0, ["id", "title", "area", "status", "updated", "added", "what"]) }
+        let live = (delivered["items"] as? [[String: Any]] ?? []).map { keep($0, ["id", "title", "area", "status", "updated", "added", "what", "road"]) }
         let reqs = RequestLog.raw(p.boardDir).filter { $0["reporter"] != nil }
             .map { keep($0, ["id", "title", "text", "kind", "status", "became", "at", "reporter", "feedback"]) }
         return ["feedback": keep(feedback, ["title", "areas", "hide", "keyResults"]), "tracks": tracks, "delivered": live, "requests": reqs]

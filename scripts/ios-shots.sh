@@ -22,6 +22,7 @@ if [ -z "$SKIP_BUILD" ]; then
     -derivedDataPath build CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=YES build -quiet
 fi
 DEV=$(xcrun simctl list devices available | grep -m1 -E "iPhone 18 Pro \(|iPhone 17 Pro \(" | grep -oE '[0-9A-F-]{36}')
+[ -n "$SIM_DEV" ] && DEV=$SIM_DEV
 xcrun simctl boot $DEV 2>/dev/null || true
 xcrun simctl bootstatus $DEV -b >/dev/null
 xcrun simctl status_bar $DEV override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3

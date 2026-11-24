@@ -61,16 +61,20 @@ And this is the real app, on the demo project that comes with it:
     <td width="50%"><img src="site/assets/shots/demo/web/test.jpg" alt="To test"><br><b>To test.</b> Every delivery with its tests, a picture for each one.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="site/assets/shots/demo/web/roadmap.jpg" alt="Roadmap"><br><b>Roadmap.</b> Chapters, area tags, each feature with its pictures, a Start on every item.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/roadmap.jpg" alt="Roadmap"><br><b>Roadmap.</b> Chapters, feature chips, pictures on each item, a Start on every line. Star up to 3 chapters to keep them in focus.</td>
     <td width="50%"><img src="site/assets/shots/demo/web/requirements.jpg" alt="Requirements"><br><b>Requirements.</b> Claude proposes them. You confirm, edit or park each line.</td>
   </tr>
   <tr>
     <td width="50%"><img src="site/assets/shots/demo/web/tasks.jpg" alt="Tasks"><br><b>Tasks.</b> Work that isn't code (a tutorial, a weekly report), once or on a schedule. Every run ends with a result you OK or send back.</td>
-    <td width="50%"><img src="site/assets/shots/demo/web/sessions.jpg" alt="Sessions"><br><b>Sessions.</b> Rowing in blue, your turn in violet, done in grey. Ready shows where you left off.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/sessions.jpg" alt="Sessions"><br><b>Sessions.</b> Each session on its item, whose turn it is at a glance. Ready shows where you left off.</td>
   </tr>
   <tr>
     <td width="50%"><img src="site/assets/shots/demo/web/request-mark.jpg" alt="Request"><br><b>Request.</b> Mark the picture, say what's wrong. Steerify files it as a fix, a feature or a task.</td>
     <td width="50%"><img src="site/assets/shots/demo/web/search.jpg" alt="Search"><br><b>Search.</b> One search across sessions, choices, roadmap and requests.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="site/assets/shots/demo/web/ship.jpg" alt="Ship"><br><b>Ship.</b> Release by product: the Mac app, the site, the iPhone. One button each; fireworks when it's out.</td>
+    <td width="50%"><img src="site/assets/shots/demo/web/level.jpg" alt="Your level"><br><b>Your level.</b> Explorer, Tinkerer or Builder. Steerify and Claude talk to you the way you work.</td>
   </tr>
 </table>
 
@@ -83,7 +87,7 @@ On your iPhone (private beta): say a request out loud, Steerify files it.
 1. [Download the latest build](https://github.com/thisfiore/steerify-release/releases), open the DMG and drag Steerify to Applications.
 2. Open it and add a project: pick any folder. Steerify creates a `.steerify/` board inside it.
 3. Start an item. It opens a Claude Code session in the right repo, already briefed.
-4. That's it for updates: Steerify downloads new versions by itself. Click **Restart to update** in the top bar, or just quit.
+4. That's it for updates: Steerify downloads new versions by itself. Click the green **Update** next to the logo, or just quit.
    Click the version badge to see what's new.
 
 Or with Homebrew:
@@ -104,6 +108,8 @@ Early builds are not notarized by Apple yet: the first time, open the app from S
 - **Your board lives in your repo.** Plain JSON files in a workspace folder, described in [`docs/FORMAT.md`](docs/FORMAT.md). Delete Steerify and it is all still yours.
 - **A Claude Code skill does the talking.** Steerify installs [`skills/steerify`](skills/steerify/SKILL.md), the loop every session follows: read the item, ask choices on the board, deliver to To test, read verdicts, release.
 - **Three ways to use git,** per project: on main, a worktree per feature, or a branch with a pull request that your OK merges.
+- **Release by product.** One card per thing you ship (Mac app, website, iPhone app) with its live version. Ship one: it shows shipping, then live.
+- **Your dev servers, under the sessions.** Processes from `steerify.json` sit under the session list: start, stop, restart, read the logs.
 - **The small jobs stay on your Mac.** Session summaries, request sorting and screenshot checks use Apple Intelligence on-device, when it is turned on. Claude Code still does the building.
 
 <p align="center"><img src="docs/img/flows.gif" width="820" alt="On main, worktree per feature, or branch plus pull request"></p>
@@ -119,7 +125,7 @@ The landing page ([steerify.dev](https://steerify.dev)) is in `site/`. The pictu
 
 ## Feedback
 
-Found a bug or want something? [Open an issue](https://github.com/thisfiore/steerify-release/issues/new/choose): there is a short form for each. To contribute code, read [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a bug or want something? In the app: the **Beta** pill or the Help menu → Report a bug / Ask for a feature (it shows what is sent, and you see it move to fixed). Or [open an issue](https://github.com/thisfiore/steerify-release/issues/new/choose): there is a short form for each. To contribute code, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License and name
 

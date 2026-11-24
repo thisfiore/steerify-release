@@ -228,6 +228,11 @@ enum SteerifyMain {
             MainActor.assumeIsolated { ResumeNudgeCheck.run(CommandLine.arguments[i + 1]) }
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--interrupted-scan") {
+            let n = i + 1 < CommandLine.arguments.count ? Int(CommandLine.arguments[i + 1]) ?? 40 : 40
+            InterruptedScan.run(n, root: i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : nil)
+            exit(0)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--deploy-wake-check"), i + 1 < CommandLine.arguments.count {
             MainActor.assumeIsolated { DeployWakeCheck.run(CommandLine.arguments[i + 1]) }
             exit(0)
@@ -270,6 +275,11 @@ struct SteerApp: App {
         }
         // `--test-persist`: sessions saved / restored in the test settings, as a real restart does (test windows skip the main window's onAppear).
         if a.contains("--test-persist") { m.restoreSessions() }
+        // `--resume-demo`: the "stopped when Steerify quit" modal with invented sessions (screenshots; Resume sends nothing).
+        if a.contains("--resume-demo") { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { ResumeInterrupted.shared.showDemo() } }
+        if a.contains("--resume-demo-sail") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { ResumeInterrupted.shared.resume(m) } }
+        // `--test-persist --resume-auto`: presses Resume on the real modal (quit → reopen → resume round trip, no clicking).
+        if a.contains("--resume-auto") { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if ResumeInterrupted.shared.open { ResumeInterrupted.shared.resume(m) } } }
         // Test hook: `--add-folder <path>` adds any folder as a project, as Add project… does after the panel.
         if let i = a.firstIndex(of: "--add-folder"), i + 1 < a.count { m.addWorkspace(folder: a[i + 1]) }
         // Test hooks: `--recipes-open` shows the recipe gallery; `--recipe-start <id> <folder>` starts that recipe there.

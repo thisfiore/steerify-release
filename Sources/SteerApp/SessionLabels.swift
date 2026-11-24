@@ -122,7 +122,7 @@ struct SessionRenameField: View {
     }
 }
 
-// MARK: - Test hook: `--label-demo "<n>=<name>,pin:<n>"` (background instances, after --flow-demo)
+// MARK: - Test hook: `--label-demo "<n>=<name>,pin:<n>,close"` (background instances, after --flow-demo)
 // Renames / pins the n-th session (1-based, in opening order) with the same code as the menu, then logs the order,
 // the saved file and the rows the iPhone gets.
 enum SessionLabelsDemo {
@@ -136,6 +136,13 @@ enum SessionLabelsDemo {
             } else if part.hasPrefix("closed:") {
                 _ = m.applyPhoneLabel(projectId: p.id, boardDir: p.boardDir, claudeId: "closed-demo", name: .some(String(part.dropFirst(7))), pinned: true)
             } else if part.hasPrefix("pin:"), let n = Int(part.dropFirst(4)), n >= 1, n <= list.count { m.setPinned(list[n - 1], true) }
+            // close: press "Close N done" (request r261124-081408: pinned sessions must stay open).
+            else if part == "close" {
+                let t = { (x: [TerminalSession]) in x.map { "\($0.pinned ? "📌" : "")\($0.title)" }.joined(separator: " | ") }
+                FileHandle.standardError.write("[labels] close done: \(t(m.wrappedSessions(of: p.id)))\n".data(using: .utf8)!)
+                m.closeWrapped(projectId: p.id)
+                FileHandle.standardError.write("[labels] left open: \(t(m.sessions(of: p.id)))\n".data(using: .utf8)!)
+            }
             else if let eq = part.firstIndex(of: "="), let n = Int(part[..<eq]), n >= 1, n <= list.count { m.renameSession(list[n - 1], to: String(part[part.index(after: eq)...])) }
         }
         let log = { (s: String) in FileHandle.standardError.write((s + "\n").data(using: .utf8)!) }

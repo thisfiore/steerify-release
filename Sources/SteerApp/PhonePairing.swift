@@ -161,9 +161,14 @@ struct PairingModal: View {
     @State private var info: PhonePairing.Info?
     @State private var loading = true
     @AppStorage(Prefs.remoteControl, store: Prefs.store) private var remoteControl = true
+    /// When the phone connected while this window was open: the celebration bursts (request r261123-211230).
+    @State private var cheeredAt: Date?
+    /// Connected, but the user wants the code again (pairing another phone).
+    @State private var showCode = false
 
     var body: some View {
         let n = model.phones[project.id] ?? 0
+        let done = n > 0
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
                 PixelIcon(name: "phone", size: S(26)).foregroundStyle(n > 0 ? Brand.green : Brand.cream)
@@ -181,6 +186,15 @@ struct PairingModal: View {
                 .background(Capsule().fill((n > 0 ? Brand.green : Brand.mute).opacity(0.12)))
             }
             HStack(alignment: .top, spacing: 26) {
+                if done && !showCode {
+                    VStack(spacing: 6) {
+                        PairedCheer(since: cheeredAt).frame(width: 260, height: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.green.opacity(0.6), lineWidth: 1.5))
+                        Button("Show the code (pair another phone)") { showCode = true }
+                            .buttonStyle(.plain).font(.system(size: S(11))).foregroundStyle(Brand.mute)
+                    }
+                } else {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12).fill(Color.white)
                     if let i = info, let img = PhonePairing.qr(i.url.absoluteString, size: 300) {
@@ -189,12 +203,13 @@ struct PairingModal: View {
                     else { Text("No GitHub repo for this board").font(.system(size: 12)).foregroundStyle(.black).padding() }
                 }
                 .frame(width: 260, height: 260)
+                }
                 VStack(alignment: .leading, spacing: 14) {
                     step(1, "Push this repo to GitHub", info.map { $0.unpushed == nil ? "Done: the board is on \($0.branch)" : "The phone reads the board from there" }
-                         ?? "The phone reads the board from there", ok: info != nil && info?.unpushed == nil)
-                    step(2, "Install Steerify on the iPhone", "TestFlight → Steerify")
-                    step(3, "Open the Camera, point it here", "No app to open first")
-                    step(4, "Tap “Open in Steerify”", "The board shows in a few seconds")
+                         ?? "The phone reads the board from there", ok: done || (info != nil && info?.unpushed == nil))
+                    step(2, "Install Steerify on the iPhone", done ? "Done" : "TestFlight → Steerify", ok: done)
+                    step(3, "Open the Camera, point it here", done ? "Done: code scanned" : "No app to open first", ok: done)
+                    step(4, "Tap “Open in Steerify”", done ? "Done: the board is on your phone" : "The board shows in a few seconds", ok: done)
                     Divider().overlay(Brand.line)
                     if let i = info {
                         row("BOARD", i.repo)
@@ -221,6 +236,11 @@ struct PairingModal: View {
         }
         .padding(26)
         .frame(width: 640)
+        .background(RoundedRectangle(cornerRadius: 14).stroke(Brand.green.opacity(done ? 0.55 : 0), lineWidth: 2).padding(1))
+        .animation(.easeOut(duration: 0.35), value: done)
+        .onChange(of: n) { old, new in
+            if old == 0 && new > 0 { cheeredAt = Date(); showCode = false }
+        }
         .task {
             let p = project
             info = await Task.detached { PhonePairing.info(for: p) }.value   // git + gh calls off the main thread
@@ -232,6 +252,7 @@ struct PairingModal: View {
         HStack(alignment: .top, spacing: 10) {
             Text(ok ? "✓" : "\(n)").font(.system(size: S(13), weight: .heavy, design: .monospaced)).foregroundStyle(Color(hex: 0x1a1200))
                 .frame(width: 24, height: 24).background(Rectangle().fill(ok ? Brand.green : Brand.amber))
+                .animation(.spring(response: 0.3, dampingFraction: 0.5).delay(Double(n) * 0.12), value: ok)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: S(13.5), weight: .semibold)).foregroundStyle(Brand.ink)
                 Text(sub).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)

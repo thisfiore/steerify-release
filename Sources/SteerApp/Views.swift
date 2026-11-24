@@ -73,6 +73,7 @@ struct ContentView: View {
         .overlay { if model.recipesOpen { RecipeGallery() } }
         .overlay { if model.levelOpen { LevelSheet() } }
         .overlay { AppFeedbackHost() }      // Report a bug / Ask for a feature (AppFeedback.swift)
+        .overlay { ResumeInterruptedHost() }   // sessions stopped by the last quit (Interrupted.swift)
         // "Since you left": on open, when you come back to the app, and when you switch to a project you left a while ago.
         .onAppear {
             let a = CommandLine.arguments

@@ -6,16 +6,18 @@ Key facts:
 - Who it is for: developers and founders who run several Claude Code sessions at once and want to decide and review instead of reading chat scrollback.
 - It is not an AI model. Claude Code does the building, with the user's own login; Steerify never sees the user's API keys.
 - Independent project, not made by or affiliated with Anthropic. Claude is a trademark of Anthropic.
-- Status: free and open source (MIT), download from steerify.dev or GitHub. Current version 0.5.6 (November 2026).
+- Status: free and open source (MIT), download from steerify.dev or GitHub. Current version 0.5.20 (November 2026).
 - The board lives in each project's git repo as plain JSON (steerify.json, board.json, decisions.json, delivered.json), so it travels with the code.
 - Tasks tab: non-code work Claude does with the user's tools (tutorials, reports, data collection), once or on a schedule; every run ends with a result the user approves or sends back.
+- Release tab by product: one card per thing the project ships (Mac app, website, iPhone app) with its live version; Ship runs the release and the session that built the work commits, pushes and deploys it.
+- Feedback: Report a bug / Ask for a feature inside the app, no GitHub account, shows what is sent first; requests land on the board and are followed on a public roadmap (Now, Next, What's new). Projects steered with Steerify get the same form and a branded roadmap page for their own users.
 - Ships a Claude Code skill (`/steerify`) and an MCP server, so Claude can deliver work, ask choices and update the roadmap directly.
 
 ## Pages
 
 - [Home](https://steerify.dev/): what Steerify is, the four moves (choose, build, look, ship) with real screenshots, never lost (where you left off, menu bar), download, FAQ
 - [Tutorial](https://steerify.dev/tutorial.html): seven narrated chapters (about a minute) and a 30-second teaser video
-- [What's new](https://steerify.dev/releases.html): release notes v0.1 to v0.5.20
+- [What's new](https://steerify.dev/releases.html): release notes v0.1 to v0.5.21
 - [Steerify vs T3 Code](https://steerify.dev/t3-code-alternative.html): honest comparison and when to pick which
 - [How Steerify knows what a Claude Code session is doing](https://steerify.dev/claude-code-session-status.html): session state from Claude Code hooks and the transcript, never from terminal output
 

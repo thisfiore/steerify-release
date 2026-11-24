@@ -43,6 +43,11 @@ extension AppModel {
     func startRelay() {
         let hub = RelayHub.shared
         if CommandLine.arguments.contains("--pairing"), pairingProjectId == nil { pairingProjectId = project?.id }   // screenshots: the pairing window open
+        // screenshots: a phone "connects" after N seconds (the pairing window's celebration, request r261123-211230)
+        if let i = CommandLine.arguments.firstIndex(of: "--fake-phone"), i + 1 < CommandLine.arguments.count,
+           let secs = Double(CommandLine.arguments[i + 1]), let pid = project?.id {
+            DispatchQueue.main.asyncAfter(deadline: .now() + secs) { [weak self] in self?.phones[pid] = 1 }
+        }
         if !hub.observing {
             hub.observing = true
             NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in

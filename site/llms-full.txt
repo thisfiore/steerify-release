@@ -70,7 +70,8 @@ Close the laptop, come back, know. Steerify remembers the chapter you were on, w
 - **Guided choices**: Choices as a guided decision; ⌘K finds them by their content.
 
 ### v0.4 (18 Nov · evening): It knows who is working.
-- **Release tab**: Everything you approved, per repo, with its git state and a Deploy button. Set up once in steerify.json.
+- **Release tab**: One card per product (Mac app, website, iPhone app) with its live version and the approved work waiting for it. Ship runs the release; the session that built it commits, pushes and deploys. Set up once in steerify.json.
+- **Report a bug / Ask for a feature**: From inside the app, no GitHub account; the sheet shows exactly what is sent. Requests land on the board and are followed on the public roadmap (https://relay.steerify.dev/roadmap/steerify-4cfac6).
 - **Sessions know their state**: From Claude Code hooks: working, waiting on you, idle. Your answers move them forward on their own.
 - **Menu bar**: A pixel wheel with a count when it's your turn: who's rowing, what waits on you.
 - **Steerify MCP**: Claude updates the board and your window directly: deliver, ask a choice, set roadmap status.

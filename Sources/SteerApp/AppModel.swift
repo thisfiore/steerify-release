@@ -488,7 +488,7 @@ final class AppModel: ObservableObject {
 
     // MARK: Sessions survive a restart
 
-    struct SavedSession: Codable { var projectId: String; var repo: String; var kind: String; var item: String?; var title: String?; var claudeId: String?; var selected: Bool; var dir: String? = nil }
+    struct SavedSession: Codable { var projectId: String; var repo: String; var kind: String; var item: String?; var title: String?; var claudeId: String?; var selected: Bool; var dir: String? = nil; var status: String? = nil }
 
     func persistSessions() {
         // Test instances never touch your sessions (`--test-persist`: they save to their own test settings, to test a restart).
@@ -496,7 +496,7 @@ final class AppModel: ObservableObject {
         // One-shot shells (a deploy: `shellCommand`) did their job; after a restart they would only be empty tabs.
         let list = sessions.filter { !$0.dry && $0.shellCommand == nil }.map { s in
             SavedSession(projectId: s.projectId, repo: s.repo.name, kind: s.kind.rawValue, item: s.item?.ref, title: s.autoTitle,
-                         claudeId: s.claudeId, selected: selectedSession[s.projectId] == s.id, dir: s.workdir)
+                         claudeId: s.claudeId, selected: selectedSession[s.projectId] == s.id, dir: s.workdir, status: s.status.rawValue)
         }
         Prefs.store.set(try? JSONEncoder().encode(list), forKey: "openSessions")
     }
@@ -506,6 +506,8 @@ final class AppModel: ObservableObject {
         guard sessions.isEmpty, !CommandLine.arguments.contains("--background") || CommandLine.arguments.contains("--test-persist"),
               let d = Prefs.store.data(forKey: "openSessions"),
               let list = try? JSONDecoder().decode([SavedSession].self, from: d) else { return }
+        var interrupted: [InterruptedSession] = []
+        defer { if !CommandLine.arguments.contains("--background") || CommandLine.arguments.contains("--test-persist") { ResumeInterrupted.shared.present(interrupted) } }
         for saved in list {
             guard let p = projects.first(where: { $0.id == saved.projectId }),
                   let repo = p.repos.first(where: { $0.name == saved.repo && $0.exists }) ?? p.repos.first else { continue }
@@ -514,6 +516,8 @@ final class AppModel: ObservableObject {
             let s: TerminalSession
             if saved.kind == "claude" {
                 guard let cid = saved.claudeId, SessionLinks.resumable(cid) else { continue }   // never got a message: nothing to resume
+                // Stopped mid-work? Read before resuming: `claude --resume` appends to the transcript (Interrupted.swift).
+                if let hit = interruptedCheck(saved, project: p, title: saved.title.map { SessionName.short($0, intent: nil) } ?? repo.name) { interrupted.append(hit) }
                 s = TerminalSession(project: p, repo: repo, kind: .claude, item: item, command: ["--resume", cid], claudeId: cid)
                 if let d = saved.dir, FileManager.default.fileExists(atPath: d) { s.workdir = d }
                 s.title = saved.title.map { $0.contains(" · ") && $0.count <= 28 ? $0 : SessionName.short($0, intent: nil) } ?? "Guided · \(repo.name)"
@@ -583,6 +587,7 @@ final class AppModel: ObservableObject {
     }
 
     func shutdown() {
+        persistSessions()          // with each session's status at quit: "working" ones are offered a resume next time
         sessions.forEach { $0.terminate() }
         BoardServers.shared.stopAll()
     }

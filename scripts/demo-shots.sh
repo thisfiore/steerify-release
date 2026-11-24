@@ -42,6 +42,10 @@ SHOTS=(
   "tasks|--tab task"
   "sessions|--tab ready --flow-demo test:first-version,choice:due-dates,road:filter-all-active-done;working,waiting,idle"
   "request-mark|--tab test --request-img $PWD/demo/tiny-todo/.steerify/img/ship/first-version-week.png --request-mark dot:0.48,0.65;rect:0.31,0.32,0.6,0.09 --request Nonna needs her own list. And Late should shout a bit more"
+  "ship|--tab release --demo-ship app done"
+  "shipping|--tab release --demo-ship app shipping"
+  "level|--tab ready --level-open"
+  "report-bug|--tab ready --feedback bug"
 )
 else
 SHOTS=(

@@ -2,6 +2,21 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.21 · 2026-11-24
+
+### In the app
+
+- **Resume after quit: harbour modal** — Finds sessions stopped by a quit · One modal, all projects · Tick, Resume: Claude goes on · Boats sail out on Resume
+
+### On the iPhone
+
+- **iPhone connects: all green + pixel fireworks** — Steps turn green on connect · Pixel phone with ✓ drops in · Fireworks and confetti, 5 s · Show the code: pair another
+- **iPhone: say why a test picture is blank** — Blank picture now says why · Late pictures appear by themselves · No more thin empty strip
+
+### On steerify.dev
+
+- **Landing: Ship by product + Tell us, watch it land** — New section 12: Ship by product · New section 13: Tell us, watch it land · Every Mac shot from v0.5.20 · Version and feature list: 0.5.20
+
 ## 0.5.20 · 2026-11-23
 
 ### In the app

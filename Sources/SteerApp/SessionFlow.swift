@@ -131,9 +131,10 @@ extension AppModel {
         }
     }
 
-    func wrappedSessions(of projectId: String) -> [TerminalSession] { sessions(of: projectId).filter(isWrapped) }
+    /// The sessions "Close N done" closes: wrapped ones, never a pinned one (request r261124-081408): a pin means keep it.
+    func wrappedSessions(of projectId: String) -> [TerminalSession] { sessions(of: projectId).filter { !$0.pinned && isWrapped($0) } }
 
-    /// "Close N done": the conversations stay resumable from their items.
+    /// "Close N done": the conversations stay resumable from their items. Pinned sessions stay open.
     func closeWrapped(projectId: String) {
         for s in wrappedSessions(of: projectId) { close(s) }
     }

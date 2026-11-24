@@ -16,7 +16,7 @@
   {
    "id": "wheel",
    "title": "Hold the wheel",
-   "img": "../assets/shots/hero.jpg",
+   "img": "../assets/shots/demo/web/ready.jpg",
    "text": "Steerify keeps your Claude Code sessions next to a board: what to decide, what to look at, what to ship. Claude builds. You steer. Someone has to.",
    "audio": {
     "src": "voice/wheel.mp3",
@@ -40,7 +40,7 @@
   {
    "id": "choose",
    "title": "Choices, with pictures",
-   "img": "../assets/shots/step-choose.jpg",
+   "img": "../assets/shots/demo/web/choice-making.jpg",
    "text": "When Claude needs a decision, it asks on the board, with a mockup for every option and one marked as suggested. Pick one, or write a note. That's the meeting.",
    "audio": {
     "src": "voice/choose.mp3",
@@ -52,7 +52,7 @@
   {
    "id": "look",
    "title": "Visual review",
-   "img": "../assets/shots/step-test.jpg",
+   "img": "../assets/shots/demo/web/test-preview.jpg",
    "text": "Finished work lands in To test as pictures. Press [⌘] and click to pin a note exactly where it's wrong. Refine goes back to the session that built it.",
    "audio": {
     "src": "voice/look.mp3",
@@ -76,7 +76,7 @@
   {
    "id": "ship",
    "title": "Say OK. It ships.",
-   "img": "../assets/shots/step-release.jpg",
+   "img": "../assets/shots/demo/web/release.jpg",
    "text": "What you approved waits in Release. One click, and the session commits its own changes, deploys, and marks it live.",
    "audio": {
     "src": "voice/ship.mp3",

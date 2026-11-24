@@ -339,7 +339,7 @@ struct CloseWrappedButton: View {
                 .overlay(Capsule().stroke(Brand.line2))
             }
             .buttonStyle(SteerButton()).pointerStyle(.link).fixedSize()
-            .help("Close the sessions whose work is released or done. Their conversations stay resumable from the item.")
+            .help("Close the sessions whose work is released or done (pinned ones stay). Their conversations stay resumable from the item.")
         }
     }
 }
