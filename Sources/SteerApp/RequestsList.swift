@@ -55,6 +55,7 @@ struct RequestsWaiting: View {
                     Button("All requests ⇧⌘R") { model.requestsListOpen = true }.buttonStyle(.link).font(.system(size: S(11))).pointerStyle(.link)
                 }
                 ForEach(waiting) { RequestLine(project: project, r: $0) }
+                BugSquashButton(project: project).padding(.top, 4)
             }
             .padding(10)
             .background(RoundedRectangle(cornerRadius: 10).fill(Brand.panel.opacity(0.6)))
@@ -146,6 +147,7 @@ struct RequestsListView: View {
                             .buttonStyle(.plain).pointerStyle(.link)
                         }
                         Spacer()
+                        BugSquashButton(project: project)
                         Button { close(); model.requestOpen = true } label: { Text("+ Request ⌘N").font(.system(size: S(11.5), weight: .semibold)) }
                             .buttonStyle(SteerButton()).foregroundStyle(Brand.amber)
                     }

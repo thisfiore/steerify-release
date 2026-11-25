@@ -149,6 +149,8 @@ extension AppModel {
                         filed.append(i.id)
                     }
                     if !filed.isEmpty { board(for: p).reload(); notifyFeedback(filed.count, in: p) }
+                    // HQ Feedback (choice hq-feedback-talk A): the thread lives on the relay; the board keeps a copy.
+                    if let threads = o["threads"] as? [String: [[String: Any]]], mirrorThreads(threads, in: p) { board(for: p).reload() }
                 }
                 // The board's state: sent when it changed (and always right after filing, before the ack).
                 let snap = FeedbackInbox.snapshot(p, feedback: fb)
@@ -161,6 +163,40 @@ extension AppModel {
             c.running = false
             if c.again { c.again = false; syncFeedbackInbox(force: true, done: done) } else { done?() }
         }
+    }
+
+    /// The relay's threads → requests.json `thread` (+ `answer` when the team wrote from HQ, so the Mac shows it as sent
+    /// and the next snapshot carries the same time back: the relay does not mail it again). A new reply from the
+    /// person → a toast. Returns true when something changed.
+    func mirrorThreads(_ threads: [String: [[String: Any]]], in p: Project) -> Bool {
+        var changed = false, replies: [String] = []
+        for r in RequestLog.raw(p.boardDir) {
+            guard let id = r["id"] as? String, let key = r["feedback"] as? String, let t = threads[key], !t.isEmpty else { continue }
+            let msgs = t.map { m in ["from": (m["from"] as? String) ?? "team", "text": (m["text"] as? String) ?? "", "at": (m["at"] as? String) ?? "",
+                                     "by": (m["by"] as? String) ?? "", "thanks": (m["thanks"] as? Bool) ?? false] as [String: Any] }
+            let old = r["thread"] as? [[String: Any]] ?? []
+            let same = old.count == msgs.count && zip(old, msgs).allSatisfy { ($0["at"] as? String) == ($1["at"] as? String) && ($0["text"] as? String) == ($1["text"] as? String) }
+            let lastTeam = msgs.last { ($0["from"] as? String) == "team" && ($0["by"] as? String) == "hq" }
+            let answerAt = (r["answer"] as? [String: Any])?["at"] as? String ?? ""
+            let newAnswer = lastTeam.map { ($0["at"] as? String ?? "") > answerAt } ?? false
+            if same && !newAnswer { continue }
+            let oldAts = Set(old.compactMap { $0["at"] as? String })
+            for m in msgs where (m["from"] as? String) == "them" && !oldAts.contains(m["at"] as? String ?? "") {
+                replies.append((r["reporter"] as? [String: Any])?["name"] as? String ?? "")
+            }
+            _ = RequestLog.edit(p.boardDir, id: id) { x in
+                x["thread"] = msgs
+                if newAnswer, let m = lastTeam { x["answer"] = ["text": m["text"] ?? "", "at": m["at"] ?? "", "by": "hq"]; x.removeValue(forKey: "answerDraft") }
+            }
+            changed = true
+        }
+        if !replies.isEmpty {
+            let who = replies.first.flatMap { $0.isEmpty ? nil : $0 } ?? "Someone"
+            let msg = replies.count == 1 ? "\(who) answered back on \(p.name)'s feedback: reply in HQ → Feedback" : "\(replies.count) answers back on \(p.name)'s feedback: reply in HQ → Feedback"
+            if CommandLine.arguments.contains("--background") { FileHandle.standardError.write("[feedback-inbox] \(msg)\n".data(using: .utf8)!) }
+            else { _ = SteerifyMCP.call("notify", ["message": msg], board: p.boardDir) }
+        }
+        return changed
     }
 
     /// One item → one filed request (no session starts: you look first, as for GitHub issues).

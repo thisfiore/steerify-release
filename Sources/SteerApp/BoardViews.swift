@@ -156,7 +156,8 @@ struct BoardScreen: View {
                       regroup: tab == .road ? { Task { await smart.refresh(board, force: true) } } : nil,
                       areaMenu: smartAreas == nil ? nil : AreaMenu(projectId: board.project.id),
                       focus: [.test, .choice, .req].contains(tab) && !board.focus.isEmpty
-                        ? FocusChip(on: focusOn, count: focusCount, chapters: board.focus, toggle: { setFocusOn(!focusOn) }) : nil)
+                        ? FocusChip(on: focusOn, count: focusCount, chapters: board.focus, toggle: { setFocusOn(!focusOn) }) : nil,
+                      query: queryBinding)
             if tab == .road { AutoConsolidateBar(board: board).id(board.project.id) }
             ScrollViewReader { proxy in
                 ScrollView {
@@ -195,6 +196,12 @@ struct BoardScreen: View {
             }
         }
         .onChange(of: tab) { _, _ in state = "open"; area = nil; revealRef = nil }
+        // ⌘K "Show on page": that tab, every state, filtered by the words (already in model.pageQuery).
+        .onChange(of: model.pageJump) { _, j in
+            guard let j, j.projectId == board.project.id, let t = BoardTab(rawValue: j.tab) else { return }
+            tab = t
+            DispatchQueue.main.async { area = nil; state = "all"; revealRef = nil }
+        }
         // The local AI regroups this project's roadmap now if due, then every hour while it is open.
         .task(id: board.project.id) { await smart.keepFresh(board) }
         // A chapter or key result added / renamed: regroup at once (plain words, instant; cached model answers).
@@ -206,6 +213,7 @@ struct BoardScreen: View {
     @ViewBuilder private var list: some View {
         switch tab {
         case .test:
+            if !ships.isEmpty { OnbFirstCard(kind: .test) }   // first time: what OK / Refine / Broken do
             if testLayout == "grid" {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: S(290)), spacing: 10, alignment: .top)], spacing: 10) {
                     ForEach(ships) { ShipTile(board: board, item: $0).id("test:" + $0.id).flash("test:" + $0.id) }
@@ -215,6 +223,7 @@ struct BoardScreen: View {
             }
             if ships.isEmpty { EmptyBoard(projectId: board.project.id, title: state == "open" ? "NOTHING TO TEST" : "NOTHING HERE", line: "Claude is either working or sleeping.", kind: .test) }
         case .choice:
+            if !choices.isEmpty { OnbFirstCard(kind: .choice) }   // first time: what picking does
             ForEach(choices) { DecisionCard(board: board, d: $0).id("choice:" + $0.id).flash("choice:" + $0.id) }
             if choices.isEmpty { EmptyBoard(projectId: board.project.id, title: "NO OPEN CHOICES", line: "You are, briefly, unblocking no one.", kind: .choice) }
         case .req:
@@ -224,12 +233,25 @@ struct BoardScreen: View {
             EmptyView()
         case .road:
             // Outdated key results: AutoConsolidateBar above the list (countdown, then the done scene).
-            ForEach(roadTracks, id: \.self) { t in RoadTrackView(board: board, track: t, items: road.filter { $0.track == t }, reveal: revealRef) }
+            ForEach(roadTracks, id: \.self) { t in RoadTrackView(board: board, track: t, items: road.filter { $0.track == t }, reveal: revealRef, filtering: !queryWords.isEmpty) }
             if road.isEmpty { EmptyBoard(projectId: board.project.id, title: "ROADMAP CLEAR", line: "Either everything is done or nobody wrote it down.", kind: .road) }
         }
     }
 
-    // Filtering (area + state), per tab. Each state is a function so the filter bar can show counts.
+    // Filtering (area + state + the search box), per tab. Each state is a function so the filter bar can show counts.
+    private var queryKey: String { board.project.id + "|" + tab.rawValue }
+    private var queryBinding: Binding<String> { Binding(get: { model.pageQuery[queryKey] ?? "" }, set: { model.pageQuery[queryKey] = $0 }) }
+    private var queryWords: [Substring] {
+        let f = (model.pageQuery[queryKey] ?? "").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        return f.split(separator: " ")
+    }
+    /// Every typed word somewhere in the item's text; the item you jumped to always stays.
+    private func inQuery(_ ref: String, _ texts: String...) -> Bool {
+        let ws = queryWords
+        guard !ws.isEmpty, ref != revealRef else { return true }
+        let t = texts.joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        return ws.allSatisfy { t.contains($0) }
+    }
     private func inArea(_ a: [String], _ sel: String?) -> Bool { sel == nil || a.contains(sel!) }
     private var ships: [ShipItem] { focusFirst(shipsIn(state)) { "test:" + $0.id } }
     private var choices: [BoardDecision] { focusFirst(choicesIn(state)) { "choice:" + $0.id } }
@@ -244,7 +266,7 @@ struct BoardScreen: View {
 
     func shipsIn(_ st: String, area sel: String?? = nil) -> [ShipItem] {
         board.ships.filter { s in
-            guard inArea([s.area], sel ?? area), focusOK("test:" + s.id) else { return false }
+            guard inArea([s.area], sel ?? area), focusOK("test:" + s.id), inQuery("test:" + s.id, s.title, s.what) else { return false }
             let x = board.shipState(s), pick = board.effectivePick(s)
             switch st {
             case "open": return x == .toTest || x == .retest
@@ -258,7 +280,7 @@ struct BoardScreen: View {
     }
     func choicesIn(_ st: String, area sel: String?? = nil) -> [BoardDecision] {
         board.decisions.filter { d in
-            guard inArea(d.areas, sel ?? area), focusOK("choice:" + d.id) else { return false }
+            guard inArea(d.areas, sel ?? area), focusOK("choice:" + d.id), inQuery("choice:" + d.id, d.title, d.why) else { return false }
             switch st {
             case "open": return !board.isDecided(d) && !board.isParked(d)
             case "decided": return board.isDecided(d)
@@ -269,7 +291,7 @@ struct BoardScreen: View {
     }
     func reqsIn(_ st: String, area sel: String?? = nil) -> [Requirement] {
         board.requirements.filter { r in
-            guard inArea([r.area], sel ?? area), focusOK("req:" + r.id) else { return false }
+            guard inArea([r.area], sel ?? area), focusOK("req:" + r.id), inQuery("req:" + r.id, r.id, r.text, r.group) else { return false }
             switch st {
             case "open": return board.isOpen(r)
             case "decide": return board.isOpen(r) && r.status == "question"
@@ -289,6 +311,7 @@ struct BoardScreen: View {
         let sa = smartAreas, a = sel ?? area   // once, not per key result
         return board.roadmap.filter { r in
             guard a == nil || inArea(roadAreas(r, .some(sa)), a) else { return false }
+            guard inQuery("road:" + r.id, r.text, r.track) else { return false }
             switch st {
             case "open": return r.status != "done"
             case "done": return r.status == "done"
@@ -447,6 +470,8 @@ struct FilterBar: View {
     var areaMenu: AreaMenu? = nil
     /// "Only in Focus" checkbox, on the right; shown only when a chapter is in focus.
     var focus: FocusChip? = nil
+    /// The page's search box (request r261124-223756): filters the list as you type; ⌘K fills it.
+    var query: Binding<String>? = nil
     /// Chips shown before "+ N more".
     static let maxChips = 12
 
@@ -489,13 +514,30 @@ struct FilterBar: View {
                 }
             }
             Spacer(minLength: 8)
+            if let q = query { searchBox(q) }
             if let f = focus { focusChip(f) }
-            if area != nil || state != "open" {
-                Button("Clear") { area = nil; state = "open" }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11.5)))
+            if area != nil || state != "open" || !(query?.wrappedValue.isEmpty ?? true) {
+                Button("Clear") { area = nil; state = "open"; query?.wrappedValue = "" }.buttonStyle(.link).pointerStyle(.link).font(.system(size: S(11.5)))
             }
             if tab == .test { LayoutSwitch() }
             if tab == .road { RoadOrderMenu(projectId: board.project.id) }
         }
+    }
+
+    private func searchBox(_ q: Binding<String>) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass").font(.system(size: S(10.5))).foregroundStyle(q.wrappedValue.isEmpty ? Brand.mute : Brand.amber)
+            TextField("Filter \(tab.title.lowercased())", text: q).textFieldStyle(.plain).font(.system(size: S(12)))
+                .onKeyPress(.escape) { if q.wrappedValue.isEmpty { return .ignored }; q.wrappedValue = ""; return .handled }
+            if !q.wrappedValue.isEmpty {
+                Button { q.wrappedValue = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: S(10.5))).foregroundStyle(Brand.mute) }
+                    .buttonStyle(.plain).pointerStyle(.link)
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .frame(width: S(200))
+        .background(RoundedRectangle(cornerRadius: 6).fill(Brand.panel2))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(q.wrappedValue.isEmpty ? Brand.line2 : Brand.amber.opacity(0.6)))
     }
 
     /// "Only in Focus" checkbox on the right (request r261123-130505): focused items are always on top anyway,
@@ -1396,12 +1438,15 @@ struct RoadTrackView: View {
     /// The item the board was asked to show (⌘K, a link from another tab): its chapter opens, and so does Done or the
     /// archive when the item is in there, so the list can scroll to it.
     let reveal: String?
-    init(board: BoardStore, track: String, items: [RoadItem], reveal: String? = nil) {
-        self.board = board; self.track = track; self.items = items; self.reveal = reveal
+    /// The search box is set: the chapter opens on its matches (done ones too) until you fold it yourself.
+    var filtering = false
+    init(board: BoardStore, track: String, items: [RoadItem], reveal: String? = nil, filtering: Bool = false) {
+        self.board = board; self.track = track; self.items = items; self.reveal = reveal; self.filtering = filtering
     }
     private var collapsed: Bool {
         let slug = BoardFiles.slug(track)
         if let f = foldedNow, f.rev == ChapterFolds.shared.rev(board.project.id, slug) { return f.on }
+        if filtering { return false }
         return ChapterFolds.shared.isFolded(board.project.id, slug)
     }
     private func setCollapsed(_ on: Bool) {
@@ -1777,6 +1822,7 @@ struct RoadTrackView: View {
                 var x = ItemRef(ref: "track:" + BoardFiles.slug(track))!; x.title = "Chapter: " + track; x.area = all.first?.area
                 model.start(projectId: board.project.id, item: x, intent: .resume)
             }.help("Resume this chapter: Claude reads it, checks the code (state of the art) and picks the next step")
+            .modifier(OnbResumeAnchor(track: track))   // the pixel mate points here after setup
         }
         .fixedSize()
     }
@@ -1788,7 +1834,7 @@ struct RoadTrackView: View {
         let wanted = revealed.flatMap { $0.status == "done" ? $0 : nil }
         let showArchived = self.showArchived || wanted.map(archived) == true
         let shown = doneItems.filter { showArchived || !archived($0) }
-        let showDone = wanted != nil || (self.showDone ?? !items.contains { $0.status != "done" })
+        let showDone = wanted != nil || (self.showDone ?? (filtering || !items.contains { $0.status != "done" }))
         if !doneItems.isEmpty {
             Button { withAnimation(.easeOut(duration: 0.15)) { self.showDone = !showDone } } label: {
                 HStack(spacing: 6) {

@@ -2,6 +2,22 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.24 · 2026-11-25
+
+### In the app
+
+- **Test links: pick the browser** — Settings: Open test links in · Right-click link: Open in… · Copy link too
+- **Your level reaches Claude, per project** — Each project can have its own level · Recipe projects start as Explorer · Claude gets how to talk to you · Builder: nothing changes
+- **Search opens the page filtered (iPhone + Mac)** — Tap a result: page shows matches · Filter box on every page · "Show on page" in search · iPhone and Mac
+- **Setup: Send to Claude right under your answers** — Big Send bar under answers · Shows once all are answered · Top Send now stays too
+- **New request: project pills with small icons, recent first** — Small icon on each project · Recently updated projects first · One row, scrolls, no crowding · Guess hint moved to header
+- **Bug squash: fix your users' bugs in one go** — Pixel modal when you come back · Most urgent bugs ticked · Red bug chip reopens it · Bug squash button on Ready
+
+### On the iPhone
+
+- **iPhone: New request, Done in the top bar** — Done moved to the top bar · No empty space over keyboard · Mic bar returns after Done
+- **SB pictures missing: old iPhone build** — Pictures appear as soon as they land · Shipped cards say Shipped · SB prototypes reach the phone
+
 ## 0.5.23 · 2026-11-24
 
 ### In the app

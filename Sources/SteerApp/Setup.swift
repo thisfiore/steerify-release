@@ -246,9 +246,14 @@ struct SetupModal: View {
 
     private func setUp() {
         PastConversations.link(p, board: board)
+        Onboarding.shared.setupStarted()   // the pixel mate takes over once the board is drafted
         // Test copies (`--dry-sessions`) echo the command instead of starting Claude.
-        model.start(projectId: p.id, item: ProjectSetup.ref(p), intent: .initialize,
-                    dry: CommandLine.arguments.contains("--dry-sessions"))
+        let s = model.start(projectId: p.id, item: ProjectSetup.ref(p), intent: .initialize,
+                            dry: CommandLine.arguments.contains("--dry-sessions"))
+        // Test hook: `--setup-idle` (with --dry-sessions): the setup session stops after 3 s, as Claude does after asking.
+        if CommandLine.arguments.contains("--setup-idle"), CommandLine.arguments.contains("--dry-sessions"), let s {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { s.status = .idle; model.sessionsChanged() }
+        }
     }
 
     private func step(_ title: String, _ line: String) -> some View {
@@ -272,6 +277,7 @@ struct SetupLive: View {
     private var open: [BoardDecision] { board.decisions.filter { !board.isDecided($0) && !board.isParked($0) } }
     private var answered: [BoardDecision] { board.decisions.filter { board.isDecided($0) } }
     private var drafts: [Chapter] { board.chapters.filter(\.draft) }
+    @State private var sentAt: Date?
 
     private var session: TerminalSession? {
         model.sessions.first { $0.projectId == p.id && $0.covers("setup:" + p.id) && $0.running }
@@ -290,7 +296,7 @@ struct SetupLive: View {
                     .buttonStyle(.plain).font(.system(size: S(11))).foregroundStyle(Brand.mute).underline()
                 }
                 if let session {
-                    SetupVoyage(board: board, session: session, open: open.count, answered: answered, drafted: !drafts.isEmpty)
+                    SetupVoyage(board: board, session: session, open: open.count, answered: answered, drafted: !drafts.isEmpty, sentAt: $sentAt)
                 }
 
                 if !past.isEmpty {
@@ -313,6 +319,9 @@ struct SetupLive: View {
                 if !answered.isEmpty {
                     Text("ANSWERED · " + answered.map(\.title).joined(separator: " · "))
                         .font(.system(size: S(11.5))).foregroundStyle(Brand.green).lineLimit(2)
+                    if open.isEmpty, drafts.isEmpty, let session {
+                        SetupSendBar(board: board, session: session, answered: answered, sentAt: $sentAt)
+                    }
                 }
 
                 ForEach(drafts) { c in
@@ -361,7 +370,7 @@ struct SetupVoyage: View {
     let open: Int
     let answered: [BoardDecision]
     let drafted: Bool
-    @State private var sentAt: Date?
+    @Binding var sentAt: Date?
 
     private enum Stage: Int { case read, ask, draft, approve }
 
@@ -424,7 +433,9 @@ struct SetupVoyage: View {
                     }
                     Spacer(minLength: 0)
                     if stalled {
-                        ActionButton(title: "Send now", icon: "ship", primary: true) { sendNow() }
+                        ActionButton(title: "Send now", icon: "ship", primary: true) {
+                            SetupVoyage.send(model: model, board: board, session: session, answered: answered); sentAt = Date()
+                        }
                             .help("Tell the setup session your answers are on the board")
                     }
                 }
@@ -437,7 +448,7 @@ struct SetupVoyage: View {
     }
 
     /// The waiting ping goes out at once; if it already went (and Claude stopped anyway), say it again directly.
-    private func sendNow() {
+    @MainActor static func send(model: AppModel, board: BoardStore, session: TerminalSession, answered: [BoardDecision]) {
         let before = model.recentPings.first
         model.rushNudges.insert(board.project.id)
         model.evaluateNudges()
@@ -447,7 +458,44 @@ struct SetupVoyage: View {
                            + answered.map(\.title).joined(separator: " · ")
                            + ". Read my answers (get_item) and go on: goal, areas, then draft the first chapter.")
         }
-        sentAt = Date()
+    }
+}
+
+/// Right under your answers (request r261124-235319): once the last question is answered, the place your eyes already
+/// are says so and holds the Send button, big, instead of only the voyage card at the top of the page.
+struct SetupSendBar: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var board: BoardStore
+    @ObservedObject var session: TerminalSession
+    let answered: [BoardDecision]
+    @Binding var sentAt: Date?
+
+    private var working: Bool { session.status == .working || session.status == .starting }
+    private var justSent: Bool { sentAt.map { Date().timeIntervalSince($0) < 20 } ?? false }
+
+    var body: some View {
+        if !working, session.status != .waiting {
+            HStack(spacing: S(14)) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(justSent ? "Sent to Claude" : "All answered")
+                        .font(.system(size: S(14), weight: .semibold)).foregroundStyle(Brand.ink)
+                    Text(justSent ? "It starts drafting in a moment." : "Send them: Claude drafts the goal, areas and first chapter.")
+                        .font(.system(size: S(11.5))).foregroundStyle(Brand.mute).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if !justSent {
+                    ActionButton(title: "Send to Claude", icon: "ship", primary: true, large: true) {
+                        SetupVoyage.send(model: model, board: board, session: session, answered: answered); sentAt = Date()
+                    }
+                    .frame(width: S(190))
+                    .help("Tell the setup session your answers are on the board")
+                }
+            }
+            .padding(S(14))
+            .background(RoundedRectangle(cornerRadius: 10).fill(Brand.claude.opacity(0.10)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.amber.opacity(0.8), lineWidth: 1.5))
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 }
 

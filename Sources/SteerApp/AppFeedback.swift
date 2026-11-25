@@ -122,6 +122,7 @@ final class AppFeedback: ObservableObject {
 struct FeedbackCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .help) {
+            Button("Show the Steerify Guide") { Onboarding.shared.replay() }
             Divider()
             Button("Report a Bug…") { AppFeedback.shared.open(.bug) }
             Button("Ask for a Feature…") { AppFeedback.shared.open(.feature) }

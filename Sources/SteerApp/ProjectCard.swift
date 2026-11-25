@@ -92,9 +92,12 @@ struct PixelAvatar: View {
     }
 
     private func drawInitials(_ ctx: GraphicsContext, _ sz: CGSize) {
-        let letters = Array(PixelFont.initials(name))
+        // Small tiles (pills, menus) take one letter: two would round down to nothing below ~18 pt.
+        let two = Array(PixelFont.initials(name))
+        let letters = sz.width < 18 ? Array(two.prefix(1)) : two
         let cols = letters.count * 5 + (letters.count - 1)
-        let cell = floor(sz.width * 0.68 / CGFloat(cols))
+        let s = max(1, scale)
+        let cell = max(1, floor(sz.width * 0.68 / CGFloat(cols) * s)) / s   // whole screen pixels, never zero
         let ox = (sz.width - CGFloat(cols) * cell) / 2, oy = (sz.height - 7 * cell) / 2
         for (i, ch) in letters.enumerated() {
             for (y, row) in (PixelFont.glyphs[ch] ?? []).enumerated() {

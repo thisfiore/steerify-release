@@ -7,11 +7,13 @@
     if (location.hash === '#hq-count') localStorage.removeItem('hq-ignore');
     if (localStorage.getItem('hq-ignore')) return;
   } catch {}
+  const root = document.documentElement.dataset;
+  if (root.moved) return; // 404.html is sending a clean URL to its page: that page counts the view
   const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   const U = local ? 'http://127.0.0.1:18767/v1/hit' : 'https://relay.steerify.dev/v1/hit';
   let tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {}
   const send = (e, x) => {
-    const b = JSON.stringify({ e, x, u: location.href, r: document.referrer, w: innerWidth, tz });
+    const b = JSON.stringify({ e, x, nf: root.notFound ? 1 : undefined, u: location.href, r: document.referrer, w: innerWidth, tz });
     try { if (navigator.sendBeacon && navigator.sendBeacon(U, b)) return; } catch {}
     fetch(U, { method: 'POST', body: b, keepalive: true, mode: 'no-cors' }).catch(() => {});
   };

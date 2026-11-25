@@ -360,6 +360,12 @@ struct PaletteView: View {
             if let i = CommandLine.arguments.firstIndex(of: "--palette-scope"), i + 1 < CommandLine.arguments.count,
                let s = PaletteScope(rawValue: CommandLine.arguments[i + 1]) { scope = s }      // test hook
             refresh(); grabFocus()
+            // Test hooks: `--palette-enter` presses ↩ on the first hit, `--palette-show <kind>` its "Show on page".
+            let a = CommandLine.arguments
+            if a.contains("--palette-enter") { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { open(flat.first, start: false) } }
+            if let i = a.firstIndex(of: "--palette-show"), i + 1 < a.count, let k = PaletteKind(rawValue: a[i + 1]) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showOnPage(k) }
+            }
         }
         .onChange(of: query) { _, _ in refresh() }
         .onChange(of: scope) { _, _ in refresh() }
@@ -455,6 +461,12 @@ struct PaletteView: View {
             Text(k.plural.uppercased()).font(Brand.label(9)).tracking(1).foregroundStyle(k.color)
             Text("\(n)").font(.system(size: S(10)).monospacedDigit()).foregroundStyle(Brand.mute)
             Rectangle().fill(Brand.line).frame(height: 1)
+            if !query.isEmpty, Self.page(k) != nil {
+                Button { showOnPage(k) } label: {
+                    HStack(spacing: 3) { Text("Show on \(k == .chapter || k == .road ? "Roadmap" : k.plural)"); Image(systemName: "arrow.right") }
+                        .font(.system(size: S(10.5), weight: .semibold)).foregroundStyle(k.color)
+                }.buttonStyle(.plain).pointerStyle(.link).help("Open the page filtered by “\(query)”")
+            }
         }
         .padding(.leading, 18).padding(.trailing, 12).padding(.top, 12).padding(.bottom, 5)
     }
@@ -695,10 +707,24 @@ struct PaletteView: View {
             model.resume(l, projectId: h.projectId); return
         }
         guard let ref = h.ref else { return }
+        // The page it opens on shows what you searched for (with this item on it), not the whole list.
+        if let t = Self.page(h.kind), !query.trimmingCharacters(in: .whitespaces).isEmpty { model.pageQuery[h.projectId + "|" + t] = query }
         model.openCombo(projectId: h.projectId, ref: ref, startNew: start)
     }
 
     private func close() { model.paletteOpen = false }
+
+    /// The board tab a kind lives on (nil: not a board page).
+    static func page(_ k: PaletteKind) -> String? {
+        switch k { case .test: "test"; case .choice: "choice"; case .req: "req"; case .road, .chapter: "road"; default: nil }
+    }
+    /// Every match of one kind on its page, filtered by the words (the project of the first match).
+    private func showOnPage(_ k: PaletteKind) {
+        guard let t = Self.page(k), let pid = matched.first(where: { Self.page($0.kind) == t && $0.projectId == model.selectedProjectId })?.projectId
+                ?? matched.first(where: { Self.page($0.kind) == t })?.projectId else { return }
+        let q = query; close()
+        model.showFiltered(projectId: pid, tab: t, query: q)
+    }
 
     /// The terminal (an AppKit view) usually holds the keyboard when ⌘K is pressed, and SwiftUI won't take focus
     /// from it while the palette is still being laid out. Release it, then focus the field on the next turns.

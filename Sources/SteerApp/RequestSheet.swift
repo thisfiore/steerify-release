@@ -46,6 +46,7 @@ struct RequestSheet: View {
     @State private var shotWatch: DispatchSourceFileSystemObject?
     @State private var marks: [ShotMark] = []         // ShotMarker.swift: dots and areas on the pictures, ① in the text
     @State private var shown: URL?                    // the picture shown big
+    @State private var touched: [String: Date] = [:]  // when each project's board last changed: pills, recent first
     @FocusState private var focused: Bool
 
     private var board: BoardStore { model.board(for: project) }
@@ -64,6 +65,7 @@ struct RequestSheet: View {
                 HStack(spacing: 6) {
                     Text("NEW REQUEST ·").font(Brand.label(10)).tracking(0.9).foregroundStyle(Brand.amber)
                     projectMenu
+                    guessNote.padding(.leading, 6)
                     Spacer()
                     Text("⌘↩ send · Esc").font(.system(size: S(10.5), design: .monospaced)).foregroundStyle(Brand.mute)
                 }
@@ -72,6 +74,7 @@ struct RequestSheet: View {
                     ShotMarker(images: images, shown: $shown, marks: Binding(get: { liveMarks }, set: { marks = $0 }),
                                onMark: addMark, onRemove: { u in images.removeAll { $0 == u } })
                 }
+                OnbRequestTip { text = $0 }   // the pixel mate's tip, during the guide only
                 editor
                 if !shots.isEmpty { RecentShotsStrip(shots: shots, thumbs: shotThumbs, images: $images, onMore: pickOlder) }
                 attachments
@@ -105,7 +108,7 @@ struct RequestSheet: View {
     /// The project in the header is a menu: a request can go to any project.
     private var projectMenu: some View {
         Menu {
-            ForEach(model.projects) { p in
+            ForEach(byRecent) { p in
                 Button { handPicked = true; model.requestProjectId = p.id } label: { if p.id == project.id { Label(p.name, systemImage: "checkmark") } else { Text(p.name) } }
             }
         } label: {
@@ -118,30 +121,59 @@ struct RequestSheet: View {
         .help("Which project this request is for")
     }
 
-    /// From ⌃⌥N or the menu bar you were somewhere else: say which project, one click.
+    /// From ⌃⌥N or the menu bar you were somewhere else: say which project, one click. Each pill carries the project's
+    /// small icon; the most recently worked-on projects come first, and the row scrolls instead of crowding.
     private var projectPills: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Text("FOR").font(Brand.label(8.5)).tracking(0.8).foregroundStyle(Brand.mute)
-            ForEach(model.projects) { p in
-                let on = p.id == project.id
-                Button { handPicked = true; model.requestProjectId = p.id } label: {
-                    Text((on && guess?.projectId == p.id && !handPicked ? "✦ " : "") + p.name).font(.system(size: S(12), weight: on ? .semibold : .regular))
-                        .foregroundStyle(on ? Color(hex: 0x1a1200) : Brand.ink)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Capsule().fill(on ? Brand.amber : Brand.panel))
-                        .overlay(Capsule().stroke(on ? Color.clear : Brand.line2))
-                }.buttonStyle(SteerButton())
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(byRecent) { p in
+                        let on = p.id == project.id
+                        Button { handPicked = true; model.requestProjectId = p.id } label: {
+                            HStack(spacing: 5) {
+                                PixelAvatar(name: p.name, size: S(15), projectId: p.id)
+                                Text((on && guess?.projectId == p.id && !handPicked ? "✦ " : "") + p.name)
+                                    .font(.system(size: S(11.5), weight: on ? .semibold : .regular)).lineLimit(1)
+                            }
+                            .foregroundStyle(on ? Color(hex: 0x1a1200) : Brand.ink)
+                            .padding(.leading, 3).padding(.trailing, 9).padding(.vertical, 3)
+                            .background(Capsule().fill(on ? Brand.amber : Brand.panel))
+                            .overlay(Capsule().stroke(on ? Color.clear : Brand.line2))
+                        }.buttonStyle(SteerButton())
+                        .help(on ? "This request goes to \(p.name)" : "Send it to \(p.name)")
+                    }
+                }.padding(.vertical, 1).padding(.trailing, 24)
             }
-            if let g = guess, !handPicked, g.projectId == project.id {
-                HStack(spacing: 4) {
-                    if g.ai { Image(systemName: "apple.intelligence").font(.system(size: S(10))) }
-                    Text("guessed · \(g.why)").lineLimit(1).truncationMode(.tail)
-                }
-                .font(.system(size: S(11))).foregroundStyle(Brand.blue).padding(.leading, 4)
-                .help(g.ai ? "Guessed by Apple Intelligence, on this Mac. Click a project to choose it yourself." : "Guessed from the words. Click a project to choose it yourself.")
-            }
-            Spacer()
+            // The row scrolls: fade its right edge so a cut-off pill reads as "more this way".
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.94),
+                                         .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
         }
+    }
+
+    /// The guess, said once on the header line (the pills row stays one line).
+    @ViewBuilder private var guessNote: some View {
+        if pickProject, let g = guess, !handPicked, g.projectId == project.id {
+            HStack(spacing: 4) {
+                if g.ai { Image(systemName: "apple.intelligence").font(.system(size: S(10))) }
+                Text("guessed · \(g.why)").lineLimit(1).truncationMode(.tail)
+            }
+            .font(.system(size: S(11))).foregroundStyle(Brand.blue)
+            .help(g.ai ? "Guessed by Apple Intelligence, on this Mac. Click a project to choose it yourself." : "Guessed from the words. Click a project to choose it yourself.")
+        }
+    }
+
+    /// Projects, most recently updated board first (read once when the sheet opens).
+    private var byRecent: [Project] {
+        model.projects.sorted { (touched[$0.id] ?? .distantPast) > (touched[$1.id] ?? .distantPast) }
+    }
+
+    /// When a project's board last changed: the newest of its board files.
+    static func lastTouched(_ p: Project) -> Date {
+        let fm = FileManager.default
+        return ["board.json", "decisions.json", "delivered.json", "requests.json", "sessions.json", "tasks.json"].compactMap {
+            (try? fm.attributesOfItem(atPath: (p.boardDir as NSString).appendingPathComponent($0)))?[.modificationDate] as? Date
+        }.max() ?? .distantPast
     }
 
     private var editor: some View {
@@ -320,6 +352,7 @@ struct RequestSheet: View {
 
     private func setUp() {
         text = model.requestSeed; model.requestSeed = ""
+        touched = Dictionary(uniqueKeysWithValues: model.projects.map { ($0.id, Self.lastTouched($0)) })
         if let k = model.requestKindSeed { kindSet = k; model.requestKindSeed = nil }
         grabFocus()
         lookContext()

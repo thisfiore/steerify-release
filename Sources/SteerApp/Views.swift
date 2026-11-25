@@ -34,6 +34,8 @@ struct ContentView: View {
                         MenuBarHiddenStrip()
                         BoardTerminalSplit { BoardScreen(board: b).id(p.id) } right: { TerminalPane(project: p) }
                     }
+                    // After setup: the pixel mate points at the real Resume / + Request (Onboarding.swift).
+                    .overlayPreferenceValue(OnbAnchorKey.self) { OnboardingHost(board: b, anchors: $0).id(p.id) }
                 } live: {
                     BoardTerminalSplit { SetupLive(board: b).id(p.id) } right: { TerminalPane(project: p) }
                 } welcome: {
@@ -74,19 +76,24 @@ struct ContentView: View {
         .overlay { if model.recipesOpen { RecipeGallery() } }
         .overlay { if model.levelOpen { LevelSheet() } }
         .overlay { AppFeedbackHost() }      // Report a bug / Ask for a feature (AppFeedback.swift)
+        .overlay { BugSquashHost() }        // your users' bugs, fixed in one go (BugSquash.swift)
         .overlay { ResumeInterruptedHost() }   // sessions stopped by the last quit (Interrupted.swift)
         // "Since you left": on open, when you come back to the app, and when you switch to a project you left a while ago.
         .onAppear {
             let a = CommandLine.arguments
             let forced = a.firstIndex(of: "--since-hours").flatMap { $0 + 1 < a.count ? Double(a[$0 + 1]) : nil }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { since.check(model, force: forced.map { Date().addingTimeInterval(-$0 * 3600) }) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                BugSquash.shared.check(model, force: (forced ?? 0) > 0)       // before "Since you left" moves the last-seen time
+                since.check(model, force: forced.map { Date().addingTimeInterval(-$0 * 3600) })
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in SinceYouLeft.markSeen(model.selectedProjectId) }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in since.check(model) }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in BugSquash.shared.check(model); since.check(model) }
         .onChange(of: model.selectedProjectId) { old, _ in
             SinceYouLeft.markSeen(old)
             if since.brief != nil { since.brief = nil }
-            DispatchQueue.main.async { since.check(model) }
+            if BugSquash.shared.offer != nil { BugSquash.shared.offer = nil }
+            DispatchQueue.main.async { BugSquash.shared.check(model); since.check(model) }
         }
         .blackTitleBar()          // black top bar with the Mac's blur (TitleBar.swift)
         .toolbar {
@@ -98,6 +105,7 @@ struct ContentView: View {
             // request r261123-135229.
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 8) {
+                    BugSquashChip()
                     NextUp(density: density)
                     Button { model.reloadBoard() } label: { Image(systemName: "arrow.clockwise") }.help("Reload board (⌘R)")
                     NewRequestButton()

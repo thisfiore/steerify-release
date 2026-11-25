@@ -2,6 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>
+// Clean URLs: the host (DigitalOcean static site) only serves files, so /releases lands here. Send every page we
+// have to its .html before anything is drawn or counted; only a real miss stays on this page (counted in HQ as 404).
+// scripts/check-links.mjs fails when a page in site/ is missing from PAGES.
+(() => {
+  const PAGES = ['releases', 'tutorial', 'privacy', 't3-code-alternative', 'claude-code-session-status', 'story'];
+  const p = location.pathname.replace(/\/+$/, '').replace(/\.html?$/, '').toLowerCase(), q = location.search + location.hash;
+  const name = p.slice(1);
+  let to = '';
+  if (p === '' || p === '/index') to = '/';
+  else if (PAGES.includes(name)) to = '/' + name + '.html';
+  else if (p === '/hq' || p.startsWith('/hq/')) to = 'https://relay.steerify.dev/hq';
+  if (to) { document.documentElement.dataset.moved = '1'; location.replace(to + q); }
+  else document.documentElement.dataset.notFound = '1';
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Steerify · Page not found</title>
 <meta name="description" content="Steerify is a native Mac app for steering Claude Code across your projects: choices with mockups, visual review of finished work and a roadmap, next to the sessions doing the work. Ship more, read less.">
@@ -15,7 +31,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/assets/site.css?v=6">
 <script src="/assets/brand.js?v=6" defer></script>
-<script src="/assets/hit.js?v=1" defer></script>
+<script src="/assets/hit.js?v=2" defer></script>
 </head>
 <body>
 <main style="min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center;padding:40px 16px">

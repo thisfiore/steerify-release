@@ -326,8 +326,9 @@ enum BoardPublish {
         guard realBoard.hasPrefix(realRoot) else { return false }
         let rel = String(realBoard.dropFirst(realRoot.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         func path(_ f: String) -> String { rel.isEmpty ? f : rel + "/" + f }
+        // proto/: some boards (SB) keep their choice prototypes there instead of protos/.
         let paths = files.map(path).filter { FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent($0)) }
-            + [path("img"), path("protos"), path("kit")].filter { FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent($0)) }
+            + [path("img"), path("protos"), path("proto"), path("kit")].filter { FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent($0)) }
         _ = Git.run(root, ["add", "--"] + paths)
         let staged = (Git.run(root, ["diff", "--cached", "--name-only", "--"] + paths) ?? "").isEmpty == false
         if staged { _ = Git.run(root, ["commit", "-q", "-m", "Board: synced for the iPhone", "--"] + paths) }

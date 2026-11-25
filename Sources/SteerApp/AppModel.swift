@@ -44,6 +44,17 @@ final class AppModel: ObservableObject {
     var paletteSeed = ""
     /// Ask the board to show an item: switch tab, scroll to it, flash it.
     @Published var focus: FocusRequest?
+    /// The search box of each board page, "<project>|<tab>" → words. ⌘K sets it when you open a hit, so the page shows
+    /// what you searched for, not everything (request r261124-223756).
+    @Published var pageQuery: [String: String] = [:]
+    /// Ask the board to switch to a tab (⌘K "Show on page").
+    @Published var pageJump: PageJump?
+    struct PageJump: Equatable { let id = UUID(); let projectId: String; let tab: String }
+    func showFiltered(projectId: String, tab: String, query: String) {
+        selectedProjectId = projectId
+        pageQuery[projectId + "|" + tab] = query
+        pageJump = PageJump(projectId: projectId, tab: tab)
+    }
     @Published var highlightRef: String?
     /// Which actionable item ⌘J goes to next.
     @Published var nextIndex = 0
@@ -447,6 +458,11 @@ final class AppModel: ObservableObject {
             newSession(.claude)
         case "open":       // steerify://open?project=sb&item=choice:<id> → that item on the board
             if let ref = q["item"] ?? q["ref"], !ref.isEmpty { focusItem(projectId: pid, ref: ref) }
+        case "squash":     // steerify://squash?project=sb → the bug squash modal for that project (BugSquash.swift)
+            if let pp = projects.first(where: { $0.id == pid }) {
+                selectedProjectId = pp.id
+                DispatchQueue.main.async { BugSquash.shared.open(self, pp) }
+            }
         case "since":      // steerify://since?project=sb&hours=20 → the "Since you left" brief as if you were away that long
             if projects.contains(where: { $0.id == pid }) { selectedProjectId = pid }
             let h = Double(q["hours"] ?? "") ?? 20
