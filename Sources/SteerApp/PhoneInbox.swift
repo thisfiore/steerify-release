@@ -5,7 +5,7 @@ import Foundation
 // MARK: - What you did on the iPhone, landing on the board (choice mobile-sync: GitHub is the store, our server adds realtime)
 //
 // The phone never writes the Mac's files. It keeps one file of its own on GitHub, `<board>/inbox/<device>.json`:
-//   {"device": "…", "items": [{"id", "kind": verdict|testNote|pick|request|start|ship|deploy|taskVerdict|taskRun, "ref", "pick", "note", "test",
+//   {"device": "…", "items": [{"id", "kind": verdict|testNote|pick|request|start|ship|deploy|taskVerdict|taskRun|requestStart|requestDiscard|squash|reply, "ref", "pick", "note", "test",
 //                              "requestKind", "intent", "target", "label", "at"}]}
 // The Mac fetches, applies each new item with the same code as a click on the Mac (setShip / setTest / setChoice /
 // fileRequest / starts.json), and records what it applied in `<board>/inbox-applied.json`, which it commits and pushes:
@@ -243,6 +243,23 @@ extension AppModel {
             guard TaskStore.load(p.boardDir).tasks.contains(where: { $0.id == ref }) else { return "No task \(ref)" }
             if TaskStore.load(p.boardDir).runs.contains(where: { $0.task == ref && $0.status == "running" }) { return nil }   // already running
             guard runTask(projectId: p.id, taskId: ref, note: note.isEmpty ? nil : note, focus: false) != nil else { return "Couldn't start the task" }
+        // Requests and bug squash from the iPhone (request r261125-172900, choices ios-requests-place A + ios-bug-squash C)
+        case "requestStart":  // ref = request id: Start, as on Ready
+            guard let r = RequestLog.load(p.boardDir).first(where: { $0.id == ref }) else { return "No request \(ref)" }
+            guard r.status == "filed" else { return nil }         // already started (here or on the Mac)
+            startRequestSession(projectId: p.id, id: ref, focus: false)
+        case "requestDiscard":
+            guard let r = RequestLog.load(p.boardDir).first(where: { $0.id == ref }) else { return "No request \(ref)" }
+            guard r.status == "filed" else { return "Already started: not discarded" }
+            discardRequest(r, in: p)
+        case "squash":        // pick = the bug ids, most urgent first
+            let ids = (pick ?? ref).split(separator: ",").map(String.init)
+            if let why = BugSquash.cookFromPhone(ids: ids, in: p, model: self) { return why }
+        case "reply":         // ref = request id, note = the reply text (Send, as in AnswerComposer)
+            guard let r = RequestLog.load(p.boardDir).first(where: { $0.id == ref }) else { return "No request \(ref)" }
+            guard !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Empty reply" }
+            if r.answer?.trimmingCharacters(in: .whitespacesAndNewlines) == note.trimmingCharacters(in: .whitespacesAndNewlines) { return nil }
+            sendAnswer(r, text: note, in: p)
         case "start":
             StartQueue.append(p.boardDir, [
                 "id": it["id"] as? String ?? UUID().uuidString, "ref": ref, "intent": it["intent"] as? String ?? "plan", "note": note,

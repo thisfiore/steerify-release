@@ -168,9 +168,27 @@ final class BugSquash: ObservableObject {
     func cook(_ model: AppModel) {
         guard let o = offer, let p = model.projects.first(where: { $0.id == o.projectId }) else { return }
         let picked = o.bugs.filter { o.picked.contains($0.id) }
-        guard let first = picked.first else { return }
+        guard !picked.isEmpty else { return }
         Self.markSeen(p.id, o.bugs.map(\.id))
         offer = nil
+        Self.cook(picked, in: p, model: model)
+    }
+
+    /// The picked bugs, in this order, from the iPhone (choice ios-bug-squash): the same session as the modal's Cook.
+    /// Returns why not, or nil when it started.
+    static func cookFromPhone(ids: [String], in p: Project, model: AppModel) -> String? {
+        let open = openBugs(model, p)
+        let ranked = plainRank(open)
+        let picked = ids.compactMap { id in ranked.first { $0.id == id } }
+        guard !picked.isEmpty else { return "Those bugs already have a session" }
+        markSeen(p.id, picked.map(\.id))
+        if shared.offer?.projectId == p.id { shared.offer = nil }
+        cook(picked, in: p, model: model)
+        return nil
+    }
+
+    static func cook(_ picked: [SquashBug], in p: Project, model: AppModel) {
+        guard let first = picked.first else { return }
         for b in picked { RequestLog.edit(p.boardDir, id: b.id) { $0["status"] = "working"; $0["note"] = "In a bug squash with \(picked.count - 1) other bug\(picked.count == 2 ? "" : "s")" } }
         var item = ItemRef(ref: "request:" + first.id)!
         item.title = "Bug squash · \(picked.count) bug\(picked.count == 1 ? "" : "s")"

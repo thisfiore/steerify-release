@@ -2,6 +2,16 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.26 · 2026-11-25
+
+### In the app
+
+- **Filter bar: tabs on one line** — State tabs never wrap · Search box shrinks first · Focus checkbox stays one line
+
+### On the iPhone
+
+- **iPhone: requests + bug squash** — New requests on Ready · All requests: search, filters · Reply to users: Edit / Send · Bug squash card + red chip
+
 ## 0.5.25 · 2026-11-25
 
 ### In the app
