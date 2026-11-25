@@ -15,6 +15,7 @@ enum Prefs {
     static let testLayout = "testLayout"      // list | grid (To test tab)
     static let remoteControl = "remoteControl" // Claude sessions start with Claude Code Remote Control (open them in the Claude app)
     static var remoteControlOn: Bool { store.object(forKey: remoteControl) as? Bool ?? true }
+    static let terminalOverlay = "terminalOverlay" // recap card + recent screenshots over Claude sessions (TerminalOverlay.swift)
     static let autoConsolidate = "autoConsolidate" // Roadmap counts down and applies sure proposals by itself (on by default)
 
     static let defaultTerminal = 0.30
@@ -43,6 +44,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.sessionsFollowTab, store: Prefs.store) private var followTab = true
     @AppStorage(Prefs.defaultFlow, store: Prefs.store) private var defaultFlow = WorkFlow.main.rawValue
     @AppStorage(Prefs.remoteControl, store: Prefs.store) private var remoteControl = true
+    @AppStorage(Prefs.terminalOverlay, store: Prefs.store) private var terminalOverlay = true
     @AppStorage(Prefs.autoConsolidate, store: Prefs.store) private var autoConsolidate = true
 
     /// The open page, remembered. Test hook: `--settings-pane <id>`.
@@ -178,6 +180,8 @@ struct SettingsView: View {
                     pref("terminal", "Session list follows the tab", "Sessions on the open tab first, the others folded. The one you're in and the ones that need you always show.", $followTab)
                     divider
                     pref("phone", "Open sessions on your phone", "New Claude sessions start with Remote Control: tap one in Steerify for iPhone to continue it in the Claude app. Needs a claude.ai login (Pro, Max, Team, Enterprise).", $remoteControl)
+                    divider
+                    pref("terminal", "Recap and screenshots over the terminal", "Coming back to a session after 5 min shows where it is (a title and 2 lines, made on this Mac). Your last 3 screenshots float above the prompt: click one to paste it.", $terminalOverlay)
                 }
             }
             group("TEST LINKS", nil) {

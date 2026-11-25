@@ -348,7 +348,7 @@ struct TerminalPane: View {
     }
 
     @ViewBuilder private func terminal(_ sel: TerminalSession?) -> some View {
-        if let s = hub.shownShell(project) ?? sel { TerminalHost(session: s).id(s.id).overlay { DeployDoneLayer(session: s) } } else { EmptyTerminals(project: project) }
+        if let s = hub.shownShell(project) ?? sel { TerminalHost(session: s).id(s.id).overlay { TerminalOverlayLayer(session: s).id(s.id) }.overlay { DeployDoneLayer(session: s) } } else { EmptyTerminals(project: project) }
     }
 
     private var layoutToggle: some View {

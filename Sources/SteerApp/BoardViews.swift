@@ -505,6 +505,7 @@ struct FilterBar: View {
                             Text(s.1)
                             if n > 0 || on { Text("\(n)").monospacedDigit().foregroundStyle(on ? Color(hex: 0xffd27a).opacity(0.7) : Brand.mute) }
                         }
+                        .lineLimit(1).fixedSize()
                         .font(.system(size: S(12), weight: on ? .semibold : .regular))
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .foregroundStyle(on ? Color(hex: 0xffd27a) : n == 0 && s.0 != "all" ? Brand.mute : Brand.ink)
@@ -513,6 +514,7 @@ struct FilterBar: View {
                     }.buttonStyle(SteerButton())
                 }
             }
+            .fixedSize()
             Spacer(minLength: 8)
             if let q = query { searchBox(q) }
             if let f = focus { focusChip(f) }
@@ -535,7 +537,9 @@ struct FilterBar: View {
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
-        .frame(width: S(200))
+        // Shrinks before the state segments wrap (request r261125-144246).
+        .frame(minWidth: S(110), idealWidth: S(200), maxWidth: S(200))
+        .layoutPriority(-1)
         .background(RoundedRectangle(cornerRadius: 6).fill(Brand.panel2))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(q.wrappedValue.isEmpty ? Brand.line2 : Brand.amber.opacity(0.6)))
     }
@@ -548,6 +552,7 @@ struct FilterBar: View {
                 Text("Only in Focus")
                 Text("\(f.count)").monospacedDigit().foregroundStyle(Brand.mute)
             }
+            .lineLimit(1).fixedSize()
             .font(.system(size: S(11.5)))
             .foregroundStyle(f.on ? Brand.amber : Brand.ink)
         }

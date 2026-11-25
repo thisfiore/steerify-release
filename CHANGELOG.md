@@ -2,6 +2,13 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.25 · 2026-11-25
+
+### In the app
+
+- **Recipes & Standards gallery + Feedback standard** — Standards tab next to Recipes · Search, categories, tags · Install with Claude, briefed · Feedback standard, first one
+- **Terminal overlay: recap + recent screenshots** — Recap card when you come back · Title + 2 lines, made on Mac · Last 3 screenshots above prompt · Click a shot to paste it
+
 ## 0.5.24 · 2026-11-25
 
 ### In the app

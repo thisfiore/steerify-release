@@ -93,7 +93,7 @@ enum FeedbackInbox {
         let tracks = (board["tracks"] as? [[String: Any]] ?? []).map { keep($0, ["name", "area", "objective", "items", "draft", "rolling"]) }
         let live = (delivered["items"] as? [[String: Any]] ?? []).map { keep($0, ["id", "title", "area", "status", "updated", "added", "what", "road"]) }
         let reqs = RequestLog.raw(p.boardDir).filter { $0["reporter"] != nil }
-            .map { keep($0, ["id", "title", "text", "kind", "status", "became", "at", "reporter", "feedback", "answer"]) }
+            .map { keep($0, ["id", "title", "text", "kind", "status", "became", "at", "updated", "area", "reporter", "feedback", "answer", "public"]) }
         return ["feedback": keep(feedback, ["title", "areas", "hide", "keyResults"]), "tracks": tracks, "delivered": live, "requests": reqs]
     }
 }
