@@ -2,6 +2,24 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.27 · 2026-11-27
+
+### In the app
+
+- **Mockups in Steerify: chapter strip + big viewer** — Mockups on their chapter · Opens full size, like an artifact · Pin notes, Looks right, v1 ↔ v2 · Key part framed and zoomable
+- **Full screen: Space to the next, focus on the feature** — Space opens the next item · Test 1 of x, option A of 3 · Opens zoomed on the feature · Phone options side by side
+- **After setup: Frenk guides you** — Your pixel face guides, RPG-style · Text types, mouth moves · A face per moment · Closing laugh: "You steer, Claude rows"
+- **Fix: test note box scrolls** — Long notes scroll inside the box · Scroll bar when it overflows · Notes still save as you type
+- **Not done while shells still run** — Card: "N shells still running" · Not counted in Close N done · Menu bar says it too
+- **Ship ends when its items are live** — Ship ends when items turn live · No tag or deploy needed · Modal: "N items live"
+- **Permission prompt: read the whole command** — Bar over a long permission prompt · Read it all: whole command · Scroll, select, Copy
+- **Answers: Send when live** — Send when live button · Reply waits for the fix · Goes out by itself when live · Release skill knows it
+- **Stop check: a question in the chat gets one nudge** — Claude stops with a question · Steerify nudges it once · Question lands as a choice · Switch in Settings › Behaviour
+
+### On the iPhone
+
+- **iPhone New request: File + mic back while typing** — File and mic over keyboard · Project name under title · Done stays top right
+
 ## 0.5.26 · 2026-11-25
 
 ### In the app

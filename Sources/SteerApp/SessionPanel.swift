@@ -192,6 +192,7 @@ struct SessionChip2: View {
                         .font(.system(size: S(10))).foregroundStyle(subtitleColor(outlook, turn))
                         .lineLimit(vertical && outlook?.isDone == false ? 3 : 1).fixedSize(horizontal: false, vertical: true)
                 }
+                ProcessFlag(session: session)
             }
             if vertical { Spacer(minLength: 4) }
             if !vertical, let turn { turnButton(turn) }
@@ -307,6 +308,7 @@ struct SessionChip2: View {
         switch o {
         case .ask(let t)?: return name + "\nAsks you: " + t
         case .next(let t)?: return name + "\nNext step: " + t + "\nGo on sends it to the session."
+        case .shells(let n)?: return name + "\nIts turn ended but \(n) background shell\(n == 1 ? " is" : "s are") still running: Claude goes on when \(n == 1 ? "it finishes" : "they finish"). Not done yet."
         case .takenOver(let by)?: return "Done: \(by) took over this work. Close it — the conversation stays resumable from its item."
         case .onBoard(let w)?: return "Done: what it waits on is on \(w). Close it — the conversation stays resumable from its item."
         case .nothing?: return "Done: nothing left to do. Close it — the conversation stays resumable from its item."

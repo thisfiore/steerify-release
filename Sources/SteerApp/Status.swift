@@ -37,6 +37,12 @@ enum SessionHooks {
         msg=$(printf '%s' "$in" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' | head -1)
         d="$HOME/Library/Application Support/Steerify/status"
         mkdir -p "$d"
+        # The tool call a permission prompt asks about, whole (the terminal shows only its last lines): PermissionPeek.swift.
+        case "$ev" in
+          PermissionRequest) printf '%s' "$in" > "$d/$STEERIFY_SESSION.perm.tmp" && mv "$d/$STEERIFY_SESSION.perm.tmp" "$d/$STEERIFY_SESSION.perm" ;;
+          Notification) ;;
+          *) rm -f "$d/$STEERIFY_SESSION.perm" ;;
+        esac
         printf '%s\\t%s\\t%s\\n' "$ev" "$(date +%s)" "$msg" > "$d/$STEERIFY_SESSION.tmp" && mv "$d/$STEERIFY_SESSION.tmp" "$d/$STEERIFY_SESSION"
         exit 0
         """
@@ -117,7 +123,10 @@ final class StatusWatcher {
         for s in model.sessions where s.kind == .claude {
             if !s.running { if s.status != .ended { s.status = .ended; changed = true }; continue }
             if let (st, at) = SessionHooks.read(s.id), st != s.status || at != s.statusAt {
+                let stopped = s.status == .working && st == .idle
                 s.status = st; s.statusAt = at; s.stuck = nil; changed = true
+                if stopped { model.processCheck(s) }      // how did the turn end? (ProcessCheck.swift)
+                else if st == .working { s.processFlag = nil }
             }
         }
         if changed { model.sessionsChanged() }

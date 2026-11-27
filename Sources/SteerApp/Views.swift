@@ -48,6 +48,11 @@ struct ContentView: View {
                         PreviewOverlay(board: model.board(for: p), state: pv).id(pv.id)
                     }
                 }
+                .overlay {
+                    if let mo = model.mockupOpen, mo.projectId == p.id {
+                        MockupViewer(board: model.board(for: p), open: mo).id(mo.id)
+                    }
+                }
                 .overlay { if model.paletteOpen { PaletteView() } }
                 .overlay { if model.requestsListOpen { RequestsListView(project: p).id(p.id) } }
                 .overlay {   // "Connect your iPhone" (the phone icon at the end of the tab bar)
@@ -348,7 +353,7 @@ struct TerminalPane: View {
     }
 
     @ViewBuilder private func terminal(_ sel: TerminalSession?) -> some View {
-        if let s = hub.shownShell(project) ?? sel { TerminalHost(session: s).id(s.id).overlay { TerminalOverlayLayer(session: s).id(s.id) }.overlay { DeployDoneLayer(session: s) } } else { EmptyTerminals(project: project) }
+        if let s = hub.shownShell(project) ?? sel { TerminalHost(session: s).id(s.id).overlay { TerminalOverlayLayer(session: s).id(s.id) }.overlay { DeployDoneLayer(session: s) }.overlay { PermissionPeekLayer(session: s).id(s.id) } } else { EmptyTerminals(project: project) }
     }
 
     private var layoutToggle: some View {

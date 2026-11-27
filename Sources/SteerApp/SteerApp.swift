@@ -95,12 +95,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if then == "leave" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Prefs.store.set(BoardTab.road.rawValue, forKey: Prefs.boardTab) } }
             }
         }
+        // Test hook: `--wheel-note <text prefix> <lines>`: a trackpad scroll over the note box whose text starts with
+        // the prefix, sent through the window like a real one (hit-testing included). Logs what moved.
+        if let i = a.firstIndex(of: "--wheel-note"), i + 2 < a.count, let lines = Double(a[i + 2]) {
+            let prefix = a[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                func find(_ v: NSView) -> NSTextView? {
+                    if let t = v as? NSTextView, t.string.hasPrefix(prefix) { return t }
+                    for s in v.subviews { if let hit = find(s) { return hit } }
+                    return nil
+                }
+                guard let root = w.contentView, let tv = find(root) else { NSLog("wheel-note: no note '\(prefix)'"); return }
+                let r = tv.enclosingScrollView ?? tv
+                let mid = r.convert(NSPoint(x: r.bounds.midX, y: r.bounds.midY), to: nil)
+                let before = tv.visibleRect.minY
+                let ev = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(-lines * 16), wheel2: 0, wheel3: 0)!
+                ev.location = CGPoint(x: w.frame.minX + mid.x, y: (NSScreen.screens.first?.frame.height ?? 0) - (w.frame.minY + mid.y))
+                if let e = NSEvent(cgEvent: ev) { w.sendEvent(e) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NSLog("wheel-note: box \(Int(r.bounds.height)) pt, text \(Int(tv.bounds.height)) pt, scrolled \(Int(before)) → \(Int(tv.visibleRect.minY))")
+                }
+            }
+        }
         // Test hook: `--click <x> <y> [seconds]`: a real mouse click at that point of the window (points, from the
         // top-left of the content), as a person would (no Accessibility permission needed). Repeatable.
         for (i, s) in a.enumerated() where s == "--click" && i + 2 < a.count {
             guard let x = Double(a[i + 1]), let y = Double(a[i + 2]) else { continue }
             let at = (i + 3 < a.count ? Double(a[i + 3]) : nil) ?? 4
             DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.click(w, x: x, y: y) }
+        }
+        // Test hook: `--keys <chars> [seconds]`: type these keys into the window (one every 0.6 s, "_" = Space), e.g.
+        // `--preview test:x --keys __ 3` walks the full-screen preview with Space.
+        if let i = a.firstIndex(of: "--keys"), i + 1 < a.count {
+            let keys = Array(a[i + 1]), at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 3
+            for (n, k) in keys.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + at + Double(n) * 0.6) {
+                    let c = k == "_" ? " " : String(k), code: UInt16 = k == "_" ? 49 : 0
+                    for t in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: t, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c,
+                                                    isARepeat: false, keyCode: code) { NSApp.postEvent(e, atStart: false) }
+                    }
+                }
+            }
         }
         // Test hook: `--shot <file.png> [seconds]`: like --snapshot, but the window stays visible (an invisible window
         // is not redrawn after a click, so live changes need this one).
@@ -236,6 +273,22 @@ enum SteerifyMain {
         }
         if let i = CommandLine.arguments.firstIndex(of: "--resume-nudge-check"), i + 1 < CommandLine.arguments.count {
             MainActor.assumeIsolated { ResumeNudgeCheck.run(CommandLine.arguments[i + 1]) }
+            exit(0)
+        }
+        // Test hook: `--process-check <file>`: one turn ending per paragraph block (separated by a line "---"),
+        // prints rule vs Apple Intelligence verdict for each (ProcessCheck.swift).
+        if let i = CommandLine.arguments.firstIndex(of: "--process-check"), i + 1 < CommandLine.arguments.count {
+            let text = (try? String(contentsOfFile: CommandLine.arguments[i + 1], encoding: .utf8)) ?? ""
+            let sem = DispatchSemaphore(value: 0)
+            Task.detached {
+                print("ai ready: \(LocalAI.ready)")
+                for t in text.components(separatedBy: "\n---\n") where !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let v = await ProcessCheck.classify(t)
+                    print("\(ProcessCheck.ruleVerdict(t).rawValue)\t\(v.rawValue)\t\(t.split(separator: "\n").last.map { String($0.prefix(90)) } ?? "")")
+                }
+                sem.signal()
+            }
+            sem.wait()
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--interrupted-scan") {
@@ -380,6 +433,15 @@ struct SteerApp: App {
             let at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 3
             DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.focusItem(projectId: p.id, ref: a[i + 1]) }
         }
+        // Test hook: `--open-mockup <id> [screen]`: the mockup viewer on that screen (Mockups.swift).
+        if let i = a.firstIndex(of: "--open-mockup"), i + 1 < a.count {
+            let screen = (i + 2 < a.count ? Int(a[i + 2]) : nil) ?? 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                guard let p = m.projects.first(where: { m.board(for: $0).mockup(a[i + 1]) != nil }) else { return }
+                m.selectedProjectId = p.id
+                m.mockupOpen = MockupOpen(projectId: p.id, mockup: a[i + 1], screen: screen)
+            }
+        }
         if let i = a.firstIndex(of: "--focus"), i + 1 < a.count, let p = m.project {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { m.openCombo(projectId: p.id, ref: a[i + 1], startNew: false) }
         }
@@ -447,6 +509,7 @@ struct SteerApp: App {
             let stop = i + 2 < a.count && !a[i + 2].hasPrefix("--") ? a[i + 2] : "live"
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { ShipHandoffDemo.run(m, a[i + 1], stop: stop) }
         }
+        if let i = a.firstIndex(of: "--shells-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { ShellsDemo.run(m, a[i + 1]) } }
         if let i = a.firstIndex(of: "--flow-demo"), i + 1 < a.count { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SessionFlowDemo.run(m, a[i + 1]) } }
         // Test hook: `--stuck-demo <item ref>` opens a dry session (claude never starts): 20 s later its card says why + Restart.
         if let i = a.firstIndex(of: "--stuck-demo"), i + 1 < a.count, let p = m.project {

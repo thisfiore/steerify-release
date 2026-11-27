@@ -761,14 +761,33 @@ struct NoteField: View {
     init(placeholder: String, initial: String, fill: Bool = false, focusTrigger: Int = 0, marked: Bool = false, save: @escaping (String) -> Void) {
         self.placeholder = placeholder; self.initial = initial; self.fill = fill; self.focusTrigger = focusTrigger; self.marked = marked; self.save = save
     }
+    /// The test row's box is a text view that scrolls inside (wheel / trackpad over it, scroll bar when the note is
+    /// longer than the box): a vertical TextField clipped by the row never scrolls (request r261125-212025-fbc862e8).
+    @ViewBuilder private var editor: some View {
+        if fill {
+            TextEditor(text: $text)
+                .font(.system(size: S(12)))
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.automatic)
+                .padding(.horizontal, 2).padding(.vertical, 7)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .overlay(alignment: .topLeading) {
+                    if text.isEmpty {
+                        Text(placeholder).font(.system(size: S(12))).foregroundStyle(.tertiary)
+                            .padding(.horizontal, 7).padding(.vertical, 7).allowsHitTesting(false)
+                    }
+                }
+        } else {
+            TextField(placeholder, text: $text, axis: .vertical)
+                .textFieldStyle(.plain).font(.system(size: S(12)))
+                .lineLimit(1...4)
+                .padding(7)
+                .contentShape(Rectangle())
+                .onTapGesture { focused = true }
+        }
+    }
     var body: some View {
-        TextField(placeholder, text: $text, axis: .vertical)
-            .textFieldStyle(.plain).font(.system(size: S(12)))
-            .lineLimit(fill ? 1...12 : 1...4)
-            .padding(7)
-            .frame(maxHeight: fill ? .infinity : nil, alignment: .topLeading)
-            .contentShape(Rectangle())
-            .onTapGesture { focused = true }
+        editor
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.35)))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(marked ? Brand.amber.opacity(0.8) : Brand.line2, style: StrokeStyle(lineWidth: 1, dash: marked ? [] : [3, 2])))
             .focused($focused)
@@ -1625,6 +1644,7 @@ struct RoadTrackView: View {
                         Text(o).font(.system(size: S(12))).foregroundStyle(Brand.ink.opacity(0.75)).fixedSize(horizontal: false, vertical: true)
                     }
                     FeatureStrip(board: board, chapter: track)
+                    MockupStrip(board: board, chapter: track)
                 }
                 Spacer(minLength: 0)
                 FocusStar(board: board, chapter: track)

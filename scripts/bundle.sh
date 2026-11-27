@@ -51,6 +51,8 @@ cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/skills" && cp -R skills/steerify "$APP/Contents/Resources/skills/"
 # The pixel font for labels (Silkscreen, SIL OFL 1.1: the licence travels with it).
 mkdir -p "$APP/Contents/Resources/fonts" && cp fonts/Silkscreen-*.ttf fonts/Silkscreen-OFL.txt "$APP/Contents/Resources/fonts/"
+# Frenk's pixel face for the guide after setup (Onboarding.swift).
+mkdir -p "$APP/Contents/Resources/guide" && cp art/guide/*.png "$APP/Contents/Resources/guide/"
 # The demo project (Tiny Todo, frozen by scripts/demo-freeze.mjs): "Try the demo project" copies it out.
 [ -d demo/tiny-todo ] && mkdir -p "$APP/Contents/Resources/demo" && cp -R demo/tiny-todo "$APP/Contents/Resources/demo/"
 # What's new (the version badge's panel): this version's notes, when release.sh wrote them before bundling.

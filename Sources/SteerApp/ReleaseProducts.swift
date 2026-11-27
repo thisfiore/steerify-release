@@ -105,7 +105,8 @@ struct ProductState: Equatable {
         case pr.version.hasPrefix("task:"):
             let task = String(pr.version.dropFirst(5))
             let runs = ((BoardFiles.json(p.boardDir, "tasks.json") as? [String: Any])?["runs"] as? [[String: Any]] ?? [])
-                .filter { ($0["task"] as? String) == task && ($0["status"] as? String) == "ok" }
+                // "done" counts too: the build is out the moment the run hands in, before you OK it on Tasks.
+                .filter { ($0["task"] as? String) == task && ["ok", "done"].contains($0["status"] as? String ?? "") }
                 .sorted { ($0["finished"] as? String ?? "") < ($1["finished"] as? String ?? "") }
             if let r = runs.last {
                 let summary = (r["result"] as? [String: Any])?["summary"] as? String ?? ""
@@ -190,7 +191,7 @@ struct ReleaseProducts: View {
         states = out
         // Landed: its items are live and their key results done, so their feature sessions show released.
         model.landShips(p, states: out)
-        // Test hook (test copies only): `--demo-ship <product id> shipping|done|failed` opens the modal on that state.
+        // Test hook (test copies only): `--demo-ship <product id> shipping|done|failed|live` opens the modal on that state.
         let a = CommandLine.arguments
         if a.contains("--background"), let i = a.firstIndex(of: "--demo-ship"), i + 2 < a.count,
            runs.active.isEmpty, let pr = all.first(where: { $0.id == a[i + 1] }) {
@@ -201,6 +202,21 @@ struct ReleaseProducts: View {
             if a[i + 2] == "failed" {
                 runs.active[key]?.command = pr.deploy; runs.active[key]?.log = "lsregister: -u failed (exit 1)\nrelease.sh: line 88: build failed"
                 runs.finish(key, .failed("The release script stopped (code 1) before anything went out."))
+            }
+            // `live`: a Claude ship whose version never changes (a merged PR, no tag); its items turn live 2 s in.
+            if a[i + 2] == "live" {
+                let items = ready(pr, all).isEmpty ? board.ships.filter { $0.status != "live" && pr.owns($0, among: all) } : ready(pr, all)
+                runs.active[key]?.itemIds = items.map(\.id)
+                let log = { (s: String) in FileHandle.standardError.write(("[ship-live] " + s + "\n").data(using: .utf8)!) }
+                log("items=\(items.map(\.id)) phase=\(String(describing: runs.active[key]?.phase))")
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    model.setLive(items, in: p, live: true)
+                    try? await Task.sleep(for: .seconds(2))     // the board file watcher reloads it
+                    log("board says: \(model.board(for: p).ships.map { $0.id + "=" + ($0.status ?? "-") })")
+                    model.landShips(p, states: out)
+                    log("after live: phase=\(String(describing: runs.active[key]?.phase))")
+                }
             }
             if a.contains("--demo-ship-card") { runs.shown = nil }
         }
@@ -364,13 +380,20 @@ final class ShipRuns: ObservableObject {
         model.start(projectId: r.projectId, item: x, intent: .ship, extraBrief: brief, fresh: true)
     }
 
-    /// Products read again: a shipping one whose version changed is done.
+    /// Products read again: a shipping one whose version changed is done. So is one whose items are all live on the
+    /// board (re-delivered live by the release session): a merged pull request or a push with no tag / deploy record
+    /// leaves the version as it was, and the modal stayed on "Shipping…" (request r261127-154244).
     @discardableResult
-    func check(project: String, states: [String: ProductState]) -> [ShipRun] {
+    func check(project: String, states: [String: ProductState], live: Set<String> = []) -> [ShipRun] {
         var landed: [ShipRun] = []
         for (k, r) in active where r.projectId == project && r.phase == .shipping {
-            guard let st = states[r.product.id], st.version != "—", st.version != r.from.version else { continue }
-            finish(k, .done(st.version)); landed.append(r)
+            let st = states[r.product.id]
+            if let st, st.version != "—", st.version != r.from.version {
+                finish(k, .done(st.version)); landed.append(r)
+            } else if !r.itemIds.isEmpty, r.itemIds.allSatisfy(live.contains) {
+                let v = st.map(\.version).flatMap { $0 == "—" ? nil : $0 } ?? "live"
+                finish(k, .done(v)); landed.append(r)
+            }
         }
         return landed
     }
@@ -421,8 +444,9 @@ struct ShipModal: View {
                         Text("from \(r.from.version) · \(r.product.deploy == nil ? "Claude is on it" : "running its release")")
                             .font(.system(size: S(11.5), design: .monospaced)).foregroundStyle(Brand.mute)
                     case .done(let v):
-                        Text("\(r.product.name) \(v) is out").font(.system(size: S(22), weight: .heavy)).foregroundStyle(Brand.cream)
-                        Text("\(r.from.version) → \(v) · in \(Self.took(r.started))").font(.system(size: S(11.5), design: .monospaced)).foregroundStyle(Brand.green)
+                        // "live" = no new version to show (a merged PR, no tag): its items turned live on the board.
+                        Text(v == "live" ? "\(r.product.name) is out" : "\(r.product.name) \(v) is out").font(.system(size: S(22), weight: .heavy)).foregroundStyle(Brand.cream)
+                        Text((v == "live" ? "\(r.itemIds.count) item\(r.itemIds.count == 1 ? "" : "s") live" : "\(r.from.version) → \(v)") + " · in \(Self.took(r.started))").font(.system(size: S(11.5), design: .monospaced)).foregroundStyle(Brand.green)
                     case .failed(let why):
                         // Not an alarm: nothing broke for anyone, the boat just stayed in the harbour (request r261123-110518).
                         Text("\(r.product.name) stayed in the harbour").font(.system(size: S(20), weight: .heavy)).foregroundStyle(Brand.cream)

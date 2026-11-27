@@ -150,6 +150,7 @@ extension AppModel {
         else if turn != nil || s.status == .waiting { group = "turn" }
         else if case .ask? = outlook { group = "turn" }
         else if s.status == .working || s.status == .starting { group = "working" }
+        else if case .shells? = outlook { group = "working" }
         else { group = "idle" }
         let line: String
         if wrapped { line = outlook?.line ?? "done" }

@@ -87,7 +87,8 @@ extension AppModel {
 
     /// A run's product shows a new version: mark its items live and their key results done (from any tab).
     func landShips(_ p: Project, states: [String: ProductState]) {
-        let landed = ShipRuns.shared.check(project: p.id, states: states).flatMap(\.itemIds)
+        let live = Set(board(for: p).ships.filter { $0.status == "live" }.map(\.id))
+        let landed = ShipRuns.shared.check(project: p.id, states: states, live: live).flatMap(\.itemIds)
         guard !landed.isEmpty, AppModel.mayWriteBoards else { return }
         let items = board(for: p).ships.filter { landed.contains($0.id) && $0.status != "live" }
         if !items.isEmpty { setLive(items, in: p, live: true); _ = markRoadsDone(of: items, in: p) }

@@ -15,6 +15,8 @@ struct PreviewState: Identifiable {
     /// The item's pictures as they are now. A choice's option pictures are drawn off-screen on first ask, so on the
     /// first open only some exist: the preview asks again whenever a drawing lands (→ reaches B, C as they appear).
     var refresh: (@MainActor () -> [String])? = nil
+    /// The items Space walks through (same kind, waiting on you), fixed when the first one opened.
+    var walk: [String] = []
 }
 
 /// Full-window preview: ← / → between the item's images, pinch / ⌘+ / ⌘− / double-click to zoom, drag to pan,
@@ -44,6 +46,14 @@ struct PreviewOverlay: View {
     // Not remembered: a hidden panel used to stick across every preview (one stray "I" and the test, its ✓ and
     // the verdict were gone for good). Each preview opens with it; I / the sidebar button hide it for this one only.
     @State private var showPanel = true
+    // Focus on the feature (choice mac-fullscreen-focus, A): the part of the picture under test, from the delivery's
+    // focus or Apple Vision on the Mac. The picture opens zoomed on it; F shows the whole picture (kept per preview).
+    @State private var featureRect: CGRect?
+    @State private var whole = false
+    @State private var canvasSize: CGSize = .zero
+    // Choices whose option pictures are tall (phone shots) open with every option side by side; C toggles.
+    @State private var compare: Bool?
+    @State private var userMoved = false     // you zoomed / panned this picture yourself: focus leaves it alone
 
     private var img: String { state.images[state.index] }
     /// Pins on this picture, minus the one still being written (it shows as the draft).
@@ -58,9 +68,17 @@ struct PreviewOverlay: View {
                 toolbar
                 HStack(spacing: 0) {
                     VStack(spacing: 0) {
-                        GeometryReader { geo in canvas(in: geo.size) }
+                        if comparing, let d = decision {
+                            compareView(d)
+                        } else {
+                            GeometryReader { geo in
+                                canvas(in: geo.size)
+                                    .onAppear { canvasSize = geo.size }
+                                    .onChange(of: geo.size) { _, s in canvasSize = s; applyFocus() }
+                            }
                             .clipped()
-                        if state.images.count > 1 { strip }
+                            if state.images.count > 1 { strip }
+                        }
                     }
                     if showPanel { panel }
                 }
@@ -72,6 +90,11 @@ struct PreviewOverlay: View {
         .onReceive(MockSnapshots.shared.$version) { _ in refreshImages() }
         .onKeyPress(.leftArrow) { step(-1); return .handled }
         .onKeyPress(.rightArrow) { step(1); return .handled }
+        .onKeyPress(.space) {
+            // Space in a note box types a space; elsewhere: next picture, then the next item waiting on you.
+            if NSApp.keyWindow?.firstResponder is NSText || draft != nil { return .ignored }
+            spaceNext(); return .handled
+        }
         .onKeyPress(.escape) { if draft != nil { finishDraft() } else { close() }; return .handled }
         .onChange(of: draftText) { _, _ in
             guard draft != nil else { return }
@@ -82,7 +105,7 @@ struct PreviewOverlay: View {
             }
         }
         .onDisappear { finishDraft() }
-        .onKeyPress(characters: CharacterSet(charactersIn: "+=-0ni")) { k in
+        .onKeyPress(characters: CharacterSet(charactersIn: "+=-0nifc")) { k in
             // Typing in a note box (the test note, a pinned note) must never zoom or hide the panel.
             if NSApp.keyWindow?.firstResponder is NSText { return .ignored }
             switch k.characters {
@@ -91,6 +114,8 @@ struct PreviewOverlay: View {
             case "0": resetView()
             case "n": if draft == nil { pinMode.toggle() } else { return .ignored }
             case "i": if draft == nil { showPanel.toggle() } else { return .ignored }
+            case "f": if draft == nil, featureRect != nil { toggleWhole() } else { return .ignored }
+            case "c": if draft == nil, decision != nil, optionPictures.count > 1 { compare = !comparing } else { return .ignored }
             default: return .ignored
             }
             return .handled
@@ -102,12 +127,29 @@ struct PreviewOverlay: View {
     private var toolbar: some View {
         HStack(spacing: 12) {
             Text(state.title).font(.system(size: S(13), weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-            Text("\(state.index + 1) / \(state.images.count)").font(Brand.label(10)).foregroundStyle(Brand.mute)
+            progress
             Spacer()
-            Button { setZoom(zoom / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }.help("Zoom out (−)")
-            Text("\(Int(zoom * 100))%").font(.system(size: S(11)).monospacedDigit()).foregroundStyle(Brand.mute).frame(width: 44)
-            Button { setZoom(zoom * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }.help("Zoom in (+)")
-            Button("Fit") { resetView() }.help("Fit (0)")
+            walkPosition
+            if featureRect != nil && !comparing {
+                Button { toggleWhole() } label: {
+                    Label(whole ? "Focus" : "Whole", systemImage: whole ? "scope" : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: S(11.5), weight: .semibold))
+                }.foregroundStyle(whole ? Brand.cream : Brand.amber)
+                .help(whole ? "Zoom on the part under test (F)" : "Show the whole picture (F)")
+            }
+            if decision != nil && optionPictures.count > 1 {
+                Button { compare = !comparing } label: {
+                    Label(comparing ? "One by one" : "Side by side", systemImage: comparing ? "rectangle" : "rectangle.split.3x1")
+                        .font(.system(size: S(11.5), weight: .semibold))
+                }.help("Compare every option (C)")
+            }
+            if !comparing {
+                Divider().frame(height: 16)
+                Button { setZoom(zoom / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }.help("Zoom out (−)")
+                Text("\(Int(zoom * 100))%").font(.system(size: S(11)).monospacedDigit()).foregroundStyle(Brand.mute).frame(width: 44)
+                Button { setZoom(zoom * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }.help("Zoom in (+)")
+                Button("Fit") { resetView() }.help("Fit (0)")
+            }
             Divider().frame(height: 16)
             Button { withAnimation(.easeOut(duration: 0.15)) { showPanel.toggle() } } label: {
                 if showPanel { Image(systemName: "sidebar.right") }
@@ -120,6 +162,201 @@ struct PreviewOverlay: View {
         .buttonStyle(SteerButton()).foregroundStyle(Brand.cream)
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(Brand.bg.opacity(0.9))
+    }
+
+    // MARK: Where you are (test i of n · option B of 3 · item k of m) and what comes next
+
+    private struct Seg { let on: Bool; let color: Color }
+
+    /// One segment per test (green = OK, amber = to refine) or per option (amber = your pick); the current one is outlined.
+    @ViewBuilder private var progress: some View {
+        if let s = ship, !s.tests.isEmpty {
+            let fb = board.testFeedback(s), refs = board.testRefines(s)
+            let cur = s.tests.firstIndex { $0.img == img }
+            HStack(spacing: 8) {
+                segments(s.tests.indices.map { i in
+                    Seg(on: i == cur, color: refs.contains(i) ? Brand.amber : fb[i]?.ok == true ? Brand.green : Brand.line2)
+                })
+                Text(cur.map { "TEST \($0 + 1) OF \(s.tests.count)" } ?? "\(s.tests.count) TESTS · SCREENSHOT")
+                    .font(Brand.label(10)).foregroundStyle(cur == nil ? Brand.mute : Brand.blue)
+            }
+        } else if let d = decision, !d.options.isEmpty {
+            let o = option(d), picked = pickedIds(d)
+            HStack(spacing: 8) {
+                segments(d.options.map { x in Seg(on: x.id == o?.id, color: picked.contains(x.id) ? Brand.amber : Brand.line2) })
+                Text(o.map { "OPTION \(DecisionCard.letter($0, in: d)) OF \(d.options.count)" } ?? "\(d.options.count) OPTIONS")
+                    .font(Brand.label(10)).foregroundStyle(o == nil ? Brand.mute : Brand.cream)
+            }
+        } else {
+            Text("\(state.index + 1) / \(state.images.count)").font(Brand.label(10)).foregroundStyle(Brand.mute)
+        }
+    }
+
+    private func segments(_ xs: [Seg]) -> some View {
+        HStack(spacing: 3) {
+            ForEach(Array(xs.enumerated()), id: \.offset) { _, x in
+                RoundedRectangle(cornerRadius: 2).fill(x.color)
+                    .frame(width: xs.count > 8 ? 12 : 22, height: 5)
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(x.on ? Color.white : .clear, lineWidth: 1.5).padding(-1.5))
+            }
+        }
+    }
+
+    private func pickedIds(_ d: BoardDecision) -> Set<String> {
+        let v = board.verdict(d.id)
+        return d.multi ? Set((v.pick as? [String]) ?? []) : Set([v.pickString].compactMap { $0 })
+    }
+
+    private var walk: [String] { state.walkList(board: board) }
+    private var next: String? { state.nextRef(board: board) }
+
+    /// "2 of 7 to test · ␣ next" on the toolbar.
+    @ViewBuilder private var walkPosition: some View {
+        let w = walk
+        if w.count > 1, let i = w.firstIndex(of: state.ref) {
+            HStack(spacing: 6) {
+                Text("\(i + 1) of \(w.count) \(state.ref.hasPrefix("test:") ? "to test" : "choices")")
+                    .font(.system(size: S(11)).monospacedDigit()).foregroundStyle(Brand.mute)
+                keyCap("space")
+                Text(onLast ? "next item" : "next").font(.system(size: S(11))).foregroundStyle(Brand.mute)
+            }
+        }
+    }
+
+    private func keyCap(_ t: String) -> some View {
+        Text(t).font(.system(size: S(9.5), weight: .semibold, design: .monospaced)).foregroundStyle(Brand.cream)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Brand.line2))
+    }
+
+    /// Space goes to the next item from here (the last picture, or a choice shown side by side).
+    private var onLast: Bool { comparing || state.index >= state.images.count - 1 }
+
+    private func title(of ref: String) -> String {
+        board.ships.first { "test:" + $0.id == ref }?.title ?? board.decisions.first { "choice:" + $0.id == ref }?.title ?? ref
+    }
+
+    /// The next item, at the bottom of the side panel.
+    @ViewBuilder private var nextCard: some View {
+        if let n = next {
+            let w = walk
+            Button { open(n) } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) { header("NEXT", Brand.amber); keyCap("space") }
+                    Text(title(of: n)).font(.system(size: S(13), weight: .semibold)).foregroundStyle(Brand.cream)
+                        .lineLimit(2).multilineTextAlignment(.leading)
+                    if let k = w.firstIndex(of: n) {
+                        Text("\(k + 1) of \(w.count) \(n.hasPrefix("test:") ? "to test" : "choices")")
+                            .font(.system(size: S(11))).foregroundStyle(Brand.mute)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Brand.amberDim))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.amber.opacity(0.8)))
+                .contentShape(Rectangle())
+            }.buttonStyle(SteerButton()).help("Open the next one (Space on the last picture)")
+        } else if walk.count > 1 {
+            Text("Nothing else waits on you here").font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
+        }
+    }
+
+    private func spaceNext() {
+        if !onLast { step(1); return }
+        if let n = next { open(n) } else { model.showToast(state.ref.hasPrefix("test:") ? "Nothing else to test" : "No other choice waits on you") }
+    }
+
+    private func open(_ ref: String) {
+        finishDraft()
+        guard let s = PreviewState.item(ref, board: board, walk: walk) else { return }
+        model.preview = s
+    }
+
+    // MARK: Side by side (tall option pictures)
+
+    /// Option pictures of a choice, in option order.
+    private var optionPictures: [(o: BoardOption, img: String)] {
+        guard let d = decision else { return [] }
+        return d.options.compactMap { o in (o.shot ?? MockSnapshots.shared.picture(for: o, boardDir: state.dir)).map { (o, $0) } }
+    }
+    private var comparing: Bool {
+        if let c = compare { return c }
+        // Default on when every option picture is tall (a phone screen) and they fit side by side.
+        let ps = optionPictures
+        guard decision != nil, (2...4).contains(ps.count) else { return false }
+        return ps.allSatisfy { p in
+            let full = p.img.hasPrefix("/") ? p.img : (state.dir as NSString).appendingPathComponent(p.img)
+            guard let sz = ImageSize.of(full) else { return false }
+            return sz.height > sz.width * 1.2
+        }
+    }
+
+    private func compareView(_ d: BoardDecision) -> some View {
+        let picked = pickedIds(d)
+        return HStack(alignment: .top, spacing: 18) {
+            ForEach(optionPictures, id: \.o.id) { p in
+                let on = picked.contains(p.o.id)
+                VStack(spacing: 10) {
+                    HStack(spacing: 6) {
+                        Text(DecisionCard.letter(p.o, in: d)).font(.system(size: S(13), weight: .heavy, design: .monospaced))
+                            .foregroundStyle(on ? Color(hex: 0x1a1200) : Brand.amber)
+                            .frame(width: 22, height: 22).background(RoundedRectangle(cornerRadius: 5).fill(on ? Brand.amber : Brand.amberDim))
+                        Text(DecisionCard.name(p.o)).font(.system(size: S(13), weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                        if p.o.rec { Pill(text: "suggested", color: Brand.blue) }
+                    }
+                    BoardImage(dir: state.dir, path: p.img, height: max(canvasSize.height - 140, 300), onOpen: {
+                        if let i = state.images.firstIndex(of: p.img) { compare = false; state.index = i }
+                    })
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Brand.amber : Brand.line, lineWidth: on ? 2 : 1))
+                    Button { choose(p.o, in: d) } label: {
+                        Text(on ? "✓ Chosen" : "Choose \(DecisionCard.letter(p.o, in: d))").font(.system(size: S(12.5), weight: .bold))
+                            .foregroundStyle(on ? Brand.amber : Color(hex: 0x1a1200))
+                            .frame(maxWidth: 220).padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(on ? Brand.amberDim : Brand.amber))
+                    }.buttonStyle(SteerButton())
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(GeometryReader { g in Color.clear.onAppear { canvasSize = g.size }.onChange(of: g.size) { _, s in canvasSize = s } })
+    }
+
+    // MARK: Focus on the feature
+
+    /// The part of this picture under test: the delivery's focus, else Apple Vision's guess (on the Mac).
+    private func findFocus() {
+        let path = img, said = ship?.focus[path]
+        featureRect = said
+        applyFocus()
+        guard said == nil else { return }
+        let full = path.hasPrefix("/") ? path : (state.dir as NSString).appendingPathComponent(path)
+        Task { @MainActor in
+            let words = ship.flatMap { s in s.tests.first { $0.img == path }.map { $0.label + " " + ($0.check ?? "") } } ?? ""
+            let r = await FocusGuess.rect(for: full, words: words)
+            guard img == path, featureRect == nil else { return }
+            featureRect = r
+            applyFocus()
+        }
+    }
+
+    /// Zoom and pan so the feature fills the stage (with air around it), unless you asked for the whole picture.
+    private func applyFocus() {
+        guard let r = featureRect, !whole, !userMoved, image != nil, canvasSize.width > 0 else { return }
+        let fit = fitted(in: canvasSize)
+        guard fit.width > 0, r.width > 0, r.height > 0 else { return }
+        let z = min(min(canvasSize.width / (r.width * fit.width), canvasSize.height / (r.height * fit.height)) * 0.94, 4)
+        guard z > 1.25 else { return }     // a nudge crops more than it shows: keep the whole picture
+        let cx = (r.midX - 0.5) * fit.width, cy = (r.midY - 0.5) * fit.height
+        zoom = z; baseZoom = z
+        pan = CGSize(width: -cx * z, height: -cy * z); basePan = pan
+    }
+
+    private func toggleWhole() {
+        whole.toggle()
+        withAnimation(.easeOut(duration: 0.2)) {
+            if whole { zoom = 1; baseZoom = 1; pan = .zero; basePan = .zero } else { applyFocus() }
+        }
     }
 
     private func canvas(in size: CGSize) -> some View {
@@ -157,10 +394,10 @@ struct PreviewOverlay: View {
                     .offset(pan)
                     .gesture(DragGesture()
                         .onChanged { g in pan = CGSize(width: basePan.width + g.translation.width, height: basePan.height + g.translation.height) }
-                        .onEnded { _ in basePan = pan })
+                        .onEnded { _ in basePan = pan; userMoved = true })
                     .simultaneousGesture(MagnifyGesture()
                         .onChanged { g in zoom = min(max(baseZoom * g.magnification, 0.5), 8) }
-                        .onEnded { _ in baseZoom = zoom })
+                        .onEnded { _ in baseZoom = zoom; userMoved = true })
             } else {
                 ProgressView().controlSize(.small)
             }
@@ -238,6 +475,7 @@ struct PreviewOverlay: View {
                 if let s = ship { aboutShip(s) } else if let d = decision { aboutOption(d) }
                 notesSection
                 if let s = ship { shipActions(s) } else if let d = decision { choiceActions(d) }
+                nextCard
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -514,7 +752,7 @@ struct PreviewOverlay: View {
         image = nil
         Task.detached(priority: .userInitiated) {
             let i = NSImage(contentsOfFile: full)
-            await MainActor.run { image = i }
+            await MainActor.run { image = i; findFocus() }
         }
     }
 
@@ -529,8 +767,8 @@ struct PreviewOverlay: View {
     }
 
     private func step(_ d: Int) { if state.images.indices.contains(state.index + d) { state.index += d } }
-    private func setZoom(_ z: CGFloat) { zoom = min(max(z, 0.5), 8); baseZoom = zoom }
-    private func resetView() { zoom = 1; baseZoom = 1; pan = .zero; basePan = .zero; openPin = nil; finishDraft() }
+    private func setZoom(_ z: CGFloat) { userMoved = true; zoom = min(max(z, 0.5), 8); baseZoom = zoom }
+    private func resetView() { userMoved = false; zoom = 1; baseZoom = 1; pan = .zero; basePan = .zero; openPin = nil; finishDraft() }
     private func close() { finishDraft(); model.preview = nil }
     private func round3(_ v: Double) -> Double { (v * 1000).rounded() / 1000 }
 

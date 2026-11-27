@@ -1,4 +1,4 @@
-// The iPhone card: the big phone cycles through the app's screens (Ready, Test, Pick, Resume, Ask).
+// The iPhone card: the big phone cycles through the app's screens (Ready, Test, Pick, Resume, Ask, Reply, Squash).
 // Pauses on hover / focus and while off screen; a tap on a label jumps there. Reduced motion: no auto-advance.
 (function () {
   const f = document.querySelector('[data-rotate]'); if (!f) return;

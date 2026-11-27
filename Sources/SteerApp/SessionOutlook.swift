@@ -17,8 +17,10 @@ enum SessionOutlook: Equatable {
     case takenOver(String)
     case ask(String)
     case next(String)
+    /// Its turn ended but background shells it started still run (Claude carries on when they finish): not done.
+    case shells(Int)
 
-    var isDone: Bool { switch self { case .nothing, .onBoard, .takenOver: return true; case .ask, .next: return false } }
+    var isDone: Bool { switch self { case .nothing, .onBoard, .takenOver: return true; case .ask, .next, .shells: return false } }
 
     /// The short line under the session's name.
     var line: String {
@@ -28,6 +30,7 @@ enum SessionOutlook: Equatable {
         case .takenOver(let by): return "done · → \(by)"
         case .ask(let t): return "asks you: " + t
         case .next(let t): return "next: " + t
+        case .shells(let n): return "waiting · \(n) shell\(n == 1 ? "" : "s") still running"
         }
     }
 }
@@ -176,6 +179,7 @@ extension AppModel {
     }
     private func readOutlook(_ s: TerminalSession) -> SessionOutlook? {
         guard s.kind == .claude, s.running, s.status == .idle else { return nil }
+        if let n = s.backgroundShells { return .shells(n) }      // request r261127-154245
         if let item = s.item, let p = projects.first(where: { $0.id == s.projectId }),
            let l = board(for: p).takenOver(item: item.ref, claudeId: s.claudeId) {
             return .takenOver(SessionName.short(l.title ?? l.item, intent: l.intent))
@@ -249,8 +253,55 @@ extension AppModel {
         guard s.kind == .claude, s.running, s.status == .idle, let item = s.item,
               let p = projects.first(where: { $0.id == s.projectId }) else { return nil }
         switch outlook(s) {
-        case .ask?, .next?, .takenOver?: return nil
+        case .ask?, .next?, .takenOver?, .shells?: return nil
         default: return handedOff(s) ? nil : board(for: p).yourTurn(of: [item.ref] + s.alsoRefs)
+        }
+    }
+}
+
+// MARK: - Background shells still running (request r261127-154245-fb3486e7)
+//
+// Claude Code ends a turn while shells it started in the background still run ("done 4:12 PM · 2 shells still
+// running", footer "· 2 shells · ↓ to manage") and picks up again when they finish. Only its footer says so: read the
+// bottom rows of the terminal (a copied read, no selection).
+extension TerminalSession {
+    var backgroundShells: Int? {
+        guard kind == .claude, running else { return nil }
+        // The footer sits under the last output: the bottom of the screen, or higher up while the screen is not full.
+        let rows = view.terminalDimensions.rows
+        let lines = view.visibleRowsText(0..<rows).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return Self.shells(in: Array(lines.suffix(6)))
+    }
+
+    /// "· 2 shells", "2 shells still running", "1 background shell" → 2 / 1; nil when none. Rows are joined as they
+    /// are (a narrow terminal wraps "2 shells" over two rows).
+    static func shells(in lines: [String]) -> Int? {
+        let text = lines.joined()
+        let ms = text.ranges(of: #/\b([1-9][0-9]?) (?:background )?(?:shells?|bash(?:es)?)\b(?! (?:was|were|done|finished|completed))/#.ignoresCase())
+        guard let r = ms.last else { return nil }
+        return Int(text[r].prefix { $0.isNumber })
+    }
+}
+
+/// Test hook `--background --shells-demo <item ref>`: a dry session on the item, idle, whose terminal shows Claude Code's
+/// "2 shells still running" footer: logs whether it counts as done, then again once the footer is gone.
+enum ShellsDemo {
+    static func log(_ s: String) { FileHandle.standardError.write(("[shells] " + s + "\n").data(using: .utf8)!) }
+    @MainActor static func run(_ m: AppModel, _ r: String) {
+        guard CommandLine.arguments.contains("--background"), let p = m.project, let ref = ItemRef(ref: r),
+              let s = m.start(projectId: p.id, item: ref, intent: .build, dry: true) else { log("no session"); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            s.view.feed(text: "\u{1b}[2J\u{1b}[H")
+            s.view.feed(text: "* Churned for 3m 46s · done 4:12 PM · 2 shells still running\r\n\r\n> \r\n>> auto mode on · 2 shells · ↓ to manage\r\n")
+            s.status = .idle; s.statusAt = Date().addingTimeInterval(-600)
+            TurnMemo.clear(); m.sessionsChanged()
+            log("footer on: shells=\(String(describing: s.backgroundShells)) line=\(m.outlook(s)?.line ?? "-") wrapped=\(m.isWrapped(s)) closeable=\(m.wrappedSessions(of: p.id).count)")
+            if CommandLine.arguments.contains("--shells-keep") { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                s.view.feed(text: "\u{1b}[2J\u{1b}[H* Churned for 9m 2s · done 4:21 PM\r\n\r\n> \r\n>> auto mode on\r\n")
+                TurnMemo.clear(); m.sessionsChanged()
+                log("footer off: shells=\(String(describing: s.backgroundShells)) line=\(m.outlook(s)?.line ?? "-") wrapped=\(m.isWrapped(s))")
+            }
         }
     }
 }

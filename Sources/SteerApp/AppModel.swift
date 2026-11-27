@@ -23,6 +23,8 @@ final class AppModel: ObservableObject {
     @Published var boardState: [String: BoardState] = [:]
     /// The image preview open over the window (nil = closed).
     @Published var preview: PreviewState?
+    /// The mockup viewer (Mockups.swift), over the board like the preview.
+    @Published var mockupOpen: MockupOpen?
     /// ⌘K palette.
     @Published var paletteOpen = false
     @Published var requestsListOpen = false           // Board › All Requests… (RequestsList.swift)
@@ -182,6 +184,8 @@ final class AppModel: ObservableObject {
 
     func focusItem(projectId: String, ref: String) {
         selectedProjectId = projectId
+        // A mockup opens in its viewer (Mockups.swift), over the board.
+        if ref.hasPrefix("mockup:") { mockupOpen = MockupOpen(projectId: projectId, mockup: String(ref.dropFirst(7))); return }
         focus = FocusRequest(projectId: projectId, ref: ref)
         highlightRef = ref
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in if self?.highlightRef == ref { self?.highlightRef = nil } }

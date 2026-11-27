@@ -278,6 +278,7 @@ struct MenuSessionRow: View {
             switch outlook {
             case .ask?: return ("asks you", Brand.amber)
             case .next?: return ("next step", Brand.cream)
+            case .shells(let n)?: return ("\(n) shell\(n == 1 ? "" : "s") running", Brand.blue)
             case let o? where o.isDone: return ("done", Brand.mute)
             default: break
             }

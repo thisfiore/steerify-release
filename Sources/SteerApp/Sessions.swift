@@ -57,6 +57,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     /// When the process was started, and why it still shows "warming up" after a while (StuckStart.swift).
     var launchedAt: Date?
     @Published var stuck: StuckStart?
+    /// The stop check (ProcessCheck.swift): what it found on the last stop, the turn it read, whether it just nudged.
+    @Published var processFlag: String?
+    var processSig: String?
+    var processNudgedLast = false
     /// The folder the session runs in when it is not the repo's own checkout (a feature worktree, Flow.swift),
     /// and what Steerify adds to its environment (STEERIFY_FLOW, STEERIFY_BRANCH…).
     var workdir: String?

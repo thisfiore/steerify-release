@@ -189,7 +189,29 @@ final class BugSquash: ObservableObject {
 
     static func cook(_ picked: [SquashBug], in p: Project, model: AppModel) {
         guard let first = picked.first else { return }
-        for b in picked { RequestLog.edit(p.boardDir, id: b.id) { $0["status"] = "working"; $0["note"] = "In a bug squash with \(picked.count - 1) other bug\(picked.count == 2 ? "" : "s")" } }
+        // On the roadmap now, all of them: each bug gets its "Fix: …" key result in Fixes & refinements, in progress,
+        // so the public roadmap and Known issues show what is being fixed and the reporters are told (request: bug squash → roadmap).
+        let board = model.board(for: p)
+        for b in picked {
+            let r = b.request
+            var became = r.became
+            if let road = became.first(where: { $0.hasPrefix("road:") }), let it = board.roadmap.first(where: { "road:" + $0.id == road }) {
+                if it.status != "done" { _ = SteerifyMCP.call("set_roadmap_status", ["item": it.text, "status": "wip"], board: p.boardDir) }
+            } else {
+                let name = (r.title?.isEmpty == false ? r.title! : r.short)
+                var line = "Fix: " + (name.count > 90 ? String(name.prefix(87)) + "…" : name)
+                if board.roadmap.contains(where: { $0.text == line }) { line += " (\(r.id))" }
+                let res = SteerifyMCP.call("add_roadmap_item", ["chapter": RequestLog.fixesChapter, "text": line, "status": "wip", "kind": "core",
+                                                                "area": r.area ?? "", "request": r.id, "for": r.chapter ?? "", "create": true], board: p.boardDir)
+                if !res.1 { became.append("road:" + BoardFiles.slug(line)) }
+            }
+            RequestLog.edit(p.boardDir, id: b.id) {
+                $0["status"] = "working"; $0["became"] = became
+                $0["note"] = "In a bug squash with \(picked.count - 1) other bug\(picked.count == 2 ? "" : "s")"
+            }
+        }
+        board.reload()
+        model.syncFeedbackInbox(force: true)   // reporters get "In progress" now, not at the next sync
         var item = ItemRef(ref: "request:" + first.id)!
         item.title = "Bug squash · \(picked.count) bug\(picked.count == 1 ? "" : "s")"
         item.area = first.request.area
@@ -218,7 +240,7 @@ final class BugSquash: ObservableObject {
         }
         out.append("""
             For each bug, one at a time (follow the steerify skill, intent `intake`, Fix):
-            - No key result yet → add_roadmap_item in "\(RequestLog.fixesChapter)" ("Fix: <short title>", kind core, request = its id, for = its chapter); mark it wip.
+            - Its key result is already on the roadmap (Fixes & refinements, wip): it is public, and its reporter was told it is in progress. For a feedback-form bug set `public` in update_request (≤ 10 product words, no client or person names).
             - Reproduce it, fix it, test it yourself.
             - Deliver one To test card per bug (road = that key result), mark it review.
             - update_request (id, status, became[], one-line note) and, for a feedback-form report, an `answer` draft for the reporter.

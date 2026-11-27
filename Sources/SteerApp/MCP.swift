@@ -106,6 +106,9 @@ enum SteerifyMCP {
         ["name": "notify",
          "description": "Tell the user in the Steerify window (a toast), optionally jumping to an item. Use after delivering, when a choice is waiting, or when you need them.",
          "inputSchema": schema(["message": str, "ref": str], ["message"])],
+        ["name": "add_mockup",
+         "description": "Host a feature's mockup in Steerify (shown on its chapter, opens full size like an artifact; the user pins notes and says Looks right). Write the screens first in the board folder: mockups/<id>/v<N>/<n>-<name>.html built with the project kit (../../../kit/…, one <section> or a whole screen, realistic data), or pictures. {id (slug), title, chapter (exact chapter name), road? (key result text), note? (what changed in this version), themes? ([\"dark\",\"light\"] if the screens follow prefers-color-scheme), screens: [{file (relative to mockups/<id>/) | proto (relative to the board, e.g. protos/x.html?v=A), caption (≤ 8 words), device? (desktop | phone), focus? ([x, y, w, h] 0–1: the key part to check and decide on; the viewer frames it, dims the rest and can zoom on it, the chapter strip shows it cropped), focusLabel? (what to check there, ≤ 6 words)}]}. Give a focus whenever one part of the screen is what the decision is about. Same id = a new version (v1 stays for comparison). Read the user's notes with get_item mockup:<id>.",
+         "inputSchema": schema(["id": str, "title": str, "chapter": str, "road": str, "note": str, "themes": ["type": "array", "items": str], "screens": ["type": "array", "items": ["type": "object"]]], ["id", "title", "chapter", "screens"])],
     ]
 
     /// Soft checks on a task report: Steerify draws it either way, but tells Claude what breaks the standard.
@@ -482,6 +485,8 @@ enum SteerifyMCP {
             let tips = reportTips(a["report"], failed: failed)
             if !tips.isEmpty { msg += "\n\nReport standard (fix with finish_task again, same run):\n" + tips.map { "- " + $0 }.joined(separator: "\n") }
             return (msg, false)
+        case "add_mockup":
+            return addMockup(a, board: board)
         case "notify":
             guard let m = a["message"] as? String else { return ("message is required", true) }
             var info: [String: String] = ["action": "notify", "message": m, "board": board]
@@ -493,6 +498,53 @@ enum SteerifyMCP {
     }
 
     // MARK: Helpers
+
+    /// add_mockup: mockups/<id>/mockup.json gets a new version (the screens must already be on disk).
+    static func addMockup(_ a: [String: Any], board: String) -> (String, Bool) {
+        guard let id = a["id"] as? String, !id.isEmpty, id == BoardFiles.slug(id) else { return ("id is required, as a slug (lowercase, dashes)", true) }
+        guard let title = a["title"] as? String, !title.isEmpty, let chapter = a["chapter"] as? String, !chapter.isEmpty else { return ("title and chapter are required", true) }
+        let tracks = (BoardFiles.json(board, "board.json") as? [String: Any])?["tracks"] as? [[String: Any]] ?? []
+        guard tracks.contains(where: { $0["name"] as? String == chapter }) else { return ("no chapter named \(chapter): use the exact name", true) }
+        let raw = a["screens"] as? [[String: Any]] ?? []
+        guard !raw.isEmpty else { return ("screens is required: [{file, caption, device}]", true) }
+        let folder = (board as NSString).appendingPathComponent("mockups/\(id)")
+        var screens: [[String: Any]] = [], missing: [String] = []
+        for s in raw {
+            var x: [String: Any] = ["caption": s["caption"] as? String ?? "", "device": s["device"] as? String == "phone" ? "phone" : "desktop"]
+            if let f = s["focus"] as? [Any] {
+                let r = f.compactMap { ($0 as? NSNumber)?.doubleValue }
+                guard r.count == 4, r.allSatisfy({ (0...1).contains($0) }), r[2] > 0, r[3] > 0 else { return ("focus must be [x, y, w, h], 0–1 from the top-left of the screen", true) }
+                x["focus"] = r
+            }
+            if let l = s["focusLabel"] as? String, !l.isEmpty { x["focusLabel"] = l }
+            if let f = s["file"] as? String, !f.isEmpty {
+                x["file"] = f
+                let path = (folder as NSString).appendingPathComponent(f.split(separator: "?").first.map(String.init) ?? f)
+                if !FileManager.default.fileExists(atPath: path) { missing.append("mockups/\(id)/\(f)") }
+            } else if let p = s["proto"] as? String ?? s["img"] as? String, !p.isEmpty {
+                x["proto"] = p
+                let path = (board as NSString).appendingPathComponent(p.split(separator: "?").first.map(String.init) ?? p)
+                if !FileManager.default.fileExists(atPath: path) { missing.append(p) }
+            } else { return ("each screen needs file (in mockups/\(id)/) or proto (in the board)", true) }
+            screens.append(x)
+        }
+        if !missing.isEmpty { return ("write these screens first: " + missing.joined(separator: ", "), true) }
+        let file = (folder as NSString).appendingPathComponent("mockup.json")
+        var m = (FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
+        var versions = m["versions"] as? [[String: Any]] ?? []
+        let v = (versions.compactMap { $0["v"] as? Int }.max() ?? 0) + 1
+        var ver: [String: Any] = ["v": v, "at": RequestLog.now(), "screens": screens]
+        if let n = a["note"] as? String, !n.isEmpty { ver["note"] = n }
+        versions.append(ver)
+        m["id"] = id; m["title"] = title; m["chapter"] = chapter; m["versions"] = versions
+        if let r = a["road"] as? String, !r.isEmpty { m["road"] = r }
+        if let t = a["themes"] as? [String] { m["themes"] = t.filter { ["dark", "light"].contains($0) } }
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        guard let data = try? JSONSerialization.data(withJSONObject: m, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
+              (try? data.write(to: URL(fileURLWithPath: file), options: .atomic)) != nil else { return ("could not write \(file)", true) }
+        ui(["action": "focus", "ref": "track:" + BoardFiles.slug(chapter), "message": "Mockup v\(v): \(title)", "board": board])
+        return ("mockup \(id) v\(v) (\(screens.count) screens) on chapter \(chapter)", false)
+    }
 
     struct AreaError: Error { let message: String }
 
@@ -715,8 +767,23 @@ enum SteerifyMCP {
             out["task"] = t
             out["runs"] = Array(runs.filter { $0["task"] as? String == parts[1] }.sorted { ($0["started"] as? String ?? "") > ($1["started"] as? String ?? "") }.prefix(8))
             if let e = t["every"] as? String, let s = TaskSchedule(e) { out["schedule"] = s.describe }
+        case "mockup":
+            guard let d = FileManager.default.contents(atPath: (board as NSString).appendingPathComponent("mockups/\(parts[1])/mockup.json")),
+                  let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return ("no mockup \(parts[1])", true) }
+            out["mockup"] = m
+            let entry = dec["mockup:" + parts[1]] as? [String: Any] ?? [:]
+            let cur = (m["versions"] as? [[String: Any]] ?? []).compactMap { $0["v"] as? Int }.max() ?? 1
+            out["current_version"] = cur
+            out["looks_right"] = entry["pick"] as? String == "ok" && (entry["v"] as? Int) == cur
+            out["note"] = entry["note"] ?? ""
+            let pins = (entry["pins"] as? [[String: Any]] ?? []).filter { ($0["v"] as? Int ?? cur) == cur }
+            out["pinned_notes"] = pins.map { p -> [String: Any] in
+                let img = p["img"] as? String ?? ""
+                return ["note": p["note"] ?? "", "x": p["x"] ?? 0, "y": p["y"] ?? 0, "screen": img, "file": (board as NSString).appendingPathComponent(img.split(separator: "?").first.map(String.init) ?? img)]
+            }
+            out["how_to_read_the_answer"] = "looks_right = the user approved the current version: build it. pinned_notes = notes on a screen of the current version (x/y 0–1 from the top-left of the screen): each is a required change; make a new version with add_mockup (same id) and say per note what you did. note = about the whole mockup."
         default:
-            return ("unknown ref kind; use test:, choice:, req:, road:, track:, reqs:, request:, task:", true)
+            return ("unknown ref kind; use test:, choice:, req:, road:, track:, reqs:, request:, task:, mockup:", true)
         }
         return (jsonString(out), false)
     }

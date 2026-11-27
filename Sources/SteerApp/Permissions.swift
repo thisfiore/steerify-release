@@ -151,6 +151,11 @@ extension AppModel {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { PermissionSheet.renderShot(to: out, granted: grant) }
             return
         }
+        if let i = a.firstIndex(of: "--perm-peek-shot"), i + 1 < a.count {   // PermissionPeek.swift: bar + open view as PNGs
+            let out = a[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { PermissionPeekView.renderShots(to: out) }
+            return
+        }
         guard !a.contains("--background") || forced else { return }
         PermissionStore.shared.observe()
         let due = Prefs.store.string(forKey: PermissionCheck.key) != PermissionCheck.stamp

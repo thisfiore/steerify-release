@@ -338,6 +338,7 @@ final class BoardStore: ObservableObject {
         else if let i = r.range(of: "/.steerify/") { r = String(r[i.upperBound...]) }   // /private/var vs /var
         let top = r.split(separator: "/").first.map(String.init) ?? r
         if ["img", "protos", "kit", "briefs", ".git"].contains(top) { return nil }
+        if top == "mockups" && !r.hasSuffix("/mockup.json") { return nil }   // a mockup's screens: only its manifest counts
         let name = (r as NSString).lastPathComponent
         if name.hasPrefix(".") || name.hasSuffix(".prev.json") || name.hasSuffix(".tmp") || name.contains(".sb-") || name.hasSuffix("~") { return nil }
         if ["perf.jsonl", "deliver.mjs", "README.md"].contains(name) { return nil }
@@ -651,6 +652,14 @@ final class BoardStore: ObservableObject {
         return out
     }
 
+    /// A mockup's verdict (mockups/<id>/mockup.json): "ok" = Looks right on version `version`; nil clears it.
+    func setMockup(_ id: String, version: Int, pick: String?, note: String? = nil) {
+        update("mockup:" + id) { c in
+            if let pick { c["pick"] = pick } else { c.removeValue(forKey: "pick") }; c["v"] = version
+            if let note { c["note"] = note }
+        }
+    }
+
     func setRequirement(_ r: Requirement, pick: String, note: String? = nil) {
         update("req:" + r.id) { c in
             c["pick"] = pick
@@ -904,7 +913,7 @@ extension BoardStore {
     static func key(for ref: String) -> String {
         if ref.hasPrefix("test:") { return "ship:" + ref.dropFirst(5) }
         if ref.hasPrefix("choice:") { return String(ref.dropFirst(7)) }
-        if ref.hasPrefix("req:") { return ref }
+        if ref.hasPrefix("req:") || ref.hasPrefix("mockup:") { return ref }
         return "pin:" + ref
     }
 

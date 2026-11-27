@@ -44,6 +44,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.sessionsFollowTab, store: Prefs.store) private var followTab = true
     @AppStorage(Prefs.defaultFlow, store: Prefs.store) private var defaultFlow = WorkFlow.main.rawValue
     @AppStorage(Prefs.remoteControl, store: Prefs.store) private var remoteControl = true
+    @AppStorage("processCheck", store: Prefs.store) private var processCheck = true
     @AppStorage(Prefs.terminalOverlay, store: Prefs.store) private var terminalOverlay = true
     @AppStorage(Prefs.autoConsolidate, store: Prefs.store) private var autoConsolidate = true
 
@@ -180,6 +181,8 @@ struct SettingsView: View {
                     pref("terminal", "Session list follows the tab", "Sessions on the open tab first, the others folded. The one you're in and the ones that need you always show.", $followTab)
                     divider
                     pref("phone", "Open sessions on your phone", "New Claude sessions start with Remote Control: tap one in Steerify for iPhone to continue it in the Claude app. Needs a claude.ai login (Pro, Max, Team, Enterprise).", $remoteControl)
+                    divider
+                    pref("test", "Check how Claude stops", "When a session stops with a question for you in the chat, Steerify asks Claude once to put it on the board as a choice. Apple Intelligence tells board questions from chat-only ones (a password, a permission), on your Mac.", $processCheck)
                     divider
                     pref("terminal", "Recap and screenshots over the terminal", "Coming back to a session after 5 min shows where it is (a title and 2 lines, made on this Mac). Your last 3 screenshots float above the prompt: click one to paste it.", $terminalOverlay)
                 }

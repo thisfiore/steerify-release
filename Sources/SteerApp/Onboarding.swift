@@ -12,7 +12,7 @@ import SwiftUI
 @MainActor final class Onboarding: ObservableObject {
     static let shared = Onboarding()
 
-    enum Step: String { case off = "", pending, resume, request, requestSheet, done }
+    enum Step: String { case off = "", pending, resume, request, requestSheet, farewell, done }
     private static let stepKey = "onbStep", seenKey = "onbSeen"
 
     @Published private(set) var step: Step
@@ -79,76 +79,134 @@ struct OnbResumeAnchor: ViewModifier {
     }
 }
 
-// MARK: - The pixel mate (24 × 24, drawn like PixelScene / LevelArt)
+// MARK: - Frenk's pixel face (the one on the site + HQ; choice onboarding-guide-character A)
+//
+// art/guide/frenk.png = 4 faces (neutral, brow up, squint, smirk), frenk-laugh.png = neutral + laugh.
+// Bundled in Contents/Resources/guide by scripts/bundle.sh; `swift run` reads them from the repo.
 
-struct PixelMate: View {
-    enum Pose { case idle, point, wave, think }
-    var pose: Pose = .idle
-    var size: CGFloat = 96
+enum FrenkMood { case neutral, brow, squint, smirk, laugh }
+
+@MainActor enum FrenkFace {
+    private static func sheet(_ name: String) -> NSImage? {
+        if let u = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "guide"), let i = NSImage(contentsOf: u) { return i }
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../art/guide/\(name).png")
+        return NSImage(contentsOf: repo)
+    }
+    private static var cache: [String: CGImage] = [:]
+    private static func cut(_ name: String, _ i: Int, of n: Int) -> CGImage? {
+        let key = "\(name)#\(i)"
+        if let c = cache[key] { return c }
+        guard let img = sheet(name), let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let w = cg.width / n
+        let out = cg.cropping(to: CGRect(x: i * w, y: 0, width: w, height: cg.height))
+        cache[key] = out
+        return out
+    }
+    static func image(_ m: FrenkMood) -> CGImage? {
+        switch m {
+        case .neutral: cut("frenk", 0, of: 4)
+        case .brow: cut("frenk", 1, of: 4)
+        case .squint: cut("frenk", 2, of: 4)
+        case .smirk: cut("frenk", 3, of: 4)
+        case .laugh: cut("frenk-laugh", 1, of: 2)
+        }
+    }
+    static var available: Bool { image(.neutral) != nil }
+}
+
+/// The face in its amber frame with the name plate. Talking: the mouth opens and closes; at rest a smirk now and then.
+struct FrenkPortrait: View {
+    var mood: FrenkMood = .neutral
+    var talking = false
+    var size: CGFloat = 120
     @Environment(\.controlActiveState) private var windowState
 
     var body: some View {
-        // Pauses when the window is not in front (idle CPU budget, requirement onb-perf).
-        if windowState == .inactive {
-            canvas(0)
-        } else {
-            TimelineView(.periodic(from: .now, by: 0.14)) { t in canvas(Int(t.date.timeIntervalSinceReferenceDate / 0.14)) }
+        VStack(spacing: 0) {
+            Group {
+                // Pauses when the window is not in front (idle CPU budget, requirement onb-perf).
+                if windowState == .inactive { face(mood) } else {
+                    TimelineView(.periodic(from: .now, by: 0.15)) { t in face(frame(Int(t.date.timeIntervalSinceReferenceDate / 0.15))) }
+                }
+            }
+            .frame(width: size, height: size)
+            .background(Color(hex: 0x0b0c10))
+            .overlay(Rectangle().stroke(Brand.amber, lineWidth: 3))
+            Text("FRENK").font(Brand.label(10)).tracking(1).foregroundStyle(Color(hex: 0x1a1200))
+                .frame(width: size + 3).padding(.vertical, 3).background(Brand.amber)
         }
     }
-
-    private func canvas(_ t: Int) -> some View {
-        Canvas { ctx, sz in
-            let px = sz.width / 24
-            func r(_ c: Color, _ x: Int, _ y: Int, _ w: Int, _ h: Int) {
-                ctx.fill(Path(CGRect(x: CGFloat(x) * px, y: CGFloat(y) * px, width: CGFloat(w) * px, height: CGFloat(h) * px)), with: .color(c))
-            }
-            let skin = Color(hex: 0xf2c79a), ink = Color(hex: 0x16171c), coat = Brand.blue
-            let bob = (t >> 2) % 2
-            r(Brand.amber, 7, 2 + bob, 10, 2); r(Brand.amber, 5, 4 + bob, 14, 1)            // captain's hat
-            r(ink, 7, 3 + bob, 10, 1)
-            r(skin, 8, 5 + bob, 8, 6)                                                       // face
-            if t % 22 == 0 { r(skin, 10, 7 + bob, 4, 1) } else { r(ink, 10, 7 + bob, 1, 1); r(ink, 13, 7 + bob, 1, 1) }
-            r(ink, 10, 9 + bob, 4, 1)
-            r(coat, 7, 11, 10, 8); r(Brand.cream, 11, 11, 2, 8); r(Brand.amber, 11, 13, 2, 1) // coat, shirt, buckle
-            r(ink, 8, 19, 3, 3); r(ink, 13, 19, 3, 3)                                       // boots
-            switch pose {
-            case .point: r(coat, 5, 12, 2, 5); r(coat, 17, 12, 5, 2); r(skin, 22, 12, 2, 2)
-            case .wave:
-                let up = (t >> 1) % 2 == 0
-                r(coat, 5, 12, 2, 5); r(coat, 17, up ? 8 : 10, 2, 4); r(skin, 17, up ? 6 : 8, 2, 2)
-            case .think:
-                r(coat, 5, 12, 2, 5); r(skin, 14, 10 + bob, 2, 2)
-                if (t >> 2) % 3 == 0 { r(Brand.cream, 19, 2, 2, 2); r(Brand.cream, 21, 0, 1, 1) }
-            case .idle: r(coat, 5, 12, 2, 5); r(coat, 17, 12, 2, 5)
-            }
+    private func frame(_ t: Int) -> FrenkMood {
+        if talking { return t % 2 == 1 ? (mood == .laugh ? .smirk : .laugh) : mood }
+        return t % 40 == 0 && mood != .laugh ? .smirk : mood
+    }
+    @ViewBuilder private func face(_ m: FrenkMood) -> some View {
+        if let cg = FrenkFace.image(m) {
+            Image(decorative: cg, scale: 1).resizable().interpolation(.none).aspectRatio(contentMode: .fit)
+        } else {
+            Text("F").font(Brand.label(40)).foregroundStyle(Brand.amber)
         }
-        .frame(width: size, height: size)
     }
 }
 
-/// Cream speech bubble with a hard pixel shadow (the site / onboarding art look).
-struct MateBubble<Buttons: View>: View {
+/// An RPG dialogue box: Frenk on the left, the text typing itself out (click it to show it all), buttons below.
+/// Markdown in `say`: **bold** comes out amber.
+struct FrenkSays<Buttons: View>: View {
+    var mood: FrenkMood = .neutral
     let title: String
-    let text: Text
+    let say: String
     var dots: String? = nil
-    var width: CGFloat = 300
+    var width: CGFloat = 600
+    var face: CGFloat = 120
     @ViewBuilder var buttons: Buttons
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased()).font(Brand.label(10.5)).tracking(0.8).foregroundStyle(Color(hex: 0x7a4a00))
-            text.font(.system(size: S(13))).foregroundStyle(Color(hex: 0x16171c)).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                if let dots { Text(dots).font(.system(size: S(10), design: .monospaced)).foregroundStyle(Color(hex: 0x7b7f8a)) }
-                Spacer(minLength: 0)
-                buttons
-            }.padding(.top, 4)
+    @State private var shown = 0
+
+    private var full: AttributedString {
+        var a = (try? AttributedString(markdown: say)) ?? AttributedString(say)
+        for r in a.runs where r.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+            a[r.range].foregroundColor = Brand.amber
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
+        return a
+    }
+    private var total: Int { full.characters.count }
+    /// What is typed so far, plus the rest invisible: the box keeps its size while the text appears.
+    private var typed: AttributedString {
+        let a = full, n = min(shown, a.characters.count)
+        let cut = a.characters.index(a.startIndex, offsetBy: n)
+        var rest = AttributedString(a[cut...]); rest.foregroundColor = .clear
+        return AttributedString(a[..<cut]) + rest
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            FrenkPortrait(mood: mood, talking: shown < total, size: S(face))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title.uppercased()).font(Brand.label(10.5)).tracking(1).foregroundStyle(Brand.amber)
+                Text(typed).font(.system(size: S(13.5))).foregroundStyle(Brand.cream).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentShape(Rectangle()).onTapGesture { shown = total }
+                HStack(spacing: 12) {
+                    if let dots { Text(dots).font(.system(size: S(10), design: .monospaced)).foregroundStyle(Brand.mute) }
+                    Spacer(minLength: 0)
+                    buttons
+                }
+            }
+        }
+        .padding(12)
         .frame(width: S(width), alignment: .leading)
-        .background(ZStack {   // hard pixel shadow under the cream
-            Rectangle().fill(Color(hex: 0x16171c)).offset(x: 4, y: 4)
-            Rectangle().fill(Brand.cream)
-        })
+        .fixedSize(horizontal: false, vertical: true)   // as tall as its text, never the whole window
+        .background(Color(hex: 0x16171c))
+        .overlay(Rectangle().inset(by: 5).stroke(Brand.amber, lineWidth: 2))
+        .overlay(Rectangle().stroke(Brand.cream, lineWidth: 3))
+        .background(Rectangle().fill(Color.black).offset(x: 6, y: 6))
+        .task(id: say) {
+            shown = 0
+            while shown < total {
+                try? await Task.sleep(for: .milliseconds(22))
+                if Task.isCancelled { return }
+                shown += 1
+            }
+        }
     }
 }
 
@@ -159,9 +217,10 @@ struct MateButton: View {
     var body: some View {
         Button(action: action) {
             Text(title).font(.system(size: S(11.5), weight: primary ? .bold : .regular, design: primary ? .monospaced : .default))
-                .foregroundStyle(primary ? Brand.amber : Color(hex: 0x5a5a5a))
+                .foregroundStyle(primary ? Color(hex: 0x1a1200) : Brand.mute)
                 .padding(.horizontal, primary ? 10 : 2).padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 3).fill(primary ? Color(hex: 0x16171c) : .clear))
+                .background(Rectangle().fill(primary ? Brand.amber : .clear))
+                .background(Rectangle().fill(primary ? Color.black : .clear).offset(x: 3, y: 3))
         }.buttonStyle(SteerButton())
     }
 }
@@ -188,6 +247,7 @@ struct OnboardingHost: View {
                 switch onb.step {
                 case .resume: resumeStep(g)
                 case .request: requestStep(g)
+                case .farewell: farewell(g)
                 default: EmptyView()
                 }
             }
@@ -196,7 +256,7 @@ struct OnboardingHost: View {
         .onChange(of: onb.step) { _, _ in advance() }
         .onChange(of: board.roadmap.count) { _, _ in advance() }
         .onChange(of: model.requestProjectId) { _, id in
-            if id == nil, onb.step == .requestSheet { onb.go(.done); model.showToast("Guide done. Replay it any time: Help → Show the Steerify Guide.") }
+            if id == nil, onb.step == .requestSheet { onb.go(.farewell) }
         }
         // Resume pressed on the chapter itself (not in the bubble): same as the bubble's button.
         .onChange(of: model.sessions.count) { _, _ in
@@ -212,7 +272,8 @@ struct OnboardingHost: View {
         case .pending:
             if let t = onb.chapterToResume(board, model) { onb.target = t; onb.go(.resume); show(t) } else { onb.go(.request) }
         case .resume:
-            if onb.target == nil, let t = onb.chapterToResume(board, model) { onb.target = t; show(t) }
+            // Back after a relaunch: point at the chapter again, but never pull you to the Roadmap by yourself.
+            if onb.target == nil, let t = onb.chapterToResume(board, model) { onb.target = t }
             if onb.target == nil { onb.go(.request) }
         default: break
         }
@@ -250,13 +311,11 @@ struct OnboardingHost: View {
                     .allowsHitTesting(false)
                     .onAppear { withAnimation(.easeInOut(duration: 0.7).repeatForever()) { pulse = true } }
             }
-            mate(.point,
-                 title: "Your roadmap",
-                 text: Text("A chapter is one goal, split in key results. ")
-                    + Text("\(t)").bold() + Text(": \(done) of \(items.count) done")
-                    + (next.map { Text(", next ") + Text($0.text.prefix(60) + ($0.text.count > 60 ? "…" : "")).bold() } ?? Text(""))
-                    + Text(". ") + Text("Resume").bold() + Text(" opens Claude on it: it checks what really exists, then starts the next step."),
-                 dots: "● ○ ○") {
+            FrenkSays(mood: .neutral, title: "Your roadmap · 1/3",
+                      say: "Hi, I'm Frenk, I made Steerify. This is your roadmap: one chapter, one goal. **\(t)** is \(done) of \(items.count) done"
+                        + (next.map { ", next up **\($0.text.prefix(60))\($0.text.count > 60 ? "…" : "")**" } ?? "")
+                        + ". Hit **Resume** and Claude checks what really exists, then rows on.",
+                      dots: "● ○ ○") {
                 MateButton(title: "Skip guide", primary: false) { onb.skipAll() }
                 MateButton(title: "Later", primary: false) { onb.go(.request) }
                 MateButton(title: "Resume it ▶") { resume() }
@@ -269,31 +328,30 @@ struct OnboardingHost: View {
         ZStack(alignment: .topTrailing) {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("▲ + Request").font(Brand.label(11)).foregroundStyle(Brand.amber).padding(.trailing, 8)
-                mate(.wave, title: "Ask for anything",
-                     text: Text("A fix, a feature, a job to do: write it in your words with ") + Text("+ Request").bold()
-                        + Text(" (⌘N). Claude files it in the right place and asks you only what it can't guess."),
-                     dots: "● ● ○") {
+                FrenkSays(mood: .smirk, title: "Ask for anything · 2/3",
+                          say: "Want something new? A fix, a feature, a chore you hate: hit **+ Request** (⌘N) and say it like you'd tell a friend. Claude files it and only asks what it can't guess.",
+                          dots: "● ● ○", width: 520, face: 96) {
                     MateButton(title: "Skip", primary: false) { onb.skipAll() }
                     MateButton(title: "Try it ⌘N") { onb.go(.requestSheet); model.requestOpen = true }
                 }
             }
-            .padding(.top, 6).padding(.trailing, 30)
+            .padding(.top, 8).padding(.trailing, 30)
         }
         .frame(width: g.size.width, height: g.size.height, alignment: .topTrailing)
     }
 
-    private func mate<B: View>(_ pose: PixelMate.Pose, title: String, text: Text, dots: String, @ViewBuilder buttons: () -> B) -> some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            PixelMate(pose: pose, size: S(84))
-            MateBubble(title: title, text: text, dots: dots, width: 320) { buttons() }
+    @ViewBuilder private func farewell(_ g: GeometryProxy) -> some View {
+        FrenkSays(mood: .laugh, title: "That's it · 3/3",
+                  say: "You steer, Claude rows. Lost? **⌘J** jumps to whatever waits on you. I'm in **Help** if you miss me.",
+                  width: 520, face: 96) {
+            MateButton(title: "Let's go") { withAnimation { onb.go(.done) } }
         }
-        .fixedSize()
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        .position(x: g.size.width / 2, y: g.size.height * 0.4)
     }
 
     /// Below-left of the button it points at (the mate's hand towards it), kept inside the board.
     private func bubbleCenter(_ g: GeometryProxy, near rect: CGRect?) -> CGPoint {
-        let w = S(84) + 8 + S(320), h = S(170)
+        let w = S(600), h = S(175)
         guard let rect else { return CGPoint(x: g.size.width / 2, y: S(150)) }
         var x = rect.maxX - w / 2 - 24, y = rect.maxY + 14 + h / 2
         if y + h / 2 > g.size.height - 10 { y = rect.minY - 14 - h / 2 }
@@ -309,20 +367,17 @@ struct OnbRequestTip: View {
     let fill: (String) -> Void
     var body: some View {
         if onb.step == .requestSheet {
-            HStack(alignment: .top, spacing: 10) {
-                PixelMate(pose: .think, size: S(56))
+            HStack(alignment: .top, spacing: 12) {
+                FrenkPortrait(mood: .brow, size: S(64))
                 VStack(alignment: .leading, spacing: 6) {
-                    (Text("One line is enough. ").bold()
-                     + Text("Steerify sorts it before Claude starts: a ") + Text("fix").bold() + Text(" or ") + Text("refinement").bold()
-                     + Text(" lands in Fixes, a ") + Text("feature").bold() + Text(" becomes a draft chapter you approve, a ")
-                     + Text("task").bold() + Text(" goes to Tasks, a ") + Text("question").bold() + Text(" comes back as a choice."))
+                    (Text("One line is enough. ").bold().foregroundColor(Brand.amber)
+                     + Text("Steerify sorts it first: a ") + Text("fix").bold() + Text(" lands in Fixes, a ") + Text("feature").bold()
+                     + Text(" becomes a draft chapter you approve, a ") + Text("task").bold() + Text(" goes to Tasks, a ")
+                     + Text("question").bold() + Text(" comes back as a choice. No pressure: Esc and nothing is sent."))
                         .font(.system(size: S(12))).foregroundStyle(Brand.ink).fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
-                        Button { fill("Customers should get an email when their order ships") } label: {
-                            Text("Use an example").font(.system(size: S(11), weight: .semibold)).foregroundStyle(Brand.amber)
-                        }.buttonStyle(SteerButton())
-                        Text("· Esc to close, nothing is sent").font(.system(size: S(11))).foregroundStyle(Brand.mute)
-                    }
+                    Button { fill("Customers should get an email when their order ships") } label: {
+                        Text("Use an example").font(.system(size: S(11), weight: .semibold)).foregroundStyle(Brand.amber)
+                    }.buttonStyle(SteerButton())
                 }
             }
             .padding(10)
@@ -340,27 +395,23 @@ struct OnbFirstCard: View {
     @ObservedObject private var onb = Onboarding.shared
     var body: some View {
         if onb.shouldExplain(kind.rawValue) {
-            HStack(alignment: .center, spacing: 12) {
-                PixelMate(pose: kind == .choice ? .think : .point, size: S(64))
-                MateBubble(title: kind == .choice ? "Your first choice" : "Your first test", text: text, dots: "first time only", width: 520) {
+            HStack(spacing: 0) {
+                FrenkSays(mood: kind == .choice ? .brow : .squint, title: kind == .choice ? "Your first choice" : "Your first test",
+                          say: say, dots: "first time only", width: 640, face: 96) {
                     MateButton(title: "Got it") { withAnimation { onb.markSeen(kind.rawValue) } }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 4)
+            .padding(.top, 4).padding(.bottom, 10)
             .transition(.opacity)
         }
     }
-    private var text: Text {
+    private var say: String {
         switch kind {
         case .choice:
-            return Text("Claude stopped here because only you can decide. Look at the options (open them live), ")
-                + Text("pick one").bold() + Text(", add a note to mix or change it. Claude then ")
-                + Text("builds your pick").bold() + Text(" and puts it in ") + Text("To test").bold() + Text(".")
+            return "Claude stopped: only you can decide this one (yes, the power). Look at the options, **pick one**, mix them with a note. Claude builds your pick and brings it to **To test**."
         case .test:
-            return Text("Claude built this and tried it. Open each link and look at the picture, then: ")
-                + Text("OK").bold() + Text(" ships it with the next release, ") + Text("Refine").bold()
-                + Text(" sends your note back for a new version, ") + Text("Broken").bold() + Text(" says it doesn't work. Notes on pictures count too.")
+            return "Claude says it works. Trust, but click. Open each link, look at the picture, then **OK** ships it with the next release, **Refine** sends your note back, **Broken**… you know."
         }
     }
 }

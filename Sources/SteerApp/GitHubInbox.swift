@@ -146,6 +146,7 @@ extension AppModel {
         feedbackInboxTestHook()   // FeedbackInbox.swift: the users' feedback inbox runs on the same clock
         branchGuardTestHook()     // BranchGuard.swift
         answerSendTestHook()      // Answers.swift
+        startAnswersLiveCheck()   // Answers.swift: replies set to Send when live go out once the fix is live
     }
 
     /// `force`: ignore the 10-minute spacing (the --github-inbox test hook).
