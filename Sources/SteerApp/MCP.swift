@@ -163,6 +163,14 @@ enum SteerifyMCP {
                                  + "(e.g. …/image/<id>, steerify://open?project=<p>&item=test:<id>), or leave url out if the picture is the test")
                 }
             }
+            // A Lab case link needs its case in this board (cases/<id>/case.json), else the button opens nothing.
+            for (i, t) in testList.enumerated() {
+                guard let u = t["url"] as? String, let c = URLComponents(string: u), c.scheme == "steerify", c.host == "case" else { continue }
+                let cid = c.queryItems?.first { $0.name == "id" }?.value ?? ""
+                if TestLab.load(board: board, id: cid) == nil {
+                    wrong.append("test \(i + 1): no case \"\(cid)\" in this board. Write cases/\(cid)/case.json ({title, item}) and cases/\(cid)/board/ (the Lab's board files) first")
+                }
+            }
             let reach = TestEnvs.reach(tests: testList)
             wrong += reach.broken
             if !wrong.isEmpty {

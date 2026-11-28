@@ -412,7 +412,10 @@ struct BugSquashChip: View {
                         Text("\(n) BUG\(n == 1 ? "" : "S")").font(Brand.label(9)).tracking(0.7)
                     }
                     .foregroundStyle(Brand.red).padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(Brand.red.opacity(0.08)))
                     .overlay(Capsule().stroke(Brand.red.opacity(0.55)))
+                    // The whole pill clicks, not only the beetle and the letters.
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain).pointerStyle(.link)
                 .help("\(n) bug\(n == 1 ? "" : "s") from \(p.name)'s users: pick the urgent ones and let Claude fix them")

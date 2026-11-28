@@ -94,7 +94,7 @@ final class MockSnapshots: NSObject, ObservableObject, WKNavigationDelegate {
             let kit = base.appendingPathComponent("kit")
             let kitFiles = ((try? fm.contentsOfDirectory(atPath: kit.path)) ?? []).map { kit.appendingPathComponent($0).path }
             let m = ([file!.path] + kitFiles).map { (try? fm.attributesOfItem(atPath: $0)[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0 }.max() ?? 0
-            seed = "proto:\(proto)#\(m)"
+            seed = "proto2:\(proto)#\(m)"      // proto2: drawn at the end of their animations
         } else if let h = option.mockHTML {
             html = h; seed = "v3:\(option.simple):html:\(h)"
         } else { return nil }
@@ -168,6 +168,13 @@ final class MockSnapshots: NSObject, ObservableObject, WKNavigationDelegate {
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 450_000_000)        // let web fonts and images settle
+            // Animated prototypes (schemes that draw in): picture the end state, never the first frame. One-shot
+            // animations jump to their end; endless ones (marching arrows, pulses) are paused at their start.
+            _ = try? await webView.evaluateJavaScript("""
+                document.getAnimations().forEach(a => { try { const t = a.effect.getComputedTiming();
+                  if (isFinite(t.endTime)) a.finish(); else { a.currentTime = 0; a.pause(); } } catch (e) {} }); 1
+                """)
+            try? await Task.sleep(nanoseconds: 120_000_000)
             let cfg = WKSnapshotConfiguration()
             cfg.rect = CGRect(x: 0, y: 0, width: Self.W, height: Self.H)
             cfg.snapshotWidth = NSNumber(value: Double(Self.W * 3))     // 3× for a crisp picture

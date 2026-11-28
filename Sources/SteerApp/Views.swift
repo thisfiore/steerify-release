@@ -49,6 +49,11 @@ struct ContentView: View {
                     }
                 }
                 .overlay {
+                    if let cl = model.choiceLive, cl.projectId == p.id {
+                        ChoiceLiveViewer(board: model.board(for: p), open: cl).id(cl.id)
+                    }
+                }
+                .overlay {
                     if let mo = model.mockupOpen, mo.projectId == p.id {
                         MockupViewer(board: model.board(for: p), open: mo).id(mo.id)
                     }
@@ -679,13 +684,7 @@ struct RestartToUpdate: View {
     @State private var hovering = false
     var body: some View {
         let up = AppUpdater.shared
-        Button { model.confirmRestartForUpdate() } label: {
-            Label("Update", systemImage: "arrow.triangle.2.circlepath").labelStyle(.titleAndIcon)
-                .foregroundStyle(Color(hex: 0x05210f)).font(.system(size: S(11.5), weight: .semibold))
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(Color(hex: 0x4ade80)))
-        }
-        .buttonStyle(SteerButton())
+        PixelCTA(title: "Update", color: Brand.green, small: true, icon: "update", ink: Color(hex: 0x05210f)) { model.confirmRestartForUpdate() }
         .help(up.readyVersion == nil ? "A new build of Steerify is ready (⌥⌘R). Your sessions come back: Claude conversations resume with their history." : "")
         .onHover { h in
             hovering = h

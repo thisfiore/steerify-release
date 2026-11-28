@@ -88,6 +88,7 @@ struct MockupOpen: Identifiable {
     let projectId: String
     let mockup: String
     var screen = 0
+    var note = false        // opened with ⌘-click: ready to pin a note
 }
 
 /// A screen's thumbnail: the picture itself, or the HTML drawn once off-screen (MockSnapshots).
@@ -153,7 +154,9 @@ struct MockupStrip: View {
             .padding(.top, 4)
         }
     }
-    private func open(_ m: Mockup, _ i: Int) { model.mockupOpen = MockupOpen(projectId: board.project.id, mockup: m.id, screen: i) }
+    private func open(_ m: Mockup, _ i: Int) {
+        model.mockupOpen = MockupOpen(projectId: board.project.id, mockup: m.id, screen: i, note: NSEvent.modifierFlags.contains(.command))
+    }
 }
 
 /// A live mockup screen: a web view on the HTML (scaled to fit by the kit's proto.js), light or dark.
@@ -190,6 +193,9 @@ struct MockupViewer: View {
     @State private var device: String? = nil
     @State private var dark = true
     @State private var noteMode = false
+    /// ⌘ held: a click on the screen pins a note, like everywhere in Steerify (test mockup-host, note on test 3).
+    @State private var cmdDown = false
+    @State private var flagsMonitor: Any?
     @State private var zoomed = false
     @State private var draft: CGPoint? = nil
     @State private var draftText = ""
@@ -234,7 +240,13 @@ struct MockupViewer: View {
             }
         }
         .focusable().focused($focused).focusEffectDisabled()
-        .onAppear { focused = true; overall = mockup.map { board.mockupVerdict($0).note } ?? ""; if mockup?.themes.first == "light" { dark = false } }
+        .onAppear {
+            flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { e in
+                cmdDown = e.modifierFlags.contains(.command); return e
+            }
+        }
+        .onDisappear { if let m = flagsMonitor { NSEvent.removeMonitor(m) }; flagsMonitor = nil }
+        .onAppear { focused = true; noteMode = open.note; overall = mockup.map { board.mockupVerdict($0).note } ?? ""; if mockup?.themes.first == "light" { dark = false } }
         .onKeyPress(.escape) { if draft != nil { draft = nil; draftText = "" } else { close() }; return .handled }
         .onKeyPress(.leftArrow) { if NSApp.keyWindow?.firstResponder is NSText { return .ignored }; step(-1); return .handled }
         .onKeyPress(.rightArrow) { if NSApp.keyWindow?.firstResponder is NSText { return .ignored }; step(1); return .handled }
@@ -282,7 +294,7 @@ struct MockupViewer: View {
             Button { noteMode.toggle(); if noteMode { zoomed = false } } label: {
                 Label(noteMode ? "Click the screen…" : "Note", systemImage: "mappin.and.ellipse").font(.system(size: S(11.5), weight: .semibold))
             }
-            .foregroundStyle(noteMode ? Brand.amber : Brand.cream).help("Pin a note on the screen (N)")
+            .foregroundStyle(noteMode ? Brand.amber : Brand.cream).help("Pin a note on the screen: ⌘-click it (or N, then click)")
             if v.v == m.current?.v {
                 Button {
                     board.setMockup(m.id, version: v.v, pick: verdict.ok ? nil : "ok")
@@ -325,13 +337,11 @@ struct MockupViewer: View {
         let all = board.mockupPins(m, version: v)
         return ZStack(alignment: .topLeading) {
             Group {
-                if s.isHTML, zoomed, let f = s.focus {
+                if s.isHTML, let z = zoom(s, w, h) {
                     // Zoom = a bigger page, moved so the key part fills the box (the kit re-fits it: sharp, no blur).
-                    let k = max(1, min(1 / f.width, 1 / f.height) * 0.92)
-                    let cx = f.midX * w * k - w / 2, cy = f.midY * h * k - h / 2
                     MockupWeb(dir: board.project.boardDir, path: s.path, dark: dark)
-                        .frame(width: w * k, height: h * k)
-                        .offset(x: -min(max(cx, 0), w * k - w), y: -min(max(cy, 0), h * k - h))
+                        .frame(width: w * z.k, height: h * z.k)
+                        .offset(x: -z.x, y: -z.y)
                         .frame(width: w, height: h, alignment: .topLeading)
                 } else if s.isHTML { MockupWeb(dir: board.project.boardDir, path: s.path, dark: dark) }
                 else { BoardImage(dir: board.project.boardDir, path: s.path, height: h, fit: true, focus: zoomed ? s.focus : nil) }
@@ -341,8 +351,11 @@ struct MockupViewer: View {
             .clipShape(RoundedRectangle(cornerRadius: s.device == "phone" ? 26 : 6))
             .overlay(RoundedRectangle(cornerRadius: s.device == "phone" ? 26 : 6).stroke(s.device == "phone" ? Brand.mute : Brand.line2, lineWidth: s.device == "phone" ? 3 : 1))
             // The key part: everything else dimmed, an amber frame and what to check there.
-            if let f = s.focus, !zoomed {
-                let r = CGRect(x: f.minX * w, y: f.minY * h, width: f.width * w, height: f.height * h)
+            if let f = s.focus {
+                // The frame follows the zoom: the key part stays marked, whatever else fits around it.
+                let z = s.isHTML ? zoom(s, w, h) : nil
+                let k = z?.k ?? 1, ox = z?.x ?? 0, oy = z?.y ?? 0
+                let r = CGRect(x: f.minX * w * k - ox, y: f.minY * h * k - oy, width: f.width * w * k, height: f.height * h * k)
                 Path { p in p.addRect(CGRect(x: 0, y: 0, width: w, height: h)); p.addRoundedRect(in: r, cornerSize: CGSize(width: 6, height: 6)) }
                     .fill(Color.black.opacity(0.45), style: FillStyle(eoFill: true)).allowsHitTesting(false)
                 RoundedRectangle(cornerRadius: 6).stroke(Brand.amber, lineWidth: 2)
@@ -354,8 +367,8 @@ struct MockupViewer: View {
                     .position(x: min(max(r.minX + 60, 60), w - 60), y: r.minY > 22 ? r.minY - 12 : r.maxY + 12)
                     .allowsHitTesting(false)
             }
-            // Note mode: a click anywhere on the screen drops a note there (the web view stays clickable otherwise).
-            if noteMode && !zoomed {
+            // ⌘-click (or Note mode): a click on the screen drops a note there; otherwise the web view stays clickable.
+            if (noteMode || cmdDown) && !zoomed {
                 Color.white.opacity(0.001).frame(width: w, height: h)
                     .onTapGesture(coordinateSpace: .local) { p in
                         draft = CGPoint(x: max(0, min(1, p.x / w)), y: max(0, min(1, p.y / h))); draftText = ""; draftFocused = true
@@ -370,6 +383,14 @@ struct MockupViewer: View {
         }
         .frame(width: w, height: h)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Zoom factor and offset for the screen's key part, or nil when not zoomed.
+    private func zoom(_ s: MockupScreen, _ w: CGFloat, _ h: CGFloat) -> (k: CGFloat, x: CGFloat, y: CGFloat)? {
+        guard zoomed, let f = s.focus else { return nil }
+        let k = max(1, min(1 / f.width, 1 / f.height) * 0.9)
+        let cx = f.midX * w * k - w / 2, cy = f.midY * h * k - h / 2
+        return (k, min(max(cx, 0), w * k - w), min(max(cy, 0), h * k - h))
     }
 
     private func marker(_ n: Int, draft: Bool = false) -> some View {
@@ -423,7 +444,7 @@ struct MockupViewer: View {
                     Button("Cancel") { draft = nil; draftText = "" }.foregroundStyle(Brand.mute)
                 }.buttonStyle(SteerButton()).font(.system(size: S(11.5)))
             }
-            Text(pins.isEmpty ? "NOTES · none yet (N, then click the screen)" : "NOTES · \(pins.count)").font(Brand.label(8)).tracking(0.7).foregroundStyle(Brand.mute)
+            Text(pins.isEmpty ? "NOTES · none yet (⌘-click the screen)" : "NOTES · \(pins.count)").font(Brand.label(8)).tracking(0.7).foregroundStyle(Brand.mute)
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(pins.enumerated()), id: \.offset) { n, p in

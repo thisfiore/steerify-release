@@ -120,11 +120,15 @@ enum PerfBench {
         step()
     }
 
-    static func click(_ w: NSWindow, x: Double, y: Double) {
+    static func click(_ w: NSWindow, x: Double, y: Double, flags: NSEvent.ModifierFlags = []) {
         guard let cv = w.contentView else { return }
         let p = NSPoint(x: x, y: cv.bounds.height - y)          // content coords are bottom-up
+        if !flags.isEmpty, let f = NSEvent.keyEvent(with: .flagsChanged, location: p, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                   windowNumber: w.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 55) {
+            NSApp.sendEvent(f)
+        }
         func send(_ type: NSEvent.EventType) {
-            if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                           windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
                 w.sendEvent(e)
             }

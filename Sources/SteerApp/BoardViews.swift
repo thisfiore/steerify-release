@@ -62,6 +62,10 @@ struct PixelIcon: View {
         "ship": ["....#....", "...###...", "..#####..", "....#....", "....#....", "#########", ".#######.", "..#####..", "........."],
         "rocket": ["......###", ".....####", "....#..#.", "...#####.", ".######..", "..####...", ".#.##....", "#.#......", "#........"],
         "boat": ["....#....", "....##...", "....###..", "....####.", "....#####", "....#....", "#########", ".#######.", "..#####.."],
+        "plus": [".........", "....#....", "....#....", "....#....", ".#######.", "....#....", "....#....", "....#....", "........."],
+        "claude": ["....#....", ".#..#..#.", "..#.#.#..", "...###...", "#########", "...###...", "..#.#.#..", ".#..#..#.", "....#...."],
+        "update": ["..#####..", ".#.....#.", "#.......#", "#.....###", "#......#.", "###......", ".#.....#.", "..#.....#", "..#####.."],
+        "check": [".........", "........#", ".......##", "#.....##.", "##...##..", ".##.##...", "..###....", "...#.....", "........."],
         "phone": ["..#####..", "..#...#..", "..#...#..", "..#...#..", "..#...#..", "..#...#..", "..#...#..", "..#.#.#..", "..#####.."],
     ]
     var body: some View {
@@ -824,6 +828,8 @@ struct BoardImage: View {
     /// Show only this part of the picture (0–1 rect from the top-left): the feature, not the whole window.
     var focus: CGRect? = nil
     var onOpen: (() -> Void)? = nil
+    /// What a click does, on the hover badge ("Preview" = the picture big; "Open live" for a prototype).
+    var openLabel = "Preview"
     @State private var image: NSImage?
     @State private var hover = false
     /// The box on screen (points), rounded up to 64 pt so a resize does not decode again on every pixel.
@@ -861,6 +867,8 @@ struct BoardImage: View {
                                     badge("WHOLE WINDOW · click to read", help: "This picture is a whole window shown small. Sessions should crop it to the feature or add focus.")
                                 }
                             }
+                            // On the picture itself, not in the black margin around a fitted one.
+                            .overlay(alignment: .bottomTrailing) { openBadge }
                     }
                     else { Image(nsImage: image).resizable().interpolation(.high).scaledToFill() }
                 }
@@ -868,31 +876,32 @@ struct BoardImage: View {
             .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(hover ? Brand.cream.opacity(0.35) : Brand.line, lineWidth: 1))
-        .overlay(alignment: .bottomTrailing) {
-            if hover && height >= 70 {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: S(9), weight: .bold))
-                    Text("Preview").font(.system(size: S(10.5), weight: .semibold))
-                    Text("· ⌘-click to pin").font(.system(size: S(10))).opacity(0.75)
-                }
-                .foregroundStyle(Color(hex: 0x1a1200))
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Brand.amber))
-                .padding(6)
-                .transition(.opacity)
-            }
-        }
+        .overlay(alignment: .bottomTrailing) { if !fit { openBadge } }
         .scaleEffect(hover ? 1.015 : 1)
         .shadow(color: .black.opacity(hover ? 0.5 : 0), radius: hover ? 8 : 0, y: hover ? 4 : 0)
         .animation(.easeOut(duration: 0.14), value: hover)
         .onHover { hover = $0 }
-        .pointerStyle(.zoomIn)
+        .pointerStyle(openLabel == "Preview" ? .zoomIn : .link)
         .contentShape(Rectangle())
         .onTapGesture { if let onOpen { onOpen() } else { NSWorkspace.shared.open(URL(fileURLWithPath: full)) } }
         .help("Click: preview · ⌘-click: preview ready to pin a note")
         .task(id: "\(path)#\(Self.key(full))#\(focus.map { "\($0)" } ?? "")#\(box)") {
             guard box != .zero else { return }
             image = await Self.load(full, focus: focus, box: box, fill: !fit)
+        }
+    }
+    @ViewBuilder private var openBadge: some View {
+        if hover && height >= 70 {
+            HStack(spacing: 4) {
+                Image(systemName: openLabel == "Preview" ? "arrow.up.left.and.arrow.down.right" : "play.rectangle").font(.system(size: S(9), weight: .bold))
+                Text(openLabel).font(.system(size: S(10.5), weight: .semibold))
+                Text("· ⌘-click to pin").font(.system(size: S(10))).opacity(0.75)
+            }
+            .foregroundStyle(Color(hex: 0x1a1200))
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 4).fill(Brand.amber))
+            .padding(6)
+            .transition(.opacity)
         }
     }
     private func badge(_ t: String, help: String) -> some View {
@@ -2137,25 +2146,11 @@ struct TestChapter: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }.help(c)
             }
-            HStack(spacing: 6) {
-                // No Test it when the link leads nowhere (an app link Steerify cannot act on): the picture is the test.
-                if let u0 = test.url, case let u = TestEnvs.boardFile(u0, board: board.project.boardDir) ?? u0, !TestEnvs.dead(u), let url = URL(string: u) {
-                    // A link that does not reach the feature (older deliveries) says so instead of looking like a test.
-                    let vague = TestEnvs.generic(u, envs: TestEnvs.load(board.project.boardDir))
-                    Button { if url.scheme == "steerify" { model.handle(url) } else { openTestLink(url) } } label: {
-                        HStack(spacing: 5) {
-                            if vague != nil { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: S(10.5))) }
-                            Text(vague == nil ? "Test it" : "Home page only").font(.system(size: S(12.5), weight: .bold))
-                            Image(systemName: "arrow.up.right").font(.system(size: S(10.5), weight: .bold))
-                        }
-                            .lineLimit(1).fixedSize()
-                            .foregroundStyle(vague == nil ? .white : Brand.amber).padding(.horizontal, 11).padding(.vertical, 6)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(vague == nil ? Color(hex: 0x3b6ff5) : .clear))
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(vague == nil ? .clear : Brand.amber.opacity(0.7)))
-                    }.buttonStyle(SteerButton()).help(vague.map { "This link opens \($0): \(u)\nSend it back with Refine to get a direct link." } ?? u)
-                    .contextMenu { OpenInMenu(url: url) }
-                }
-            }
+            // One full-width button that says where the test runs (request r261127-184321); no link → the picture.
+            let raw = test.url.map { TestEnvs.boardFile($0, board: board.project.boardDir) ?? $0 }
+            let place = TestWhere.of(raw, item: item, envs: TestEnvs.load(board.project.boardDir))
+            SmartTestButton(url: place == .picture ? nil : raw.flatMap(URL.init(string:)), raw: raw, place: place,
+                            openPicture: test.img.map { img in { openPicture(img) } })
             // The note box is always there and takes the rest of the row: writing a note is one click.
             NoteField(placeholder: flagged ? "What should change? Claude reads it" : "What is off?", initial: note, fill: true,
                       focusTrigger: focusNote, marked: flagged) { board.setTest(item, index: index, note: $0) }

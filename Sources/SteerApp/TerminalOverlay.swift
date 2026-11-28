@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftTerm
 import AppKit
 
 // MARK: - Terminal overlay (choice terminal-overlay-look, option A, from request r261125-112354)
@@ -120,25 +121,33 @@ struct TerminalOverlayLayer: View {
     @State private var thumbs: [URL: NSImage] = [:]
     @State private var shotWatch: DispatchSourceFileSystemObject?
     @State private var tick = 0
+    @State private var promptRows: Int?     // rows from the prompt box's top rule to the bottom (grows as you type)
 
     var body: some View {
         GeometryReader { geo in
             if on, session.kind == .claude {
                 // As many screenshots as fit the terminal's width (it can be a narrow column beside the board).
-                let fit = max(1, Int((geo.size.width - 28 + 8) / (S(92) + 8)))
+                let fit: Int = max(1, Int((geo.size.width - 28 + 8) / (S(92) + 8)))
+                let pad: CGFloat = bottomPad(geo.size.height)
                 VStack(spacing: 0) {
                     if showRecap, let r = recap { card(r).transition(.opacity.combined(with: .move(edge: .top))) }
                     Spacer(minLength: 0)
                     if !visibleShots.isEmpty { shotsRow(Array(visibleShots.prefix(fit))).transition(.opacity) }
                 }
                 .padding(.horizontal, 14).padding(.top, 10)
-                .padding(.bottom, promptHeight)
+                .padding(.bottom, pad)
+                .animation(.easeOut(duration: 0.12), value: promptRows)
                 .frame(width: geo.size.width, height: geo.size.height)
             }
         }
         .clipped()
         .animation(.easeOut(duration: 0.2), value: showRecap)
         .animation(.easeOut(duration: 0.2), value: visibleShots)
+        .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
+            guard on, !visibleShots.isEmpty, let t = session.view as? SteerTerminalView else { return }
+            let n = Self.promptRows(t.terminalStateSnapshot().visibleRows.map(\.text))
+            if n != promptRows { promptRows = n }
+        }
         .onAppear { appeared() }
         .onDisappear { disappeared() }
         .onChange(of: session.status) { _, s in if s == .idle || s == .waiting { Task { await load() } } }
@@ -304,6 +313,25 @@ struct TerminalOverlayLayer: View {
     }
 
     private func created(_ u: URL) -> Date { (try? u.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast }
+
+    /// Above the prompt box as it is now: it grows with what you type, so the strip moves up with it.
+    private func bottomPad(_ height: CGFloat) -> CGFloat {
+        guard let n = promptRows, let t = session.view as? SteerTerminalView else { return promptHeight }
+        let rows = max(t.terminalDimensions.rows, 1)
+        let rowHeight = height / CGFloat(rows)
+        return max(promptHeight, rowHeight * CGFloat(n) + 6)
+    }
+
+    /// Claude Code draws the prompt box between two "────" rules near the bottom: rows from the upper one to the end.
+    static func promptRows(_ lines: [String]) -> Int? {
+        let rows = lines.count
+        var rules: [Int] = []
+        for r in stride(from: rows - 1, through: max(0, rows - 40), by: -1) {
+            if lines[r].hasPrefix("──────") { rules.append(r); if rules.count == 2 { break } }
+        }
+        guard rules.count == 2 else { return nil }
+        return rows - rules[1]
+    }
 
     /// Claude Code's prompt box + status line (~5 rows) stay uncovered at the bottom.
     private var promptHeight: CGFloat {

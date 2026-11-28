@@ -7,16 +7,7 @@ struct NewRequestButton: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         if model.project != nil {
-            Button { model.requestOpen = true } label: {
-                HStack(spacing: 6) {
-                    Text("+ Request").font(.system(size: S(12), weight: .semibold))
-                    Text("⌘N").font(.system(size: S(10), design: .monospaced)).opacity(0.7)
-                }
-                .foregroundStyle(Color(hex: 0x1a1200))
-                .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Brand.amber))
-            }
-            .buttonStyle(SteerButton())
+            PixelCTA(title: "Request", small: true, icon: "plus", shortcut: "⌘N") { model.requestOpen = true }
             .help("New request (⌘N): a fix, a tweak, a feature, a question. Steerify files it, Claude takes it from there.")
         }
     }
@@ -306,7 +297,8 @@ struct RequestSheet: View {
             }
             .buttonStyle(SteerButton()).disabled(empty)
             .help("Saved and filed, no session (start it later from Recent requests)")
-            ClaudeButton(title: (pickProject ? "File it in \(project.name)" : "File it + start Claude") + "  ⌘↩", prominent: true) { send(fileOnly: false) }
+            PixelCTA(title: pickProject ? "File it in \(project.name)" : "File + build with Claude", color: Brand.claude,
+                     icon: "claude", shortcut: "⌘↩") { send(fileOnly: false) }
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(empty).opacity(empty ? 0.5 : 1)
         }

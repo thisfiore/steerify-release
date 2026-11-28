@@ -68,6 +68,12 @@ else
   fi
   [ -s $DEVNOTES ] && cp $DEVNOTES "$APP/Contents/Resources/whats-new.md"
 fi
+# The version badge's panel also shows the last 3 versions with app changes, from CHANGELOG.md (newest first).
+[ -f CHANGELOG.md ] && awk 'done{next}
+  /^## [0-9]/{ if (cnt>0) { printf "%s", buf; if (++n==3) { done=1; next } } buf=$0"\n"; cnt=0; app=0; next }
+  /^### /{ app=($0=="### In the app"); next }
+  app && /^- \*\*/{ buf=buf $0"\n"; cnt++ }
+  END{ if (!done && cnt>0) printf "%s", buf }' CHANGELOG.md > "$APP/Contents/Resources/whats-new-recent.md"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

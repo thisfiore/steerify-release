@@ -70,6 +70,8 @@ struct DecisionCard: View {
     private func load() {
         guard !loaded else { return }
         draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote
+        // Nothing answered yet: the suggested option starts picked, so one Save (⌘↩) agrees with it.
+        if !d.multi, savedPick == nil, savedNote.isEmpty, !board.isDecided(d), let rec = d.options.first(where: { $0.rec }) { draftPick = rec.id }
         focus = (savedPick != "__note" ? savedPick : nil) ?? stage?.id
         loaded = true
     }
@@ -173,17 +175,6 @@ struct DecisionCard: View {
                 if let o = stage { stageView(o) }
             }
             answerBar(decided)
-
-            HStack(alignment: .bottom, spacing: 6) {
-                // Once picked, building it is the main call to action: as big as "Your choice", Claude under it, same size.
-                VStack(spacing: 8) {
-                    if decided && !board.isBuilt(d) { ActionButton(title: Self.buildTitle(d, board: board), primary: true, large: true) { model.start(projectId: board.project.id, item: ref, intent: .build) } }
-                    ClaudeButton(title: "Discuss this with Claude", large: true) { model.start(projectId: board.project.id, item: ref, intent: .look) }
-                }.frame(maxWidth: 340)
-                Spacer()
-                Button(board.isParked(d) ? "Recover" : "Park for later") { board.setParked(d, !board.isParked(d)) }
-                    .buttonStyle(SteerButton()).font(.system(size: S(11.5))).foregroundStyle(Brand.mute)
-            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,192 +201,197 @@ struct DecisionCard: View {
         }
     }
 
-    /// One tab per option: letter, short name, a mark when it is suggested / chosen / blended in.
+    /// One pixel tab per option, the same look as Open live (choice card mockup, option bar A): big pixel letter,
+    /// short name, a mark when it is suggested / chosen / blended in. The option on the stage is filled amber.
     private var optionTabs: some View {
         HStack(spacing: 8) {
             ForEach(d.options) { o in
                 let on = stage?.id == o.id
                 let chosen = d.multi ? draftPicks.contains(o.id) : draftPick == o.id
                 let mixed = !d.multi && draftMix.contains(o.id)
+                let ink = on ? Color(hex: 0x1a1200) : Brand.cream
+                let mark = chosen ? (d.multi ? "✓ PICKED" : "✓ YOUR CHOICE") : mixed ? "BLENDED IN" : o.rec ? "SUGGESTED" : nil
                 Button { withAnimation(.easeOut(duration: 0.15)) { focus = o.id } } label: {
-                    HStack(spacing: 8) {
-                        Text(Self.letter(o, in: d)).font(.system(size: S(15), weight: .heavy, design: .rounded))
-                            .foregroundStyle(chosen ? Color(hex: 0x1a1200) : on ? Brand.cream : Brand.mute)
-                            .frame(width: S(28), height: S(28))
-                            .background(RoundedRectangle(cornerRadius: 7).fill(chosen ? Brand.amber : mixed ? Brand.blue.opacity(0.85) : on ? Brand.line2 : Brand.panel2))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(Self.name(o)).font(.system(size: S(12), weight: on ? .semibold : .medium)).foregroundStyle(on ? .white : Brand.ink.opacity(0.8)).lineLimit(1)
-                            Text(chosen ? (d.multi ? "picked" : "your choice") : mixed ? "blended in" : o.rec ? "suggested" : " ")
-                                .font(.system(size: S(10), weight: .semibold)).foregroundStyle(chosen ? Brand.amber : mixed ? Brand.blue : Brand.blue.opacity(0.8))
+                    HStack(spacing: 12) {
+                        Text(Self.letter(o, in: d)).font(.system(size: S(24), weight: .black, design: .monospaced)).foregroundStyle(ink)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Self.name(o)).font(.system(size: S(13), weight: on ? .bold : .semibold)).foregroundStyle(on ? ink : Brand.ink.opacity(0.85)).lineLimit(1)
+                            if let mark {
+                                Text(mark).font(.system(size: S(8.5), weight: .heavy, design: .monospaced)).tracking(0.8)
+                                    .foregroundStyle(on ? ink.opacity(0.7) : chosen ? Brand.amber : mixed ? Brand.blue : Brand.blue.opacity(0.85))
+                            }
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 9).padding(.vertical, 7)
-                    .frame(maxWidth: .infinity)
-                    .background(RoundedRectangle(cornerRadius: 9).fill(on ? Brand.panel2 : Color.clear))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(on ? Brand.cream.opacity(0.45) : Brand.line, lineWidth: on ? 1.5 : 1))
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, minHeight: S(54))
+                    .background(PixelBox(step: 3).fill(on ? Brand.amber : Brand.panel2))
+                    .overlay(PixelBox(step: 3).stroke(on ? .clear : chosen ? Brand.amber : mixed ? Brand.blue : Brand.line2, lineWidth: chosen || mixed ? 1.5 : 1))
                     .contentShape(Rectangle())
                 }.buttonStyle(SteerButton())
             }
         }
     }
 
-    /// The option on the stage: its picture big, what it means, one button to choose it.
+    /// The option on the stage (choice card mockup, body A): its picture full width, then one strip under it with
+    /// the name, the points, Open live, ‹ 1/2 › and the Choose button. No empty column beside the picture.
     private func stageView(_ o: BoardOption) -> some View {
         let chosen = d.multi ? draftPicks.contains(o.id) : draftPick == o.id
         let mixed = !d.multi && draftMix.contains(o.id)
         let pic = visual(o)
         let noted = !board.pins(d, option: o, picture: pic).isEmpty
         let i = d.options.firstIndex(of: o) ?? 0
-        return HStack(alignment: .top, spacing: 16) {
+        return VStack(alignment: .leading, spacing: 0) {
             Group {
                 if let v = pic {
-                    BoardImage(dir: board.project.boardDir, path: v, height: S(360), fit: true, onOpen: { openPreview(v) })
+                    BoardImage(dir: board.project.boardDir, path: v, height: S(380), fit: true,
+                               onOpen: {
+                                   // A prototype opens live (a picture zoom adds nothing); ⌘-click still opens the picture to pin a note.
+                                   if o.proto != nil && !NSEvent.modifierFlags.contains(.command) { model.choiceLive = ChoiceLiveOpen(projectId: board.project.id, decision: d.id, option: o.id) } else { openPreview(v) }
+                               }, openLabel: o.proto != nil ? "Open live" : "Preview")
                 } else if o.mockHTML != nil || o.proto != nil {
-                    RoundedRectangle(cornerRadius: 6).fill(Color.black).frame(height: S(360))
+                    RoundedRectangle(cornerRadius: 6).fill(Color.black).frame(height: S(380))
                         .overlay(VStack(spacing: 8) { ProgressView().controlSize(.small); Text("Drawing the mockup…").font(.system(size: S(11))).foregroundStyle(Brand.mute) })
                 } else {
-                    RoundedRectangle(cornerRadius: 6).fill(Color.black).frame(height: S(200))
-                        .overlay(Text(Self.letter(o, in: d)).font(.system(size: S(90), weight: .heavy, design: .rounded)).foregroundStyle(Brand.line2))
+                    RoundedRectangle(cornerRadius: 6).fill(Color.black).frame(height: S(160))
+                        .overlay(Text(Self.letter(o, in: d)).font(.system(size: S(80), weight: .black, design: .monospaced)).foregroundStyle(Brand.line2))
                 }
             }
             .frame(maxWidth: .infinity)
+            .padding(10)
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 6) {
-                    Text("OPTION \(Self.letter(o, in: d))").font(Brand.label(9.5)).tracking(1).foregroundStyle(Brand.mute)
-                    if o.rec { Pill(text: "suggested", color: Brand.blue) }
-                }
-                Text(Self.name(o)).font(.system(size: S(15.5), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            Rectangle().fill(Brand.line).frame(height: 1)
+
+            HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(o.points, id: \.self) { p in
-                        HStack(alignment: .firstTextBaseline, spacing: 7) {
-                            Circle().fill(Brand.cream.opacity(0.5)).frame(width: 4, height: 4).offset(y: -2)
-                            Text(p).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.88)).fixedSize(horizontal: false, vertical: true)
-                        }
+                    Text(Self.name(o)).font(.system(size: S(15.5), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 16) { ForEach(o.points, id: \.self) { p in Text(p).lineLimit(1).fixedSize() } }
+                        VStack(alignment: .leading, spacing: 4) { ForEach(o.points, id: \.self) { p in Text(p).fixedSize(horizontal: false, vertical: true) } }
                     }
+                    .font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.88)).textSelection(.enabled)
                 }
-                .textSelection(.enabled)
-                Spacer(minLength: 4)
-                Button { choose(o) } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: chosen ? "checkmark.circle.fill" : "hand.point.up.left.fill").font(.system(size: S(12), weight: .bold))
-                        Text(Self.chooseTitle(Self.letter(o, in: d), multi: d.multi, chosen: chosen, notes: noted)).font(.system(size: S(13.5), weight: .bold))
-                    }
-                    .foregroundStyle(chosen ? Brand.amber : Color(hex: 0x1a1200))
-                    .frame(maxWidth: .infinity).padding(.vertical, 9)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(chosen ? Brand.amberDim : Brand.amber))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.amber, lineWidth: chosen ? 1.5 : 0))
-                }.buttonStyle(SteerButton()).help(chosen ? "Click again to unselect" : "Make this your answer")
-                if !d.multi, draftPick != nil, !chosen {
-                    Button { toggleMix(o) } label: {
-                        Text(mixed ? "✓ Blended into your choice" : "+ Blend into my choice").font(.system(size: S(12), weight: .semibold))
-                            .foregroundStyle(mixed ? Color.black : Brand.blue)
-                            .frame(maxWidth: .infinity).padding(.vertical, 7)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(mixed ? Brand.blue : .clear))
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.blue.opacity(0.7)))
-                    }.buttonStyle(SteerButton()).help("Take something from this option too; say what in the note")
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 10) {
-                    if o.mockHTML != nil || o.proto != nil { Button("Open it live") { mock = o }.buttonStyle(.link).pointerStyle(.link) }
-                    Spacer()
+                    if o.mockHTML != nil || o.proto != nil { Button("Open it live") { model.choiceLive = ChoiceLiveOpen(projectId: board.project.id, decision: d.id, option: o.id) }.buttonStyle(.link).pointerStyle(.link) }
                     if d.options.count > 1 {
                         Button { focus = d.options[(i + d.options.count - 1) % d.options.count].id } label: { Image(systemName: "chevron.left") }.buttonStyle(SteerButton()).help("Previous option")
                         Text("\(i + 1) / \(d.options.count)").font(.system(size: S(11)).monospacedDigit()).foregroundStyle(Brand.mute)
                         Button { focus = d.options[(i + 1) % d.options.count].id } label: { Image(systemName: "chevron.right") }.buttonStyle(SteerButton()).help("Next option")
                     }
-                }.font(.system(size: S(11.5))).foregroundStyle(Brand.cream)
+                }.font(.system(size: S(11.5))).foregroundStyle(Brand.cream).fixedSize()
+                VStack(spacing: 6) {
+                    PixelCTA(title: Self.chooseTitle(Self.letter(o, in: d), multi: d.multi, chosen: chosen, notes: noted),
+                             icon: chosen ? "check" : "choice", selected: chosen) { choose(o) }
+                        .help(chosen ? "Click again to unselect" : "Make this your answer")
+                    if !d.multi, draftPick != nil, !chosen {
+                        Button { toggleMix(o) } label: {
+                            Text(mixed ? "✓ Blended in" : "+ Blend into my choice").font(.system(size: S(11.5), weight: .semibold))
+                                .foregroundStyle(mixed ? Color.black : Brand.blue)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(mixed ? Brand.blue : .clear))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.blue.opacity(0.7)))
+                        }.buttonStyle(SteerButton()).help("Take something from this option too; say what in the note")
+                    }
+                }
+                .fixedSize()
             }
-            .frame(width: S(270))
-            .frame(minHeight: S(200), alignment: .top)
+            .padding(.horizontal, 16).padding(.vertical, 12)
         }
-        .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Brand.panel2))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(chosen ? Brand.amber.opacity(0.8) : mixed ? Brand.blue.opacity(0.8) : Brand.line, lineWidth: chosen || mixed ? 1.5 : 1))
     }
 
     /// All options at once, one row each: a radio (or a checkbox for `multi`), letter, name, suggested; the points as
     /// bullets; the option's small mock as numbered steps. Click a row to choose it; "+ Blend in" on the others.
+    /// Simple options side by side (up to 3 a row, same height): compared at a glance, not read down a list.
     private var optionList: some View {
-        VStack(spacing: 8) {
-            ForEach(d.options) { o in
-                let chosen = d.multi ? draftPicks.contains(o.id) : draftPick == o.id
-                let mixed = !d.multi && draftMix.contains(o.id)
-                let steps = Self.mockSteps(o)
-                HStack(alignment: .top, spacing: 12) {
-                    Group {
-                        if d.multi {
-                            Image(systemName: chosen ? "checkmark.square.fill" : "square")
-                        } else {
-                            Image(systemName: chosen ? "largecircle.fill.circle" : mixed ? "plus.circle.fill" : "circle")
-                        }
-                    }
-                    .font(.system(size: S(17), weight: .medium))
-                    .foregroundStyle(chosen ? Brand.amber : mixed ? Brand.blue : Brand.mute)
-                    .padding(.top, 1)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Text(Self.letter(o, in: d)).font(.system(size: S(12), weight: .heavy, design: .rounded))
-                                .foregroundStyle(chosen ? Color(hex: 0x1a1200) : Brand.cream)
-                                .frame(width: S(22), height: S(22))
-                                .background(RoundedRectangle(cornerRadius: 6).fill(chosen ? Brand.amber : mixed ? Brand.blue.opacity(0.85) : Brand.line2))
-                            Text(Self.name(o)).font(.system(size: S(14), weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
-                            if o.rec { Pill(text: "suggested", color: Brand.blue) }
-                            if chosen { Pill(text: d.multi ? "picked" : "your choice", color: Brand.amber) }
-                            if mixed { Pill(text: "blended in", color: Brand.blue) }
-                            Spacer(minLength: 0)
-                        }
-                        if !o.points.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                ForEach(o.points, id: \.self) { p in
-                                    HStack(alignment: .firstTextBaseline, spacing: 7) {
-                                        Circle().fill(Brand.cream.opacity(0.5)).frame(width: 4, height: 4).offset(y: -2)
-                                        Text(p).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.88)).fixedSize(horizontal: false, vertical: true)
-                                    }
-                                }
-                            }
-                        }
-                        if !steps.isEmpty {
-                            // In a row with arrows when it fits, else one step per line.
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: 6) {
-                                    ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
-                                        if i > 0 { Image(systemName: "arrow.right").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute) }
-                                        stepChip(s).fixedSize()
-                                    }
-                                }
-                                VStack(alignment: .leading, spacing: 4) {
-                                    ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
-                                        HStack(spacing: 6) {
-                                            Text("\(i + 1)").font(.system(size: S(9.5), weight: .heavy, design: .monospaced)).foregroundStyle(Brand.mute).frame(width: S(12))
-                                            stepChip(s)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if !d.multi, draftPick != nil, !chosen {
-                        Button { toggleMix(o) } label: {
-                            Text(mixed ? "✓ Blended in" : "+ Blend in").font(.system(size: S(11), weight: .semibold))
-                                .foregroundStyle(mixed ? Color.black : Brand.blue)
-                                .padding(.horizontal, 9).padding(.vertical, 5)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(mixed ? Brand.blue : .clear))
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Brand.blue.opacity(0.7)))
-                        }.buttonStyle(SteerButton()).help("Take something from this option too; say what in the note")
-                    }
+        let per = d.options.count == 4 ? 2 : min(3, max(1, d.options.count))
+        let rows = stride(from: 0, to: d.options.count, by: per).map { Array(d.options[$0..<min($0 + per, d.options.count)]) }
+        return VStack(spacing: 8) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(row) { o in listCard(o) }
+                    if row.count < per { ForEach(0..<(per - row.count), id: \.self) { _ in Color.clear.frame(maxWidth: .infinity) } }
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 10).fill(chosen ? Brand.amberDim.opacity(0.6) : Brand.panel2))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(chosen ? Brand.amber.opacity(0.8) : mixed ? Brand.blue.opacity(0.8) : Brand.line, lineWidth: chosen || mixed ? 1.5 : 1))
-                .contentShape(Rectangle())
-                .onTapGesture { withAnimation(.easeOut(duration: 0.12)) { choose(o) } }
-                .pointerStyle(.link)
-                .help(chosen ? "Click again to unselect" : "Make this your answer")
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    /// One simple option (choice card mockup, consistent with the option bar): the pixel tab on top (big letter,
+    /// name, suggested / your choice), the points and steps under it, flush left. Click anywhere to choose it.
+    @ViewBuilder private func listCard(_ o: BoardOption) -> some View {
+        let chosen = d.multi ? draftPicks.contains(o.id) : draftPick == o.id
+        let mixed = !d.multi && draftMix.contains(o.id)
+        let steps = Self.mockSteps(o)
+        let ink = chosen ? Color(hex: 0x1a1200) : Brand.cream
+        let mark = chosen ? (d.multi ? "✓ PICKED" : "✓ YOUR CHOICE") + (o.rec ? " · SUGGESTED" : "") : mixed ? "BLENDED IN" : o.rec ? "SUGGESTED" : nil
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Text(Self.letter(o, in: d)).font(.system(size: S(24), weight: .black, design: .monospaced)).foregroundStyle(ink)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Self.name(o)).font(.system(size: S(14), weight: .bold)).foregroundStyle(chosen ? ink : .white).lineLimit(2)
+                    if let mark {
+                        Text(mark).font(.system(size: S(8.5), weight: .heavy, design: .monospaced)).tracking(0.8).lineLimit(1)
+                            .foregroundStyle(chosen ? ink.opacity(0.7) : mixed ? Brand.blue : Brand.blue.opacity(0.85))
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: S(54))
+            .background(PixelBox(step: 3).fill(chosen ? Brand.amber : Color.black.opacity(0.25)))
+            .overlay(PixelBox(step: 3).stroke(chosen ? .clear : mixed ? Brand.blue : Brand.line2, lineWidth: mixed ? 1.5 : 1))
+
+            VStack(alignment: .leading, spacing: 10) {
+                if !o.points.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(o.points, id: \.self) { p in
+                            Text(p).font(.system(size: S(12.5))).foregroundStyle(Brand.ink.opacity(0.88)).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                if !steps.isEmpty {
+                    // In a row with arrows when it fits, else one step per line.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                                if i > 0 { Image(systemName: "arrow.right").font(.system(size: S(9), weight: .bold)).foregroundStyle(Brand.mute) }
+                                stepChip(s).fixedSize()
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                                HStack(spacing: 6) {
+                                    Text("\(i + 1)").font(.system(size: S(9.5), weight: .heavy, design: .monospaced)).foregroundStyle(Brand.mute).frame(width: S(12))
+                                    stepChip(s)
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+                if !d.multi, draftPick != nil, !chosen {
+                    Button { toggleMix(o) } label: {
+                        Text(mixed ? "✓ Blended in" : "+ Blend in").font(.system(size: S(11), weight: .semibold))
+                            .foregroundStyle(mixed ? Color.black : Brand.blue)
+                            .padding(.horizontal, 9).padding(.vertical, 4)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(mixed ? Brand.blue : .clear))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Brand.blue.opacity(0.7)))
+                    }.buttonStyle(SteerButton()).help("Take something from this option too; say what in the note")
+                }
+            }
+            .padding(.horizontal, 6)
+        }
+        .padding(8).padding(.bottom, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(chosen ? Brand.amberDim.opacity(0.5) : Brand.panel2))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(chosen ? Brand.amber.opacity(0.8) : mixed ? Brand.blue.opacity(0.8) : Brand.line, lineWidth: chosen || mixed ? 1.5 : 1))
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.easeOut(duration: 0.12)) { choose(o) } }
+        .pointerStyle(.link)
+        .help(chosen ? "Click again to unselect" : "Make this your answer")
     }
 
     private func stepChip(_ s: String) -> some View {
@@ -417,42 +413,49 @@ struct DecisionCard: View {
     }
 
     /// Your answer, in words, with the note and Done.
+    /// Your answer (choice card mockup, answer A): one row. The note (at most 620 pt wide), then the one pixel CTA:
+    /// Save while something changed, Build once saved; Discuss and Park together on the right, quiet.
     private func answerBar(_ decided: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let buildNext = decided && !changed && !board.isBuilt(d)
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text("YOUR ANSWER").font(Brand.label(9)).tracking(0.9).foregroundStyle(Brand.amber)
                 Text(summary).font(.system(size: S(12.5), weight: .semibold)).foregroundStyle(canSave ? Brand.cream : Brand.mute).lineLimit(1)
-                Spacer()
-            }
-            TextField(!draftMix.isEmpty ? "What to take from each? (e.g. A's layout with B's colours)" : draftPick == nil && draftPicks.isEmpty ? "None fits? Say it in your own words…" : "Anything to add for Claude? (optional)", text: $draftNote, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: S(12.5))).lineLimit(1...6)
-                .focused($noteFocused)
-                .padding(9)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.35)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(noteFocused ? Brand.amber.opacity(0.7) : Brand.line2))
-                .onSubmit { if NSEvent.modifierFlags.contains(.command) { done() } }
-            HStack(spacing: 8) {
-                Button(action: done) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark").font(.system(size: S(11), weight: .bold))
-                        Text(decided && !changed ? "Saved" : Self.saveTitle(pick: d.multi ? !draftPicks.isEmpty : draftPick != nil, note: !draftNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)).font(.system(size: S(13), weight: .bold))
-                    }
-                    .foregroundStyle(canSave && changed ? Color(hex: 0x1a1200) : Brand.mute)
-                    .padding(.horizontal, 18).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(canSave && changed ? Brand.amber : Brand.panel2))
-                }
-                .buttonStyle(SteerButton()).disabled(!canSave || !changed)
-                .keyboardShortcut(.return, modifiers: noteFocused ? .command : [.command, .shift])
-                .help("Save your answer (⌘↩ while typing)")
-                Text(changed ? "Not saved yet" : decided ? "Next: build it" : "Choose an option or write your answer").font(.system(size: S(11))).foregroundStyle(changed ? Brand.amber : Brand.mute)
-                Spacer()
+                if changed { Text("· not saved yet").font(.system(size: S(11))).foregroundStyle(Brand.amber) }
                 if changed && (savedPick != nil || !savedNote.isEmpty || !savedPicks.isEmpty) {
-                    Button("Undo changes") { draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote }
+                    Button("Undo") { draftPick = savedPick; draftPicks = savedPicks; draftMix = savedMix; draftNote = savedNote }
                         .buttonStyle(SteerButton()).font(.system(size: S(11))).foregroundStyle(Brand.mute)
                 }
+                Spacer()
+            }
+            HStack(alignment: .center, spacing: 12) {
+                TextField(!draftMix.isEmpty ? "What to take from each? (e.g. A's layout with B's colours)" : draftPick == nil && draftPicks.isEmpty ? "None fits? Say it in your own words…" : "Add a note for Claude (optional)…", text: $draftNote, axis: .vertical)
+                    .textFieldStyle(.plain).font(.system(size: S(12.5))).lineLimit(1...6)
+                    .focused($noteFocused)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.35)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(noteFocused ? Brand.amber.opacity(0.7) : Brand.line2))
+                    .onSubmit { if NSEvent.modifierFlags.contains(.command) { done() } }
+                    .frame(maxWidth: S(620))
+                if buildNext {
+                    PixelCTA(title: Self.buildTitle(d, board: board), color: Brand.claude, icon: "claude") { model.start(projectId: board.project.id, item: ref, intent: .build) }
+                        .help("Start Claude on your answer")
+                } else {
+                    PixelCTA(title: decided && !changed ? "Saved" : Self.saveTitle(pick: d.multi ? !draftPicks.isEmpty : draftPick != nil, note: !draftNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
+                             icon: "check", shortcut: "⌘↩") { done() }
+                        .disabled(!canSave || !changed)
+                        .keyboardShortcut(.return, modifiers: noteFocused ? .command : [.command, .shift])
+                        .help("Save your answer (⌘↩ while typing)")
+                }
+                Spacer(minLength: 0)
+                ClaudeButton(title: "Discuss") { model.start(projectId: board.project.id, item: ref, intent: .look) }
+                    .help("Talk this choice through with Claude")
+                Button(board.isParked(d) ? "Recover" : "Park") { board.setParked(d, !board.isParked(d)) }
+                    .buttonStyle(SteerButton()).font(.system(size: S(12))).foregroundStyle(Brand.mute)
+                    .help(board.isParked(d) ? "Back to the open choices" : "Park for later")
             }
         }
-        .padding(12)
+        .padding(14)
         .background(RoundedRectangle(cornerRadius: 10).fill(Brand.amberDim.opacity(canSave ? 0.55 : 0.25)))
     }
 

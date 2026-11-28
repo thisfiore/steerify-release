@@ -283,6 +283,23 @@ enum WhatsNew {
         }.reversed()   // newest first
     }()
 
+    /// The last 3 versions with app changes (Resources/whats-new-recent.md, from CHANGELOG.md by bundle.sh), newest first.
+    static let recent: [(version: String, date: String, titles: [String])] = {
+        guard let url = Bundle.main.url(forResource: "whats-new-recent", withExtension: "md"),
+              let md = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        var out: [(version: String, date: String, titles: [String])] = []
+        for line in md.split(separator: "\n") {
+            if line.hasPrefix("## ") {
+                let parts = line.dropFirst(3).components(separatedBy: " · ")
+                out.append((parts[0], parts.count > 1 ? parts[1] : "", []))
+            } else if line.hasPrefix("- **"), !out.isEmpty,
+                      let end = line.range(of: "**", range: line.index(line.startIndex, offsetBy: 4)..<line.endIndex) {
+                out[out.count - 1].titles.append(String(line[line.index(line.startIndex, offsetBy: 4)..<end.lowerBound]))
+            }
+        }
+        return out.filter { !$0.titles.isEmpty }
+    }()
+
     /// True once per new version that has notes; a first install only remembers the version.
     static func shouldShowAfterUpdate() -> Bool {
         guard !CommandLine.arguments.contains("--background") else { return false }
@@ -302,13 +319,36 @@ struct WhatsNewPanel: View {
     @State private var all = false
     var body: some View {
         let list = titles
+        // The version badge: the last 3 versions, this one first (a downloaded update keeps its own list).
+        let recent = restart == nil ? WhatsNew.recent : []
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 PixelWheel(size: 18)
-                Text(restart == nil ? "What's new in v\(version)" : "Ready to install: v\(version)")
+                Text(restart == nil ? (recent.count > 1 ? "What's new" : "What's new in v\(version)") : "Ready to install: v\(version)")
                     .font(.system(size: S(14), weight: .semibold)).foregroundStyle(Brand.cream)
             }
-            if list.isEmpty {
+            if recent.count > 1 {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(recent.enumerated()), id: \.offset) { _, r in
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack(spacing: 6) {
+                                    Text("V\(r.version)").font(Brand.label(9)).tracking(0.8)
+                                        .foregroundStyle(r.version == version ? Brand.amber : Brand.mute)
+                                    if r.version == version { Text("this version").font(.system(size: S(10.5))).foregroundStyle(Brand.mute) }
+                                    else if !r.date.isEmpty { Text(r.date).font(.system(size: S(10.5))).foregroundStyle(Brand.mute) }
+                                }
+                                ForEach(Array(r.titles.enumerated()), id: \.offset) { _, t in
+                                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                                        Circle().fill(r.version == version ? Brand.amber : Brand.mute).frame(width: 5, height: 5).offset(y: -2)
+                                        Text(t).font(.system(size: S(12))).foregroundStyle(Brand.cream).fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(maxHeight: S(300))
+            } else if list.isEmpty {
                 Text(restart != nil ? "The notes are on GitHub." : AppUpdater.isDevBuild ? "Dev build: notes come with a release." : "Small fixes and polish.")
                     .font(.system(size: S(12))).foregroundStyle(Brand.mute)
             } else {

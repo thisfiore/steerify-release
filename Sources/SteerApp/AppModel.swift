@@ -25,6 +25,8 @@ final class AppModel: ObservableObject {
     @Published var preview: PreviewState?
     /// The mockup viewer (Mockups.swift), over the board like the preview.
     @Published var mockupOpen: MockupOpen?
+    /// A choice's prototypes live, as big as the window (ChoiceLive.swift).
+    @Published var choiceLive: ChoiceLiveOpen?
     /// ⌘K palette.
     @Published var paletteOpen = false
     @Published var requestsListOpen = false           // Board › All Requests… (RequestsList.swift)
@@ -462,6 +464,8 @@ final class AppModel: ObservableObject {
             newSession(.claude)
         case "open":       // steerify://open?project=sb&item=choice:<id> → that item on the board
             if let ref = q["item"] ?? q["ref"], !ref.isEmpty { focusItem(projectId: pid, ref: ref) }
+        case "case":       // steerify://case?project=steerify&id=<case>&build=dev|prod → Steerify Lab reset to that case (TestLab.swift)
+            openCase(projectId: pid, caseId: q["id"] ?? "", build: q["build"], url: url)
         case "squash":     // steerify://squash?project=sb → the bug squash modal for that project (BugSquash.swift)
             if let pp = projects.first(where: { $0.id == pid }) {
                 selectedProjectId = pp.id

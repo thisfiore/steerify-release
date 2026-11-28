@@ -2,6 +2,15 @@
 
 Every Steerify release, newest first. Downloads: https://github.com/thisfiore/steerify-release/releases · with pictures: https://steerify.dev/releases.html
 
+## 0.5.28 · 2026-11-28
+
+### In the app
+
+- **Bug chip: click anywhere on the pill** — Whole bug pill is clickable · Pill has a light red fill
+- **Pixel button for every main action** — Shortcut as faded text (B) · Choose, Test, Request: pixel · File + build, Update: pixel · A/B/C in pixel font
+- **Live choices: notes on the scheme, panel stays** — Tap a scheme box: note on it · ⌘-click anywhere: note there · Details stay open, bottom right · Thumbnails show the finished scheme
+- **Choice card: tabs, body, answer row** — Pixel tabs, picture full width · One answer row · Simple choices: pixel tab cards · Suggested option pre-picked
+
 ## 0.5.27 · 2026-11-27
 
 ### In the app

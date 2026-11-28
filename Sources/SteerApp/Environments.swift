@@ -62,7 +62,7 @@ enum TestEnvs {
     /// page / record / item under test, never a home page (request r261120-174139: a test linked to
     /// https://platform.synthetic-brain.com and the user had to find the feature by hand).
     /// Links Steerify can act on (AppModel.handle). Anything else does nothing when clicked.
-    static let appActions: Set<String> = ["start", "new", "open", "since"]
+    static let appActions: Set<String> = ["start", "new", "open", "since", "case"]
 
     /// A link that does nothing at all when clicked: not a link, or a steerify:// action the app does not have
     /// (request r261121-103305: a test linked to steerify://request showed an enabled Test it that did nothing).
@@ -74,6 +74,7 @@ enum TestEnvs {
         let action = u.host ?? "", query = u.query ?? ""
         if !appActions.contains(action) { return true }
         if action == "start", !query.contains("item=") { return true }
+        if action == "case", !query.contains("id=") { return true }
         return false
     }
 

@@ -86,40 +86,65 @@ struct ClaudeButton: View {
 }
 
 
-/// The big call to action, in the landing's pixel style: stepped corners, hard pixel shadow, presses down.
+/// The big call to action, in the landing's pixel style: stepped corners, pixel icon, hard pixel shadow, presses down.
+/// The standard for every main action (Choose, Test, New request, File + build with Claude, Update, Ship).
+/// Three variants: title only · title + `subtitle` · title + `shortcut` on the right (faded text, choice pixel-cta-shortcut B).
 struct PixelCTA: View {
     let title: String
     var subtitle: String? = nil
     var color: Color = Brand.amber
     var small = false
-    var icon = "play"          // a PixelIcon name: "ship" (set sail), "rocket" (release)
+    var icon = "play"          // a PixelIcon name: "ship" (set sail), "rocket" (release), "choice", "test", "plus", "claude", "update"
+    var shortcut: String? = nil   // shown as faded text on the right, e.g. "⌘↩"; bind the real key with .keyboardShortcut
+    var fullWidth = false
+    var selected = false       // already chosen: a dim fill in the colour, the label in the colour
+    var ink: Color = Color(hex: 0x1a1200)
     let action: () -> Void
     var body: some View {
         Button(action: action) { EmptyView() }
-            .buttonStyle(PixelCTAStyle(title: title, subtitle: subtitle, color: color, small: small, icon: icon))
+            .buttonStyle(PixelCTAStyle(title: title, subtitle: subtitle, color: color, small: small, icon: icon,
+                                       shortcut: shortcut, fullWidth: fullWidth, selected: selected, ink: ink))
     }
 }
 
 private struct PixelCTAStyle: ButtonStyle {
     let title: String; let subtitle: String?; let color: Color; var small = false; var icon = "play"
-    func makeBody(configuration: Configuration) -> some View { CTALabel(title: title, subtitle: subtitle, color: color, small: small, icon: icon, pressed: configuration.isPressed) }
+    var shortcut: String? = nil; var fullWidth = false; var selected = false; var ink: Color = Color(hex: 0x1a1200)
+    func makeBody(configuration: Configuration) -> some View {
+        CTALabel(title: title, subtitle: subtitle, color: color, small: small, icon: icon, shortcut: shortcut,
+                 fullWidth: fullWidth, selected: selected, ink: ink, pressed: configuration.isPressed)
+    }
     struct CTALabel: View {
-        let title: String; let subtitle: String?; let color: Color; var small = false; var icon = "play"; let pressed: Bool
+        let title: String; let subtitle: String?; let color: Color; var small = false; var icon = "play"
+        var shortcut: String? = nil; var fullWidth = false; var selected = false; var ink: Color = Color(hex: 0x1a1200)
+        let pressed: Bool
+        @Environment(\.isEnabled) private var enabled
         @State private var hover = false
         var body: some View {
             let px: CGFloat = small ? 2 : 3
+            let fg = selected ? color : ink
             HStack(spacing: small ? 6 : 10) {
-                PixelIcon(name: icon, size: S(small ? 9 : (icon == "play" ? 13 : 16))).foregroundStyle(Color(hex: 0x1a1200))
+                if fullWidth { Spacer(minLength: 0) }
+                PixelIcon(name: icon, size: S(small ? 9 : (icon == "play" ? 13 : 16)))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title.uppercased()).font(.system(size: S(small ? 11 : 14), weight: .black, design: .monospaced)).tracking(small ? 0.8 : 1.2)
-                    if let subtitle { Text(subtitle).font(.system(size: S(10.5), weight: .semibold, design: .monospaced)).opacity(0.7) }
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                    if let subtitle { Text(subtitle).font(.system(size: S(10.5), weight: .semibold, design: .monospaced)).opacity(0.7).lineLimit(1) }
                 }
+                if let shortcut {
+                    Text(shortcut).font(.system(size: S(small ? 10 : 11.5), weight: .bold, design: .monospaced)).opacity(0.5)
+                        .padding(.leading, small ? 0 : 2)
+                }
+                if fullWidth { Spacer(minLength: 0) }
             }
-            .foregroundStyle(Color(hex: 0x1a1200))
+            .foregroundStyle(fg)
+            .frame(maxWidth: fullWidth ? .infinity : nil)
             .padding(.horizontal, small ? 10 : 18).padding(.vertical, small ? 5 : 11)
-            .background(PixelBox(step: px).fill(color).brightness(hover ? 0.06 : 0))
+            .background(PixelBox(step: px).fill(selected ? color.opacity(0.16) : color).brightness(hover && enabled ? 0.06 : 0))
+            .overlay(selected ? PixelBox(step: px).stroke(color, lineWidth: 1.5) : nil)
             .background(PixelBox(step: px).fill(Color.black.opacity(0.55)).offset(x: px, y: pressed ? px : px * 2))   // hard pixel shadow
             .offset(y: pressed ? px : 0)
+            .opacity(enabled ? 1 : 0.5)
             .contentShape(Rectangle())
             .onHover { hover = $0 }
             .pointerStyle(.link)

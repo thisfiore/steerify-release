@@ -119,6 +119,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Test hook: `--click <x> <y> [seconds]`: a real mouse click at that point of the window (points, from the
         // top-left of the content), as a person would (no Accessibility permission needed). Repeatable.
+        // Test hook: `--cmd-click x y [seconds]`: a click with ⌘ held (pin a note, open ready to pin).
+        for (i, s) in a.enumerated() where s == "--cmd-click" && i + 2 < a.count {
+            guard let x = Double(a[i + 1]), let y = Double(a[i + 2]) else { continue }
+            let at = (i + 3 < a.count ? Double(a[i + 3]) : nil) ?? 4
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { PerfBench.click(w, x: x, y: y, flags: .command) }
+        }
         for (i, s) in a.enumerated() where s == "--click" && i + 2 < a.count {
             guard let x = Double(a[i + 1]), let y = Double(a[i + 2]) else { continue }
             let at = (i + 3 < a.count ? Double(a[i + 3]) : nil) ?? 4
@@ -130,7 +136,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let keys = Array(a[i + 1]), at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 3
             for (n, k) in keys.enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + at + Double(n) * 0.6) {
-                    let c = k == "_" ? " " : String(k), code: UInt16 = k == "_" ? 49 : 0
+                    // "_" = space, ">" / "<" = the arrow keys.
+                    let arrow = k == ">" ? 124 : k == "<" ? 123 : 0
+                    let c = k == "_" ? " " : arrow > 0 ? String(UnicodeScalar(arrow == 124 ? NSRightArrowFunctionKey : NSLeftArrowFunctionKey)!) : String(k)
+                    let code: UInt16 = k == "_" ? 49 : UInt16(arrow)
                     for t in [NSEvent.EventType.keyDown, .keyUp] {
                         if let e = NSEvent.keyEvent(with: t, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c,
@@ -433,6 +442,22 @@ struct SteerApp: App {
             let at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 3
             DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.focusItem(projectId: p.id, ref: a[i + 1]) }
         }
+        // Test hook: `--live-tap <x> <y> [meta] [seconds]`: a click inside the live prototype at x/y (0–1), ⌘ held with "meta".
+        if let i = a.firstIndex(of: "--live-tap"), i + 2 < a.count, let x = Double(a[i + 1]), let y = Double(a[i + 2]) {
+            let meta = i + 3 < a.count && a[i + 3] == "meta"
+            let at = a.firstIndex(of: "--live-tap-at").flatMap { $0 + 1 < a.count ? Double(a[$0 + 1]) : nil } ?? 4.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                ChoiceLiveWeb.current?.evaluateJavaScript("""
+                    (() => { const X = \(x) * innerWidth, Y = \(y) * innerHeight; const el = document.elementFromPoint(X, Y);
+                      el && el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: X, clientY: Y, metaKey: \(meta) })); return el ? el.className : 'none' })()
+                    """) { r, e in NSLog("live-tap → \(String(describing: r)) \(String(describing: e))") }
+            }
+        }
+        // Test hook: `--open-live <choice id> [option]`: a choice's prototypes live, full window (ChoiceLive.swift).
+        if let i = a.firstIndex(of: "--open-live"), i + 1 < a.count, let p = m.project {
+            let opt = i + 2 < a.count && !a[i + 2].hasPrefix("--") ? a[i + 2] : "A"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { m.choiceLive = ChoiceLiveOpen(projectId: p.id, decision: a[i + 1], option: opt) }
+        }
         // Test hook: `--open-mockup <id> [screen]`: the mockup viewer on that screen (Mockups.swift).
         if let i = a.firstIndex(of: "--open-mockup"), i + 1 < a.count {
             let screen = (i + 2 < a.count ? Int(a[i + 2]) : nil) ?? 0
@@ -441,6 +466,11 @@ struct SteerApp: App {
                 m.selectedProjectId = p.id
                 m.mockupOpen = MockupOpen(projectId: p.id, mockup: a[i + 1], screen: screen)
             }
+        }
+        // Test hook: `--open-url <steerify://…> [seconds]`: as if the link was clicked (e.g. a Lab case, TestLab.swift).
+        if let i = a.firstIndex(of: "--open-url"), i + 1 < a.count, let u = URL(string: a[i + 1]) {
+            let at = (i + 2 < a.count ? Double(a[i + 2]) : nil) ?? 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { m.handle(u) }
         }
         if let i = a.firstIndex(of: "--focus"), i + 1 < a.count, let p = m.project {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { m.openCombo(projectId: p.id, ref: a[i + 1], startNew: false) }
